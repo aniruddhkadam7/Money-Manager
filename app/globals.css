@@ -1,0 +1,65 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+:root {
+  --background: #f6f7f9;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --border: #e2e8f0;
+  --input: #cbd5e1;
+  --primary: #059669;
+  --primary-foreground: #ffffff;
+  --destructive: #dc2626;
+  --ring: #059669;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-destructive: var(--destructive);
+  --color-ring: var(--ring);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  border-color: var(--border);
+}
+
+/* ---- Chart motion (disabled for people who prefer reduced motion) ---- */
+@keyframes chart-reveal {
+  from { clip-path: inset(-10px 100% -10px 0); }
+  to { clip-path: inset(-10px -12px -10px 0); }
+}
+@keyframes bar-grow {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes pulse-ring {
+  0% { transform: scale(0.6); opacity: 0.45; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
+.chart-reveal { animation: chart-reveal 950ms cubic-bezier(0.22, 0.8, 0.3, 1) both; }
+.bar-grow { transform-origin: bottom; transform-box: fill-box; animation: bar-grow 700ms cubic-bezier(0.22, 0.8, 0.3, 1) both; }
+.fade-up { animation: fade-up 550ms ease-out both; }
+.pulse-ring { transform-box: fill-box; transform-origin: center; animation: pulse-ring 2.2s ease-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .chart-reveal, .bar-grow, .fade-up, .pulse-ring { animation: none !important; }
+}

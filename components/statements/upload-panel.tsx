@@ -1,0 +1,240 @@
+"use client";
+
+import { useEffect, useRef, useState, type DragEvent } from "react";
+import Link from "next/link";
+import { CheckCircle2, FileText, Loader2, LockKeyhole, ShieldCheck, Sparkles, TriangleAlert, Upload } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import type { Progress, Stage } from "@/lib/statements/pipeline";
+import { useFinance } from "../finance-provider";
+import { ACCEPTED_EXTENSIONS } from "@/lib/statements/tabular";
+import { useStatements, type UploadResult } from "./statements-provider";
+
+const STAGES: { stage: Stage; label: string }[] = [
+  { stage: "reading", label: "Reading the file" },
+  { stage: "ocr", label: "Reading scanned pages" },
+  { stage: "parsing", label: "Finding transactions" },
+  { stage: "checking", label: "Checking the totals" },
+  { stage: "matching", label: "Looking for duplicates and existing entries" },
+  { stage: "classifying", label: "Classifying" },
+  { stage: "ai", label: "Asking AI about the unclear ones" },
+];
+
+const LAST_ACCOUNT_KEY = "money-manager:v1:import-account";
+
+export function UploadPanel({ onDone }: { onDone: (importId: string) => void }) {
+  const { book } = useFinance();
+  const statements = useStatements();
+  const input = useRef<HTMLInputElement>(null);
+
+  const accounts = book.accounts.filter((a) => a.type === "bank" || a.type === "cash");
+  const [accountId, setAccountId] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [password, setPassword] = useState("");
+  const [useAi, setUseAi] = useState(true);
+  const [dragging, setDragging] = useState(false);
+  const [progress, setProgress] = useState<Progress | null>(null);
+  const [result, setResult] = useState<Extract<UploadResult, { ok: false }> | null>(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  useEffect(() => {
+    if (accountId || accounts.length === 0) return;
+    let remembered: string | null = null;
+    try {
+      remembered = window.localStorage.getItem(LAST_ACCOUNT_KEY);
+    } catch {
+      // storage unavailable: use the default
+    }
+    const pick = accounts.find((a) => a.id === remembered) ?? accounts.find((a) => a.id === "account-netbanking") ?? accounts.find((a) => a.type === "bank") ?? accounts[0];
+    setAccountId(pick.id);
+  }, [accounts, accountId]);
+
+  const busy = progress !== null;
+  const needsPassword = result?.code === "password_required" || result?.code === "password_incorrect";
+  const aiAvailable = statements.aiReady === true;
+
+  const choose = (f: File | null | undefined) => {
+    if (!f) return;
+    setFile(f);
+    setResult(null);
+    setPassword("");
+  };
+
+  const start = async () => {
+    if (!file || !accountId || busy) return;
+    try {
+      window.localStorage.setItem(LAST_ACCOUNT_KEY, accountId);
+    } catch {
+      // not important
+    }
+    setResult(null);
+    setProgress({ stage: "reading", fraction: 0, label: "Reading the file" });
+    const res = await statements.upload({ file, accountId, password: password || undefined, useAi: useAi && aiAvailable, onProgress: setProgress });
+    setProgress(null);
+    if (res.ok) onDone(res.importId);
+    else setResult(res);
+  };
+
+  const onDrop = (e: DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    choose(e.dataTransfer.files?.[0]);
+  };
+
+  const t = statements.settings;
+  const activeIndex = progress ? STAGES.findIndex((s) => s.stage === progress.stage) : -1;
+
+  return (
+    <Card className="p-5 sm:p-6" data-testid="upload-panel">
+      <div className="flex items-center gap-2">
+        <ShieldCheck className="size-4 text-primary" />
+        <p className="text-sm text-muted-foreground">Your statement is read on this device and never uploaded. Only short, number-masked descriptions of unclear lines go to the AI, if you allow it.</p>
+      </div>
+
+      <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_20rem]">
+        <div>
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => !busy && input.current?.click()}
+            onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && !busy && input.current?.click()}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={onDrop}
+            aria-label="Choose a bank statement file"
+            className={`flex min-h-44 cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-4 py-8 text-center transition-colors ${dragging ? "border-primary bg-primary/5" : "border-input hover:bg-muted/50"} ${busy ? "pointer-events-none opacity-60" : ""}`}
+          >
+            {file ? (
+              <>
+                <FileText className="size-8 text-primary" />
+                <div className="text-sm font-medium" data-testid="chosen-file">{file.name}</div>
+                <div className="text-xs text-muted-foreground">{(file.size / 1024).toFixed(0)} KB · click to choose a different file</div>
+              </>
+            ) : (
+              <>
+                <Upload className="size-8 text-muted-foreground" />
+                <div className="text-sm font-medium">Drop your bank statement here</div>
+                <div className="text-xs text-muted-foreground">PDF, Excel (.xlsx, .xls), CSV, or a clear photo or screenshot. Scanned pages are read too.</div>
+              </>
+            )}
+            <input ref={input} type="file" accept={ACCEPTED_EXTENSIONS} className="sr-only" data-testid="file-input" onChange={(e) => choose(e.target.files?.[0])} />
+          </div>
+
+          {needsPassword && (
+            <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3" data-testid="password-prompt">
+              <div className="flex items-center gap-2 text-sm font-medium text-amber-900">
+                <LockKeyhole className="size-4" /> {result?.code === "password_incorrect" ? "That password didn't work" : "This file is password-protected"}
+              </div>
+              <p className="mt-1 text-xs text-amber-900/80">Banks usually use your date of birth, customer ID or the last digits of your phone number. The password stays on this device.</p>
+              <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && start()} placeholder="PDF password" className="mt-2 bg-white" aria-label="PDF password" autoFocus />
+            </div>
+          )}
+
+          {result && !needsPassword && (
+            <div className="mt-4 flex gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm" role="alert" data-testid="upload-error" data-code={result.code}>
+              <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
+              <div>
+                <p>{result.message}</p>
+                {result.code === "duplicate_file" && result.importId && (
+                  <button className="mt-1 font-medium text-primary underline" onClick={() => onDone(result.importId!)}>
+                    Open that import
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-4">
+          <label className="block text-sm font-medium">
+            Which account is this statement for?
+            <Select value={accountId} onValueChange={setAccountId} disabled={busy}>
+              <SelectTrigger className="mt-1.5" aria-label="Statement account" data-testid="account-select">
+                <SelectValue placeholder="Choose an account" />
+              </SelectTrigger>
+              <SelectContent>
+                {accounts.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+
+          <div className="flex items-start justify-between gap-3 rounded-xl border p-3">
+            <div className="text-sm">
+              <div className="flex items-center gap-1.5 font-medium">
+                <Sparkles className="size-3.5 text-primary" /> Use AI for unclear lines
+              </div>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {statements.aiReady === null ? "Checking…" : aiAvailable ? "Rules run first. AI only sees lines the rules couldn't place." : "Not set up: add OPENAI_API_KEY on the server. Rules still work; unclear lines go to review."}
+              </p>
+            </div>
+            <Switch checked={useAi && aiAvailable} onCheckedChange={setUseAi} disabled={!aiAvailable || busy} aria-label="Use AI" />
+          </div>
+
+          <div>
+            <button className="text-xs font-medium text-muted-foreground underline-offset-2 hover:underline" onClick={() => setShowAdvanced((v) => !v)}>
+              {showAdvanced ? "Hide" : "Show"} confidence settings
+            </button>
+            {showAdvanced && (
+              <div className="mt-2 space-y-2 rounded-xl border p-3 text-xs" data-testid="thresholds">
+                <label className="flex items-center justify-between gap-3">
+                  Import without asking at or above
+                  <span className="flex items-center gap-1">
+                    <Input type="number" min={50} max={100} value={Math.round(t.autoThreshold * 100)} aria-label="Automatic threshold" className="h-8 w-16" onChange={(e) => statements.updateSettings({ autoThreshold: clamp(Number(e.target.value) / 100, Math.min(1, t.reviewThreshold + 0.01), 1) })} />%
+                  </span>
+                </label>
+                <label className="flex items-center justify-between gap-3">
+                  Import but flag at or above
+                  <span className="flex items-center gap-1">
+                    <Input type="number" min={0} max={99} value={Math.round(t.reviewThreshold * 100)} aria-label="Review threshold" className="h-8 w-16" onChange={(e) => statements.updateSettings({ reviewThreshold: clamp(Number(e.target.value) / 100, 0, t.autoThreshold - 0.01) })} />%
+                  </span>
+                </label>
+                <p className="text-muted-foreground">Below the second number, a line always waits for you.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {progress && (
+        <div className="mt-5" role="status" aria-live="polite" data-testid="progress">
+          <div className="h-2 overflow-hidden rounded-full bg-muted">
+            <div className="h-full rounded-full bg-primary transition-all duration-300" style={{ width: `${Math.max(4, Math.round(progress.fraction * 100))}%` }} />
+          </div>
+          <ol className="mt-3 grid gap-1.5 sm:grid-cols-2">
+            {STAGES.filter((s) => s.stage !== "ai" || (useAi && aiAvailable)).map((s, i) => {
+              const state = i < activeIndex ? "done" : i === activeIndex ? "active" : "todo";
+              return (
+                <li key={s.stage} className={`flex items-center gap-2 text-sm ${state === "todo" ? "text-muted-foreground/60" : ""}`}>
+                  {state === "done" ? <CheckCircle2 className="size-4 text-primary" /> : state === "active" ? <Loader2 className="size-4 animate-spin text-primary" /> : <span className="size-4 rounded-full border" />}
+                  {state === "active" ? progress.label : s.label}
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      )}
+
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          Nothing is added to your records until you review it and press Import.{" "}
+          <Link href="/activity" className="underline">View current entries</Link>
+        </p>
+        <Button onClick={start} disabled={!file || !accountId || busy || (needsPassword && !password)} data-testid="start-import">
+          {busy ? <Loader2 className="animate-spin" /> : <Upload />} {busy ? "Working…" : needsPassword ? "Unlock and read" : "Read statement"}
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+const clamp = (n: number, lo: number, hi: number) => (Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : lo);

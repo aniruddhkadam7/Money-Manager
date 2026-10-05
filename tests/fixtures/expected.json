@@ -1,0 +1,162 @@
+{
+ "sept": {
+  "opening": 5000000,
+  "closing": 8884430,
+  "rows": [
+   {
+    "date": "2026-09-01",
+    "narration": "NEFT CR-HDFC0000001-ACME TECHNOLOGIES PVT LTD-SALARY SEP 2026-N252260123456789",
+    "debit": 0,
+    "credit": 8500000,
+    "balance": 13500000
+   },
+   {
+    "date": "2026-09-02",
+    "narration": "UPI-AMIT KUMAR-AMIT.KUMAR@OKHDFCBANK-526012345678-RENT SEP",
+    "debit": 1800000,
+    "credit": 0,
+    "balance": 11700000
+   },
+   {
+    "date": "2026-09-03",
+    "narration": "UPI-SWIGGY-SWIGGYUPI@ICICI-640812345678-UPI",
+    "debit": 85000,
+    "credit": 0,
+    "balance": 11615000
+   },
+   {
+    "date": "2026-09-03",
+    "narration": "UPI-SWIGGY-SWIGGYUPI@ICICI-640812999999-UPI",
+    "debit": 85000,
+    "credit": 0,
+    "balance": 11530000
+   },
+   {
+    "date": "2026-09-05",
+    "narration": "UPI-AMAZON PAY-AMAZONPAY@APL-640898765432-PAYMENT FROM PHONE",
+    "debit": 240000,
+    "credit": 0,
+    "balance": 11290000
+   },
+   {
+    "date": "2026-09-06",
+    "narration": "UPI-RAHUL SHARMA-RAHUL.SHARMA@OKSBI-526099991111-UPI",
+    "debit": 200000,
+    "credit": 0,
+    "balance": 11090000
+   },
+   {
+    "date": "2026-09-07",
+    "narration": "UPI-RAHUL SHARMA-RAHUL.SHARMA@OKSBI",
+    "debit": 200000,
+    "credit": 0,
+    "balance": 10890000
+   },
+   {
+    "date": "2026-09-08",
+    "narration": "ATM WDL 5416 MG ROAD BANGALORE",
+    "debit": 500000,
+    "credit": 0,
+    "balance": 10390000
+   },
+   {
+    "date": "2026-09-10",
+    "narration": "UPI-NETFLIX-NETFLIX@HDFCBANK-640811112222-MONTHLY",
+    "debit": 64900,
+    "credit": 0,
+    "balance": 10325100
+   },
+   {
+    "date": "2026-09-12",
+    "narration": "INT.PD:01-07-2026 TO 30-09-2026",
+    "debit": 0,
+    "credit": 31200,
+    "balance": 10356300
+   },
+   {
+    "date": "2026-09-15",
+    "narration": "UPI-RAHUL SHARMA-RAHUL.SHARMA@OKSBI-526077778888-RETURN",
+    "debit": 0,
+    "credit": 200000,
+    "balance": 10556300
+   },
+   {
+    "date": "2026-09-18",
+    "narration": "ACH D- ZERODHA COIN SIP-1234567",
+    "debit": 1000000,
+    "credit": 0,
+    "balance": 9556300
+   },
+   {
+    "date": "2026-09-20",
+    "narration": "CREDIT CARD PAYMENT 4012XXXXXXXX1234 BILLDESK",
+    "debit": 750000,
+    "credit": 0,
+    "balance": 8806300
+   },
+   {
+    "date": "2026-09-25",
+    "narration": "SMS ALERT CHARGES Q3",
+    "debit": 1770,
+    "credit": 0,
+    "balance": 8804530
+   },
+   {
+    "date": "2026-09-28",
+    "narration": "REFUND-AMAZON-AMAZONPAY@APL-640855556666",
+    "debit": 0,
+    "credit": 79900,
+    "balance": 8884430
+   }
+  ]
+ },
+ "overlap": {
+  "opening": 9556300,
+  "closing": 17232430,
+  "rows": [
+   {
+    "date": "2026-09-20",
+    "narration": "CREDIT CARD PAYMENT 4012XXXXXXXX1234 BILLDESK",
+    "debit": 750000,
+    "credit": 0,
+    "balance": 8806300
+   },
+   {
+    "date": "2026-09-25",
+    "narration": "SMS ALERT CHARGES Q3",
+    "debit": 1770,
+    "credit": 0,
+    "balance": 8804530
+   },
+   {
+    "date": "2026-09-28",
+    "narration": "REFUND-AMAZON-AMAZONPAY@APL-640855556666",
+    "debit": 0,
+    "credit": 79900,
+    "balance": 8884430
+   },
+   {
+    "date": "2026-10-01",
+    "narration": "NEFT CR-HDFC0000001-ACME TECHNOLOGIES PVT LTD-SALARY OCT 2026-N252270123456789",
+    "debit": 0,
+    "credit": 8500000,
+    "balance": 17384430
+   },
+   {
+    "date": "2026-10-02",
+    "narration": "UPI-SWIGGY-SWIGGYUPI@ICICI-640822345678-UPI",
+    "debit": 52000,
+    "credit": 0,
+    "balance": 17332430
+   },
+   {
+    "date": "2026-10-05",
+    "narration": "UPI-RAHUL SHARMA-RAHUL.SHARMA@OKSBI-526066665555-UPI",
+    "debit": 100000,
+    "credit": 0,
+    "balance": 17232430
+   }
+  ]
+ },
+ "password": "secret123"
+}
