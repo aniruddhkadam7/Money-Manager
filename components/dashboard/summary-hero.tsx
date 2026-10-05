@@ -6,6 +6,9 @@ import { formatBps, formatExactINR, formatSignedINR } from "@/lib/charts/format"
 import { activityHref, monthFilter } from "@/lib/charts/links";
 import type { DashboardModel } from "@/lib/finance/dashboard-model";
 import type { FinancialState } from "@/lib/finance/state";
+import type { Book } from "@/lib/finance/types";
+import { cardSpending } from "@/lib/finance/card-spend";
+import { monthEnd, monthStart } from "@/lib/domain/dates";
 import { cn } from "@/lib/utils";
 import { DeltaPill } from "../charts/primitives";
 
@@ -41,8 +44,10 @@ function formatHeadlineINR(minor: number): string {
 }
 
 /** The 10-second answer: how much am I worth, and how is this month going. */
-export function SummaryHero({ model, state }: { model: DashboardModel; state: FinancialState }) {
+export function SummaryHero({ model, state, book }: { model: DashboardModel; state: FinancialState; book: Book }) {
   const { current } = model;
+  // How much of this month's spending went on credit cards (part of "Spent", not extra).
+  const cardSpent = cardSpending(book, monthStart(model.ym), monthEnd(model.ym)).spentMinor;
   const nw = state.netWorthMinor;
   const change = model.netWorthChangeMinor;
   const spendBps = model.spendingChangeBps;
@@ -51,7 +56,7 @@ export function SummaryHero({ model, state }: { model: DashboardModel; state: Fi
   const invPct = invBase > 0 ? Math.round((invGain / invBase) * 10_000) : null;
 
   return (
-    <section className="relative overflow-hidden rounded-3xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.08)] sm:p-6">
+    <section className="relative overflow-hidden rounded-3xl border border-slate-300/60 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.07),0_12px_32px_-16px_rgba(15,23,42,0.22)] sm:p-6">
       <div aria-hidden className="pointer-events-none absolute -right-28 -top-32 size-96 rounded-full bg-emerald-400/10 blur-3xl" />
       <div aria-hidden className="pointer-events-none absolute -bottom-40 left-1/3 size-80 rounded-full bg-indigo-400/[0.07] blur-3xl" />
 
@@ -76,14 +81,37 @@ export function SummaryHero({ model, state }: { model: DashboardModel; state: Fi
         </div>
 
         <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-slate-100 pt-4 sm:grid-cols-3 lg:mt-0 lg:max-w-4xl lg:flex-1 lg:grid-cols-5 lg:border-t-0 lg:pt-0">
-          <Metric href="/money#accounts" label="Total assets" value={formatHeadlineINR(state.assets.totalMinor)} title={formatExactINR(state.assets.totalMinor)} sub={`Cash ${formatHeadlineINR(state.cashMinor)}`} />
-          <Metric href="/money#cards-loans" label="Liabilities" value={formatHeadlineINR(state.liabilities.totalMinor)} title={formatExactINR(state.liabilities.totalMinor)} sub={state.liabilities.totalMinor === 0 ? "Debt-free" : undefined} />
+          <Metric href="/money#accounts" label="Total assets" value={formatHeadlineINR(state.assets.totalMinor)} title={formatExactINR(state.assets.totalMinor)} sub={`Cash ${formatHeadlineINR(state.cashMinor)}${state.assets.creditBalancesMinor > 0 ? ` · Card credit ${formatHeadlineINR(state.assets.creditBalancesMinor)}` : ""}`} />
+          <Metric
+            // Go where most of it is: people you owe, or cards and loans.
+            href={state.liabilities.borrowedMinor >= state.liabilities.creditCardsMinor + state.liabilities.loansMinor ? "/money#owe" : "/money#cards-loans"}
+            label="Liabilities"
+            value={formatHeadlineINR(state.liabilities.totalMinor)}
+            title={formatExactINR(state.liabilities.totalMinor)}
+            sub={
+              state.liabilities.totalMinor === 0
+                ? "Debt-free"
+                : // Every non-zero part, negatives too (a card paid more than its recorded spending), so the parts add up to the total.
+                  [
+                    state.liabilities.borrowedMinor !== 0 && `People ${formatHeadlineINR(state.liabilities.borrowedMinor)}`,
+                    state.liabilities.creditCardsMinor !== 0 && `Cards ${formatHeadlineINR(state.liabilities.creditCardsMinor)}`,
+                    state.liabilities.loansMinor !== 0 && `Loans ${formatHeadlineINR(state.liabilities.loansMinor)}`,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")
+            }
+          />
           <Metric
             href={activityHref({ group: "spending", ...monthFilter(model.ym) })}
             label="Spent this month"
             value={formatHeadlineINR(current.expensesMinor)}
             title={formatExactINR(current.expensesMinor)}
-            sub={spendBps === null ? undefined : `${spendBps > 0 ? "▲" : spendBps < 0 ? "▼" : ""} ${formatBps(Math.abs(spendBps), 1)} vs last month`}
+            sub={
+              <>
+                {spendBps !== null && <span className="block">{`${spendBps > 0 ? "▲" : spendBps < 0 ? "▼" : ""} ${formatBps(Math.abs(spendBps), 1)} vs last month`}</span>}
+                {cardSpent !== 0 && <span className="block text-slate-500">{formatHeadlineINR(cardSpent)} on credit cards</span>}
+              </>
+            }
             subTone={spendBps === null ? undefined : spendBps > 0 ? "negative" : spendBps < 0 ? "positive" : "neutral"}
           />
           <Metric

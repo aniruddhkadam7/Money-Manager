@@ -2,20 +2,26 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { formatExactINR } from "@/lib/charts/format";
 import { activityHref } from "@/lib/charts/links";
-import { currentMonthKey, formatDisplayDate, monthStart, shiftMonth, todayISO } from "@/lib/domain/dates";
+import { addDays, currentMonthKey, formatDisplayDate, monthEnd, monthStart, shiftMonth, todayISO } from "@/lib/domain/dates";
+import { HowYouPaid } from "./how-you-paid";
 import { MONEY_BACK_CATEGORY_IDS } from "@/lib/finance/state";
 import { cn } from "@/lib/utils";
 import { CategoryIcon } from "../category-icon";
 import { useFinance } from "../finance-provider";
 
-type Span = "month" | "3m" | "year" | "all";
-const SPANS: { id: Span; label: string }[] = [
-  { id: "month", label: "This month" },
-  { id: "3m", label: "Last 3 months" },
-  { id: "year", label: "This year" },
-  { id: "all", label: "All time" },
+type Span = "1d" | "7d" | "30d" | "month" | "lastMonth" | "3m" | "year" | "all";
+const SPANS: { id: Span; label: string; hint: string }[] = [
+  { id: "1d", label: "Today", hint: "Just today" },
+  { id: "7d", label: "7 days", hint: "The last 7 days, including today" },
+  { id: "30d", label: "1 month", hint: "The last 30 days, including today" },
+  { id: "month", label: "This month", hint: "From the 1st of this month" },
+  { id: "lastMonth", label: "Last month", hint: "The whole of last calendar month" },
+  { id: "3m", label: "3 months", hint: "This month and the two before it" },
+  { id: "year", label: "This year", hint: "From 1 January" },
+  { id: "all", label: "All time", hint: "Everything you've recorded" },
 ];
 
 const rupees = (minor: number) => {
@@ -34,7 +40,11 @@ export function SoFarSection() {
   const { from, to } = useMemo(() => {
     const today = todayISO();
     const ym = currentMonthKey();
+    if (span === "1d") return { from: today, to: today };
+    if (span === "7d") return { from: addDays(today, -6), to: today };
+    if (span === "30d") return { from: addDays(today, -29), to: today };
     if (span === "month") return { from: monthStart(ym), to: today };
+    if (span === "lastMonth") return { from: monthStart(shiftMonth(ym, -1)), to: monthEnd(shiftMonth(ym, -1)) };
     if (span === "3m") return { from: monthStart(shiftMonth(ym, -2)), to: today };
     if (span === "year") return { from: `${today.slice(0, 4)}-01-01`, to: today };
     const first = book.events.reduce((m, e) => (e.date < m ? e.date : m), today);
@@ -69,7 +79,7 @@ export function SoFarSection() {
   const gotBack = r.cashFlow.lending?.inflowMinor ?? 0;
 
   return (
-    <section className="rounded-3xl border border-slate-200/70 bg-white p-5 shadow-sm sm:p-6" data-testid="so-far">
+    <section className="rounded-3xl border border-slate-300/60 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.07),0_12px_32px_-16px_rgba(15,23,42,0.22)] sm:p-6" data-testid="so-far">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold">Earned & spent</h2>
@@ -85,12 +95,13 @@ export function SoFarSection() {
             )}
           </p>
         </div>
-        <div role="group" aria-label="Period" className="inline-flex rounded-lg bg-muted p-0.5">
+        <div role="group" aria-label="Period" className="inline-flex flex-wrap rounded-lg bg-muted p-0.5">
           {SPANS.map((s) => (
             <button
               key={s.id}
               type="button"
               aria-pressed={span === s.id}
+              title={s.hint}
               onClick={() => setSpan(s.id)}
               className={cn("rounded-md px-3 py-1 text-xs font-medium", span === s.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
             >
@@ -116,9 +127,11 @@ export function SoFarSection() {
         All money that came into your bank & cash: {formatExactINR(cameIn)} · went out: {formatExactINR(wentOut)}. Earned and spent leave out transfers between your own accounts, loans and repayments. Refunds, cashback and reimbursements are money back, so they lower spending instead of counting as earned.
       </p>
 
-      <div className="mt-5 grid gap-6 lg:grid-cols-2">
-        <Breakdown title="Where you spent" rows={spent} getCategory={getCategory} hrefFor={(id) => activityHref({ group: "spending", category: id, from, to })} slotOf={(id) => slots.spent.get(id)} />
-        <Breakdown title="Where you earned from" rows={earned} getCategory={getCategory} hrefFor={(id) => activityHref({ type: "income", category: id, from, to })} slotOf={(id) => slots.earned.get(id)} />
+      <HowYouPaid from={from} to={to} />
+
+      <div className="mt-6 grid gap-5 lg:grid-cols-2">
+        <Breakdown tone="out" title="Where you spent" rows={spent} getCategory={getCategory} hrefFor={(id) => activityHref({ group: "spending", category: id, from, to })} slotOf={(id) => slots.spent.get(id)} />
+        <Breakdown tone="in" title="Where you earned from" rows={earned} getCategory={getCategory} hrefFor={(id) => activityHref({ type: "income", category: id, from, to })} slotOf={(id) => slots.earned.get(id)} />
       </div>
     </section>
   );
@@ -169,13 +182,20 @@ const pctText = (part: number, total: number) => {
 };
 
 /** Donut of where the money went (or came from), its legend, and the full list with each share. */
+const TONES = {
+  out: { kicker: "Money out", Icon: ArrowUpRight, head: "bg-rose-50/70 border-rose-100", badge: "bg-rose-100 text-rose-700", amount: "text-rose-700" },
+  in: { kicker: "Money in", Icon: ArrowDownLeft, head: "bg-emerald-50/70 border-emerald-100", badge: "bg-emerald-100 text-emerald-700", amount: "text-emerald-700" },
+} as const;
+
 function Breakdown({
+  tone,
   title,
   rows,
   getCategory,
   hrefFor,
   slotOf,
 }: {
+  tone: keyof typeof TONES;
   title: string;
   rows: Row[];
   getCategory: ReturnType<typeof useFinance>["getCategory"];
@@ -202,65 +222,78 @@ function Breakdown({
       ? { label: "Everything else", amount: restAmount }
       : null;
 
-  return (
-    <div>
-      <h3 className="mb-3 text-sm font-semibold">{title}</h3>
-      {rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Nothing in this period.</p>
-      ) : (
-        <>
-          <div className="flex flex-col items-center gap-4 sm:flex-row">
-            <Donut slices={slices} total={total} active={activeSlice} onHover={setHover} />
-            <ul className="grid w-full flex-1 grid-cols-2 gap-x-4 gap-y-1 text-xs" aria-label={`${title}: legend`}>
-              {slices.map((s) => (
-                <li
-                  key={s.id}
-                  className={cn("flex items-center gap-1.5 rounded px-1 py-0.5", activeSlice === s.id && "bg-muted")}
-                  onMouseEnter={() => setHover(s.id)}
-                  onMouseLeave={() => setHover(null)}
-                >
-                  <span className="size-2.5 shrink-0 rounded-sm" style={{ background: s.color }} />
-                  <span className="truncate">{s.label}</span>
-                  <span className="ml-auto tabular-nums text-muted-foreground">{pctText(s.amount, total)}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <p className="mt-2 h-4 text-xs text-muted-foreground" aria-live="polite">
-            {caption ? (
-              <>
-                <span className="font-medium text-foreground">{caption.label}</span> · {rupees(caption.amount)} · {pctText(caption.amount, total)}
-              </>
-            ) : (
-              "Point at a slice or a row for its share"
-            )}
-          </p>
+  const t = TONES[tone];
 
-          <ul className="mt-3 divide-y overflow-hidden rounded-xl border">
-            {rows.map((c) => {
-              const cat = getCategory(c.categoryId);
-              return (
-                <li key={c.categoryId}>
-                  <Link
-                    href={hrefFor(c.categoryId)}
-                    onMouseEnter={() => setHover(c.categoryId)}
+  return (
+    <div className="overflow-hidden rounded-2xl border bg-card shadow-sm">
+      <div className={cn("flex items-center gap-3 border-b px-4 py-3", t.head)}>
+        <span className={cn("grid size-8 shrink-0 place-items-center rounded-lg", t.badge)}>
+          <t.Icon className="size-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{t.kicker}</div>
+          <h3 className="text-sm font-semibold">{title}</h3>
+        </div>
+        <span className={cn("shrink-0 text-lg font-semibold tabular-nums", t.amount)}>{rupees(total)}</span>
+      </div>
+      <div className="p-4">
+        {rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nothing in this period.</p>
+        ) : (
+          <>
+            <div className="flex flex-col items-center gap-4 sm:flex-row">
+              <Donut slices={slices} total={total} active={activeSlice} onHover={setHover} />
+              <ul className="grid w-full flex-1 grid-cols-2 gap-x-4 gap-y-1 text-xs" aria-label={`${title}: legend`}>
+                {slices.map((s) => (
+                  <li
+                    key={s.id}
+                    className={cn("flex items-center gap-1.5 rounded px-1 py-0.5", activeSlice === s.id && "bg-muted")}
+                    onMouseEnter={() => setHover(s.id)}
                     onMouseLeave={() => setHover(null)}
-                    className={cn("flex items-center gap-3 px-3 py-2 text-sm hover:bg-muted/60", hover === c.categoryId && "bg-muted/60")}
                   >
-                    <span className="flex w-14 shrink-0 items-center gap-1.5 rounded-md bg-muted px-1.5 py-0.5 text-xs font-semibold tabular-nums">
-                      <span className="size-2 shrink-0 rounded-full" style={{ background: colorOf(c.categoryId) }} />
-                      {pctText(c.amountMinor, total)}
-                    </span>
-                    <CategoryIcon category={cat} />
-                    <span className="min-w-0 flex-1 truncate">{cat.name}</span>
-                    <span className="shrink-0 font-medium tabular-nums">{rupees(c.amountMinor)}</span>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </>
-      )}
+                    <span className="size-2.5 shrink-0 rounded-sm" style={{ background: s.color }} />
+                    <span className="truncate">{s.label}</span>
+                    <span className="ml-auto tabular-nums text-muted-foreground">{pctText(s.amount, total)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <p className="mt-2 h-4 text-xs text-muted-foreground" aria-live="polite">
+              {caption ? (
+                <>
+                  <span className="font-medium text-foreground">{caption.label}</span> · {rupees(caption.amount)} · {pctText(caption.amount, total)}
+                </>
+              ) : (
+                "Point at a slice or a row for its share"
+              )}
+            </p>
+
+            <ul className="mt-3 divide-y overflow-hidden rounded-xl border">
+              {rows.map((c) => {
+                const cat = getCategory(c.categoryId);
+                return (
+                  <li key={c.categoryId}>
+                    <Link
+                      href={hrefFor(c.categoryId)}
+                      onMouseEnter={() => setHover(c.categoryId)}
+                      onMouseLeave={() => setHover(null)}
+                      className={cn("flex items-center gap-3 px-3 py-2 text-sm hover:bg-muted/60", hover === c.categoryId && "bg-muted/60")}
+                    >
+                      <span className="flex w-14 shrink-0 items-center gap-1.5 rounded-md bg-muted px-1.5 py-0.5 text-xs font-semibold tabular-nums">
+                        <span className="size-2 shrink-0 rounded-full" style={{ background: colorOf(c.categoryId) }} />
+                        {pctText(c.amountMinor, total)}
+                      </span>
+                      <CategoryIcon category={cat} />
+                      <span className="min-w-0 flex-1 truncate">{cat.name}</span>
+                      <span className="shrink-0 font-medium tabular-nums">{rupees(c.amountMinor)}</span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
+      </div>
     </div>
   );
 }

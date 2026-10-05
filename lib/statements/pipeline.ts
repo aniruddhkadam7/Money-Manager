@@ -1,7 +1,9 @@
 import type { Category } from "@/lib/domain/types";
 import { buildLedger } from "@/lib/finance/engine";
-import type { Book } from "@/lib/finance/types";
+import { STATEMENT_ACCOUNT_TYPES, type Book } from "@/lib/finance/types";
 import { classifyWithAi, type AiOptions, type AiOutcome } from "./ai";
+import { readCardBill } from "./card-bill";
+import { settleCardPayments } from "./card-payments";
 import { detectDuplicatesWithinStatement } from "./dedupe";
 import { fileHash } from "./fingerprint";
 import { matchExistingEntries, matchPreviousImports } from "./match";
@@ -175,6 +177,40 @@ export function combineOpinions(rule: Classification, ai: Classification, review
   };
 }
 
+const CARD_CREDIT = /\b(payment received|payment recd|thank you|autopay|auto debit|bill ?desk|bbps|neft|imps|upi payment|refund|reversal|reversed|cashback|cash back|credit adjw*|chargeback|cr)\b/i;
+const UNSURE_DIRECTION = /^Direction (could not be determined|inferred from the wording)/;
+
+/** Settles the direction of card-statement lines the table itself didn't mark. */
+export function readAsCardStatement(parsed: { rows: { rawDescription: string; debitMinor: number; creditMinor: number; confidence: number; warnings: string[] }[] }): void {
+  for (const r of parsed.rows) {
+    const unsure = r.warnings.findIndex((w) => UNSURE_DIRECTION.test(w));
+    if (unsure < 0) continue;
+    const amount = r.debitMinor || r.creditMinor;
+    const credit = CARD_CREDIT.test(r.rawDescription);
+    r.debitMinor = credit ? 0 : amount;
+    r.creditMinor = credit ? amount : 0;
+    r.warnings.splice(unsure, 1);
+    // Only the direction was in doubt; anything else wrong with the line keeps its own warning and score.
+    if (r.warnings.length === 0) r.confidence = Math.max(r.confidence, 0.9);
+  }
+}
+
+// Phrases only a card statement prints (a bank statement may mention "credit card" in a bill-payment line).
+const CARD_WORDS = /\b(credit card statement|card statement|minimum amount due|min\.? amt\.? due|total amount due|payment due date|available credit limit|total credit limit|credit limit)\b/i;
+/** A masked 16-digit card number as a file name: "94XXXXXXXXXX76.pdf", "4375-XXXX-XXXX-1234.pdf". */
+const CARD_FILENAME = /^\d{2,6}[-\s]?[xX*]{4,}[-\s]?[xX*\d-]*\d{2,4}\.\w+$/;
+
+/** A running balance on most lines, and nothing that says "card statement": a bank account statement. */
+export function looksLikeBankStatement(rows: { balanceMinor?: number }[], cardStatement: boolean): boolean {
+  if (cardStatement || rows.length === 0) return false;
+  return rows.filter((r) => r.balanceMinor !== undefined).length / rows.length >= 0.6;
+}
+
+/** Does this read like a credit card statement rather than a bank statement? */
+export function looksLikeCardStatement(filename: string, text = ""): boolean {
+  return CARD_FILENAME.test(filename.trim()) || CARD_WORDS.test(text);
+}
+
 /** Status a classified row earns. Anything unreadable, unsupported or missing details goes to review regardless of confidence. */
 export function statusForClassification(row: StatementRow, c: Classification, book: Book, settings: ImportSettings): StatementRow["status"] {
   if (row.extractionConfidence < 0.6) return "review";
@@ -197,8 +233,8 @@ const pageProgress = (done: number, total: number, from: number, to: number) => 
 function sanityCheckAccount(book: Book, accountId: string) {
   const a = book.accounts.find((x) => x.id === accountId);
   if (!a) throw new StatementError("unsupported_format", "Choose which account this statement belongs to.");
-  if (a.type !== "bank" && a.type !== "cash") {
-    throw new StatementError("unsupported_format", `“${a.name}” is a ${a.type.replace("_", " ")}. Bank statements can be imported into bank or cash accounts.`);
+  if (!STATEMENT_ACCOUNT_TYPES.includes(a.type)) {
+    throw new StatementError("unsupported_format", `“${a.name}” is a ${a.type.replace("_", " ")}. Statements can be imported into bank, cash or credit card accounts.`);
   }
 }
 
@@ -272,6 +308,9 @@ export async function processStatement(input: ProcessInput, env: PipelineEnv): P
   // 2. Read it, whatever it is.
   report("reading", 0.02);
   const { pages, usedOcr } = await readPages(data, filename, input.password, env, report, aborted);
+  const pageText = pages.flat().map((i) => i.str).join(" ");
+  const cardStatement = looksLikeCardStatement(filename, pageText);
+  const cardBill = cardStatement || input.book.accounts.find((a) => a.id === input.accountId)?.type === "credit_card" ? readCardBill(pageText) : undefined;
 
   // 3. Find the transactions.
   report("parsing", 0.6);
@@ -284,6 +323,27 @@ export async function processStatement(input: ProcessInput, env: PipelineEnv): P
         : "No transactions were found in this statement.",
     );
   }
+
+  // A bank statement prints the account's balance after every line; a card statement doesn't. Recording a
+  // bank statement in a card account turns your salary into "paid the card" and your spending into card
+  // purchases, so it is refused with the reason.
+  const target = input.book.accounts.find((a) => a.id === input.accountId);
+  if (target?.type === "credit_card" && looksLikeBankStatement(parsed.rows, cardStatement)) {
+    throw new StatementError(
+      "unsupported_format",
+      `This is a bank account statement (it shows the balance after every line), but you chose “${target.name}”. Choose the bank account it belongs to. Card statements go into the card.`,
+    );
+  }
+  if ((target?.type === "bank" || target?.type === "cash") && cardStatement && !looksLikeBankStatement(parsed.rows, false)) {
+    throw new StatementError(
+      "unsupported_format",
+      `This is a credit card statement, but you chose “${target.name}”. Choose your credit card account, so card purchases don't show as money leaving your bank.`,
+    );
+  }
+
+  // Card statements print charges as plain amounts and mark only payments and refunds ("Cr", "Payment
+  // received"…). For a credit card account, an unmarked amount is a purchase, not an unreadable line.
+  if (input.book.accounts.find((a) => a.id === input.accountId)?.type === "credit_card") readAsCardStatement(parsed);
 
   report("checking", 0.68);
   const reconciliation = reconcile(parsed);
@@ -352,6 +412,17 @@ export async function processStatement(input: ProcessInput, env: PipelineEnv): P
     r.status = statusForClassification(r, r.classification!, book, settings);
   }
 
+  // 7. On a card statement, money in is (nearly always) your bill payment: one entry with the bank side.
+  if (book.accounts.find((a) => a.id === accountId)?.type === "credit_card") {
+    settleCardPayments(rows, accountId, book);
+    for (const r of rows) {
+      // Bill payments just classified get their status; the ones linked to an existing payment keep "matched".
+      if (r.classification?.eventType === "TRANSFER" && r.direction === "credit" && (r.status as string) !== "matched_existing") {
+        r.status = statusForClassification(r, r.classification, book, settings);
+      }
+    }
+  }
+
   report("saving", 0.96);
   const period = rows.map((r) => r.transactionDate).sort();
   const record: ImportRecord = refreshRecord(
@@ -360,6 +431,8 @@ export async function processStatement(input: ProcessInput, env: PipelineEnv): P
       filename,
       fileHash: hash,
       accountId,
+      cardStatement,
+      cardBill,
       bankHint: parsed.bankHint,
       accountMask: parsed.accountMask,
       periodStart: parsed.periodStart ?? period[0],
@@ -577,6 +650,11 @@ export function markFailures(store: ImportStoreData, importId: string, failures:
   return commitRows(store, importId, rows);
 }
 
+/** Removes an import and its lines from the import history, imported or not (see undo in the provider). */
+export function forgetImport(store: ImportStoreData, importId: string): ImportStoreData {
+  return { ...store, imports: store.imports.filter((i) => i.id !== importId), rows: store.rows.filter((r) => r.importId !== importId) };
+}
+
 /** Throws away an import that hasn't been committed (its lines, and so the file can be uploaded again). */
 export function discardImport(store: ImportStoreData, importId: string): ImportStoreData {
   const target = store.imports.find((i) => i.id === importId);
@@ -585,3 +663,81 @@ export function discardImport(store: ImportStoreData, importId: string): ImportS
 }
 
 export type { Category };
+
+/**
+ * Lines still waiting for a decision are re-read with today's rules (new keywords, names you've since said
+ * "always" about). A line only changes when the new reading is surer than the old one; anything you
+ * decided yourself is never touched.
+ */
+export interface RecheckResult {
+  store: ImportStoreData;
+  /** Lines given a better reading. */
+  changed: number;
+  /** Of those, how many no longer need you. */
+  settled: number;
+  /** Better reading, but still yours to check because the line itself was hard to read (amount / date). */
+  hardToRead: number;
+}
+
+export function reclassifyWaiting(store: ImportStoreData, book: Book, onlyImportId?: string): RecheckResult {
+  const open = new Set(
+    store.imports.filter((i) => i.status !== "IMPORTED" && i.status !== "FAILED" && (!onlyImportId || i.id === onlyImportId)).map((i) => i.id),
+  );
+  const none = { store, changed: 0, settled: 0, hardToRead: 0 };
+  if (open.size === 0) return none;
+  const ctx = ruleContext(book, store);
+  const touched = new Set<string>();
+  let changed = 0;
+  let settled = 0;
+  let hardToRead = 0;
+  const cardImports = new Set(
+    store.imports.filter((i) => book.accounts.find((a) => a.id === i.accountId)?.type === "credit_card").map((i) => i.id),
+  );
+  const rows = store.rows.map((original) => {
+    if (!open.has(original.importId) || original.status !== "review" || original.decision?.by === "user") return original;
+    // Card-statement lines read before card statements were understood: settle their direction now.
+    let r = original;
+    if (cardImports.has(r.importId) && r.rawData.warnings.some((w) => UNSURE_DIRECTION.test(w))) {
+      const fixed = { rawDescription: r.rawDescription, debitMinor: r.debitMinor, creditMinor: r.creditMinor, confidence: r.extractionConfidence, warnings: [...r.rawData.warnings] };
+      readAsCardStatement({ rows: [fixed] });
+      const direction = fixed.creditMinor > 0 ? ("credit" as const) : ("debit" as const);
+      r = { ...r, direction, debitMinor: fixed.debitMinor, creditMinor: fixed.creditMinor, extractionConfidence: fixed.confidence, rawData: { ...r.rawData, warnings: fixed.warnings } };
+    }
+    const fresh = classifyByRules(r, ctx);
+    const better = fresh && !fresh.tentative && fresh.confidence > (r.classification?.confidence ?? 0) ? fresh : undefined;
+    const repaired = r !== original;
+    if (!better && !repaired) return original;
+    const c = better ?? r.classification ?? fallbackClassification(r);
+    const status = statusForClassification(r, c, book, store.settings);
+    changed++;
+    if (status !== "review") settled++;
+    else if (r.extractionConfidence < 0.6) hardToRead++;
+    touched.add(r.importId);
+    // Even when it still needs you, the better reading becomes the one-click suggestion.
+    return { ...r, classification: c, status };
+  });
+  // Card statements: money in is the bill payment, linked to (or made from) what the bank side recorded.
+  for (const importId of cardImports) {
+    if (!open.has(importId)) continue;
+    const cardId = store.imports.find((i) => i.id === importId)!.accountId;
+    const mine = rows.filter((r) => r.importId === importId && r.direction === "credit" && (r.status === "review" || r.status === "auto" || r.status === "auto_flagged") && r.decision?.by !== "user");
+    if (mine.length === 0) continue;
+    const copies = mine.map((r) => ({ ...r }));
+    if (settleCardPayments(copies, cardId, book) === 0) continue;
+    for (const c of copies) {
+      if (c.status !== "matched_existing") c.status = statusForClassification(c, c.classification!, book, store.settings);
+      const at = rows.findIndex((r) => r.id === c.id);
+      if (at >= 0 && JSON.stringify(rows[at]) !== JSON.stringify(c)) {
+        rows[at] = c;
+        changed++;
+        if (c.status !== "review") settled++;
+        touched.add(importId);
+      }
+    }
+  }
+
+  if (changed === 0) return none;
+  let next: ImportStoreData = store;
+  for (const id of touched) next = commitRows(next, id, rows);
+  return { store: next, changed, settled, hardToRead };
+}

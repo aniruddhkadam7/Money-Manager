@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatDisplayDate, formatWeekdayDate } from "@/lib/domain/dates";
 import { formatRupees } from "@/lib/finance/describe";
-import { needsDecision } from "@/lib/statements/pipeline";
+import { looksLikeCardStatement, needsDecision } from "@/lib/statements/pipeline";
 import type { StatementRow } from "@/lib/statements/types";
 import { cn } from "@/lib/utils";
 import { useEventDialog } from "../events/event-dialog";
@@ -183,6 +183,7 @@ export function ImportDetail({ importId, onBack }: { importId: string; onBack: (
   const [commitError, setCommitError] = useState<CommitOutcomeResult | null>(null);
   const [justImported, setJustImported] = useState<{ created: number; matched: number } | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [undoing, setUndoing] = useState(false);
   const [partyFilter, setPartyFilter] = useState<string | null>(null);
   const [tile, setTile] = useState<{ key: TileKey; label: string } | null>(null);
   const [rowSort, setRowSort] = useState<RowSort>("statement");
@@ -218,6 +219,25 @@ export function ImportDetail({ importId, onBack }: { importId: string; onBack: (
   const willImport = sortRows(rows.filter((r) => r.status === "auto"), rowSort);
   const alreadyThere = sortRows(rows.filter((r) => r.status === "matched_existing" || r.status === "already_imported"), rowSort);
   const skipped = sortRows(rows.filter((r) => r.status === "skipped"), rowSort);
+  // A card statement sitting in a bank or cash account (older imports are recognised by their file name).
+  // Entries this import put in your records (imported lines): "Undo import" takes them back out.
+  const recordedCount = rows.filter((r) => r.status === "imported").length;
+  const hasRecorded = imported || recordedCount > 0;
+  // A bank statement (balance on every line) sitting in a card account: its salary became "paid the card".
+  const bankInCard = account?.type === "credit_card" && !record.cardStatement && rows.length > 0 && rows.filter((r) => r.balanceAfterMinor !== undefined).length / rows.length >= 0.6;
+  const undoOrDiscard = async () => {
+    if (!hasRecorded) {
+      statements.discard(importId);
+      onBack();
+      return;
+    }
+    setUndoing(true);
+    const r = await statements.undoImport(importId);
+    setUndoing(false);
+    toast.show({ message: r.ok ? `Import undone: ${r.removed} ${r.removed === 1 ? "entry" : "entries"} removed. You can import the file again.` : r.message });
+    if (r.ok) onBack();
+  };
+  const wrongAccount = !!account && account.type !== "credit_card" && (record.cardStatement ?? looksLikeCardStatement(record.filename));
   const done = sortRows(rows.filter((r) => r.status === "imported"), rowSort);
   const toCreate = rows.filter((r) => r.status === "auto" || r.status === "auto_flagged").length;
   const toLink = rows.filter((r) => r.status === "matched_existing" && !r.decision?.note && !imported).length;
@@ -274,25 +294,23 @@ export function ImportDetail({ importId, onBack }: { importId: string; onBack: (
               )}
             </p>
           </div>
-          {!imported && (
-            <div className="flex items-center gap-2">
-              {confirmDiscard ? (
-                <>
-                  <span className="text-sm">Discard this import?</span>
-                  <Button size="sm" variant="destructive" onClick={() => { statements.discard(importId); onBack(); }}>
-                    Discard
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => setConfirmDiscard(false)}>
-                    Keep
-                  </Button>
-                </>
-              ) : (
-                <Button size="sm" variant="outline" onClick={() => setConfirmDiscard(true)} data-testid="discard">
-                  <Trash2 /> Discard
+          <div className="flex flex-wrap items-center gap-2">
+            {confirmDiscard ? (
+              <>
+                <span className="text-sm">{hasRecorded ? `Remove this import and the ${recordedCount} ${recordedCount === 1 ? "entry" : "entries"} it added?` : "Discard this import?"}</span>
+                <Button size="sm" variant="destructive" disabled={undoing} onClick={undoOrDiscard} data-testid="confirm-undo">
+                  {undoing ? <Loader2 className="animate-spin" /> : null} {hasRecorded ? "Undo import" : "Discard"}
                 </Button>
-              )}
-            </div>
-          )}
+                <Button size="sm" variant="outline" onClick={() => setConfirmDiscard(false)}>
+                  Keep
+                </Button>
+              </>
+            ) : (
+              <Button size="sm" variant="outline" onClick={() => setConfirmDiscard(true)} data-testid="discard">
+                <Trash2 /> {hasRecorded ? "Undo import" : "Discard"}
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -312,6 +330,44 @@ export function ImportDetail({ importId, onBack }: { importId: string; onBack: (
         <Tile label="Need your decision" value={record.counts.review} tone="warn" testId="count-review" {...pick("review", "Need your decision")} />
         <Tile label="Skipped" value={record.counts.skipped} testId="count-skipped" {...pick("skipped", "Skipped")} />
       </div>
+
+      {bankInCard && (
+        <Card className="border-rose-300 bg-rose-50 p-4 text-sm text-rose-950" data-testid="bank-in-card">
+          <p className="flex items-center gap-2 font-semibold">
+            <TriangleAlert className="size-4 shrink-0" /> This is a bank account statement, but it was imported into {account?.name}
+          </p>
+          <p className="mt-1 text-rose-900/80">
+            It shows your balance after every line, which only bank statements do. In a card account, your salary and other money in were recorded as
+            &ldquo;paid the credit card&rdquo; and your spending as card purchases. Undo this import, then import the file again and choose your bank account.
+          </p>
+          <Button size="sm" variant="destructive" className="mt-3" disabled={undoing} onClick={() => { if (window.confirm(`Remove this import and the ${recordedCount} entries it added? You can then import the file again into your bank account.`)) void undoOrDiscard(); }} data-testid="undo-bank-in-card">
+            Undo this import
+          </Button>
+        </Card>
+      )}
+
+      {wrongAccount && (
+        <Card className="border-rose-300 bg-rose-50 p-4 text-sm text-rose-950" data-testid="card-in-bank">
+          <p className="flex items-center gap-2 font-semibold">
+            <TriangleAlert className="size-4 shrink-0" /> This is a credit card statement, but it was imported into {account?.name ?? "a bank account"}
+          </p>
+          <p className="mt-1 text-rose-900/80">
+            Its card purchases were recorded as money leaving your bank. Undo this import, then import the file again and choose your credit card.
+          </p>
+          <Button
+            size="sm"
+            variant="destructive"
+            className="mt-3"
+            disabled={undoing}
+            onClick={() => {
+              if (window.confirm(`Remove this import and the ${recordedCount} entries it added? You can then import the file again into your credit card.`)) void undoOrDiscard();
+            }}
+            data-testid="undo-card-in-bank"
+          >
+            Undo this import
+          </Button>
+        </Card>
+      )}
 
       {recon && (
         <Card className={cn("p-4", !recon.ok && "border-amber-300")} data-testid="reconciliation" data-ok={recon.ok}>
@@ -424,7 +480,25 @@ export function ImportDetail({ importId, onBack }: { importId: string; onBack: (
         </div>
       )}
 
-      <div className="flex items-center justify-end gap-2" data-testid="row-sort">
+      <div className="flex flex-wrap items-center justify-end gap-2" data-testid="row-sort">
+        {!imported && review.length > 0 && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="mr-auto"
+            onClick={() => {
+              const r = statements.recheck(importId);
+              const parts = [
+                r.settled ? `${r.settled} sorted automatically` : "",
+                r.changed - r.settled ? `${r.changed - r.settled} got a better suggestion${r.hardToRead ? ` (${r.hardToRead} hard to read from the file, so please check the amount and date)` : ""}` : "",
+              ].filter(Boolean);
+              toast.show({ message: r.changed ? `Re-checked: ${parts.join(", ")}.` : "Re-checked: nothing more can be read from these lines. They need your answer." });
+            }}
+            data-testid="recheck"
+          >
+            <Sparkles /> Re-check lines
+          </Button>
+        )}
         <span className="text-xs text-muted-foreground">Sort lines</span>
         <Select value={rowSort} onValueChange={(v) => setRowSort(v as RowSort)}>
           <SelectTrigger className="h-8 w-44 bg-card text-xs" aria-label="Sort lines">

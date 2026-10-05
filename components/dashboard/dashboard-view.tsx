@@ -5,17 +5,20 @@ import Link from "next/link";
 import { Info, Plus, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { buildDashboardModel } from "@/lib/finance/dashboard-model";
+import { formatRupees } from "@/lib/finance/describe";
 import { useEventDialog } from "../events/event-dialog";
 import { EventRow } from "../events/event-row";
 import { useFinance } from "../finance-provider";
 import { ChartCard } from "../charts/primitives";
 import { BalanceSheetSection } from "./balance-sheet-section";
+import { CardsSection } from "./cards-section";
 import { IncomeExpenseSection, SpendingSection } from "./cash-flow-sections";
 import { CategorySection } from "./category-section";
 import { HealthSection } from "./health-section";
 import { InvestmentSection } from "./investment-section";
 import { MoneyFlowSection } from "./money-flow-section";
 import { NetWorthSection } from "./net-worth-section";
+import { SamePeopleBanner } from "../money/same-people-banner";
 import { SoFarSection } from "./so-far-section";
 import { SummaryHero } from "./summary-hero";
 import { hasPartyData, TopParties } from "./top-parties";
@@ -40,13 +43,15 @@ export function DashboardView() {
   const negativeAssets = state.accounts.filter(
     (a) => a.account.type !== "credit_card" && a.account.type !== "loan" && a.balanceMinor < 0,
   );
+  // A card or loan "owed" below zero: bill payments recorded without the spending they paid for.
+  const overpaidDebts = state.accounts.filter((a) => (a.account.type === "credit_card" || a.account.type === "loan") && a.balanceMinor < 0);
   const recent = [...book.events]
     .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
     .slice(0, 6);
 
   if (!hasAnything) {
     return (
-      <section className="rounded-3xl border border-slate-200/70 bg-white px-6 py-16 text-center shadow-sm sm:py-24">
+      <section className="rounded-3xl border border-slate-300/60 bg-white px-6 py-16 text-center shadow-[0_1px_3px_rgba(15,23,42,0.07),0_12px_32px_-16px_rgba(15,23,42,0.22)] sm:py-24">
         <p className="text-sm font-medium text-slate-500">Welcome</p>
         <h1 className="mx-auto mt-2 max-w-md text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
           Tell the app what happens with your money.
@@ -72,13 +77,15 @@ export function DashboardView() {
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
       {/* 1. Where do I stand? */}
       <div className="col-span-full">
-        <SummaryHero model={model} state={state} />
+        <SummaryHero model={model} state={state} book={book} />
       </div>
 
       {/* So far: earned, spent, and where */}
       <div className="col-span-full">
         <SoFarSection />
       </div>
+
+      <SamePeopleBanner className="col-span-full" />
 
       {/* Who pays me, who owes me, whom do I owe */}
       {hasPartyData(state, book.events.some((e) => e.type === "income")) && <TopParties state={state} />}
@@ -108,6 +115,17 @@ export function DashboardView() {
         </Link>
       )}
 
+      {overpaidDebts.length > 0 && (
+        <Link href="/money#cards-loans" className="col-span-full flex items-center gap-2 rounded-2xl bg-sky-50 p-3 text-sm text-sky-900 hover:bg-sky-100">
+          <Info className="size-4 shrink-0" />
+          <span>
+            <strong className="font-semibold">{overpaidDebts.map((a) => `${a.account.name} (${formatRupees(-a.balanceMinor)} in credit)`).join(", ")}</strong>: you&apos;ve recorded paying
+            its bills, but not the purchases made on it, so it looks overpaid and lowers your liabilities. Import that card&apos;s statement, or set what you owed on it at the
+            start, on the Money page.
+          </span>
+        </Link>
+      )}
+
       {/* 2. Is my wealth growing? */}
       <div className={`${cell} lg:col-span-2`}>
         <NetWorthSection model={model} />
@@ -133,6 +151,7 @@ export function DashboardView() {
       <div className={cell}>
         <BalanceSheetSection state={state} />
       </div>
+      <CardsSection book={book} state={state} ym={model.ym} className={cell} />
       <div className={cell}>
         <HealthSection health={model.health} />
       </div>

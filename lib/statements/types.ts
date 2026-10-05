@@ -1,3 +1,4 @@
+import type { CardBill } from "./card-bill";
 /**
  * Bank-statement import: shared types.
  *
@@ -293,6 +294,10 @@ export interface ImportRecord {
   aiNote?: string;
   error?: string;
   importedAt?: string;
+  /** The file reads like a credit card statement ("Minimum amount due", a masked card number...). */
+  cardStatement?: boolean;
+  /** For a card statement: the bill it asks you to pay (total and minimum due, due date), when printed. */
+  cardBill?: CardBill;
 }
 
 /** What the person taught us: "this counterparty, in this direction, means that". */

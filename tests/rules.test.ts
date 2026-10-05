@@ -179,3 +179,46 @@ describe("shop keywords pick the category", () => {
     expect(c?.category).toBe(category);
   });
 });
+
+describe("trade labels the bank prints after the merchant's name", () => {
+  it.each([
+    ["UPI/KAI AS MANDAL Restaurants/YESB/123456789012/Paid via", "Food"],
+    ["UPI/MOR A TEA CENTER Restaurants/YESB/123456789013/UPI", "Food"],
+    ["UPI/SHREE HOTEL/YESB/123456789014/UPI", "Food"],
+    ["UPI/JAY EEP ENTERPRIS S Stationery/YESB/123456789015/Paid", "Shopping"],
+    ["UPI/OM SAI Grocery Stores, Supermarkets/YESB/123456789016/UPI", "Grocery"],
+    ["UPI/NEW LIFE Drug Stores and Pharmacies/YESB/123456789017/UPI", "Health"],
+    ["UPI/RAJ AUTO Service Stations/YESB/123456789018/UPI", "Petrol"],
+    ["UPI/GANESH BAKERIES/YESB/123456789019/UPI", "Food"],
+  ])("%s -> %s", (desc, category) => {
+    const c = classifyByRules(row(desc, "debit", 60), ctx());
+    expect(c?.eventType).toBe("EXPENSE");
+    expect(c?.category).toBe(category);
+  });
+});
+
+describe("credit card bill payments", () => {
+  it.each([
+    "UPI/Dreamplug Serv/UTIB/663322393495/payment on C",
+    "UPI/CRED/YESB/123456789012/payment on CRED",
+    "NEFT/HDFC CREDIT CARD/BILL PAYMENT",
+    "BILLDESK/SBI CARD/AUTOPAY",
+  ])("%s is paying a card, not spending", (desc) => {
+    const c = classifyByRules(row(desc, "debit", 13_776), ctx());
+    expect(c?.eventType).toBe("CREDIT_CARD_PAYMENT");
+  });
+});
+
+describe("money from a company", () => {
+  it.each([
+    "NEFT CR-HDFC0000001-INVECTO TECHNOLOGIES PVT LTD-N252260123456789",
+    "IMPS/P2A/INVECTO TECHNOLOGIES/123456789012",
+  ])("%s is suggested as salary, for you to confirm", (desc) => {
+    const c = classifyByRules(row(desc, "credit", 58_060), ctx());
+    expect(c).toMatchObject({ eventType: "INCOME", category: "Salary" });
+    expect(c!.confidence).toBeLessThan(0.8); // waits for one click; "Yes, always" makes it automatic
+  });
+  it("a refund from a company stays a refund", () => {
+    expect(classifyByRules(row("NEFT/FLIPKART INTERNET PVT LTD/REFUND", "credit", 999), ctx())?.category).toBe("Refund");
+  });
+});

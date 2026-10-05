@@ -290,8 +290,9 @@ describe("statement import pipeline", () => {
     await expect(run("protected.pdf", book, emptyImportStore(), { password: "nope" })).rejects.toMatchObject({ code: "password_incorrect" });
     const ok = await run("protected.pdf", book, emptyImportStore(), { password: expected.password });
     expect(ok.rows.length).toBeGreaterThan(0);
-    // credit-card accounts can't take a bank statement
-    await expect(run("hdfc_style.pdf", book, emptyImportStore(), { accountId: "account-credit" })).rejects.toMatchObject({ code: "unsupported_format" });
+    // a loan account can't take a statement (credit cards can: they have card statements)
+    const withLoan = { ...book, accounts: [...book.accounts, { id: "loan-1", name: "Home loan", type: "loan" as const, openingBalanceMinor: 0, openedOn: "2026-01-01", createdAt: "2026-01-01T00:00:00Z" }] };
+    await expect(run("hdfc_style.pdf", withLoan, emptyImportStore(), { accountId: "loan-1" })).rejects.toMatchObject({ code: "unsupported_format" });
   });
 
   it("reports scanned PDFs it cannot read without OCR", async () => {

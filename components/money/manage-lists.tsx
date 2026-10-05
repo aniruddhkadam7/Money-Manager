@@ -10,6 +10,7 @@ import { activityHref } from "@/lib/charts/links";
 import { formatRupees } from "@/lib/finance/describe";
 import { CategoryIcon } from "../category-icon";
 import { useFinance } from "../finance-provider";
+import { SamePeopleBanner } from "./same-people-banner";
 
 /** One line with inline rename and delete. Shows why when something can't be removed. */
 function ManagedRow({
@@ -149,6 +150,7 @@ export function ManageLists() {
         <CardHeader>
           <CardTitle>People</CardTitle>
         </CardHeader>
+        <SamePeopleBanner className="mx-4 sm:mx-5" />
         {people.length === 0 ? (
           <CardContent className="py-6 text-sm text-muted-foreground">
             People appear here when you lend, borrow or split a bill.

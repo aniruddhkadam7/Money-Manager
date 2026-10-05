@@ -14,10 +14,13 @@ export function formatCompactINR(minor: number): string {
   return `${sign}₹${Math.round(rupees)}`;
 }
 
-/** Big, friendly numbers: exact under ₹1L (₹64,200), compact above (₹18.4L). */
+/**
+ * Headline numbers, exact to the rupee with Indian grouping: ₹64,200, ₹1,14,800, ₹18,42,500. Never
+ * shortened to "L" / "Cr" (people check these against their bank), only rounded to whole rupees.
+ * Chart axes, where space is tight, use formatCompactINR instead.
+ */
 export function formatHeadlineINR(minor: number): string {
   const rupees = Math.abs(minor) / 100;
-  if (rupees >= 1e5) return formatCompactINR(minor);
   const sign = minor < 0 ? "−" : "";
   return `${sign}₹${Math.round(rupees).toLocaleString("en-IN")}`;
 }

@@ -38,7 +38,11 @@ export interface FinancialState {
   accounts: AccountBalance[];
   /** Spendable money: bank + cash. */
   cashMinor: number;
-  assets: { totalMinor: number; cashMinor: number; investmentsMinor: number; receivablesMinor: number };
+  /**
+   * creditBalancesMinor: cards and loans paid beyond what they owe (a card "in credit"). That is money owed
+   * to you, so it counts here, not as a smaller liability: liabilities only ever show what you actually owe.
+   */
+  assets: { totalMinor: number; cashMinor: number; investmentsMinor: number; receivablesMinor: number; creditBalancesMinor: number };
   liabilities: { totalMinor: number; creditCardsMinor: number; loansMinor: number; borrowedMinor: number };
   /** Always assets − liabilities. Derived, never stored or edited. */
   netWorthMinor: number;
@@ -77,8 +81,13 @@ export function deriveState(book: Book, ledger: Ledger, asOf: string): Financial
 
   const cashMinor = sumOf(["bank", "cash"]);
   const investmentsMinor = sumOf(["investment"]);
-  const creditCardsMinor = sumOf(["credit_card"]);
-  const loansMinor = sumOf(["loan"]);
+  // Each card and loan counts what it is owed; one paid beyond that is a credit balance, i.e. an asset.
+  const owedOn = (type: Account["type"]) => accounts.filter((a) => a.account.type === type).reduce((t, a) => t + Math.max(0, a.balanceMinor), 0);
+  const creditCardsMinor = owedOn("credit_card");
+  const loansMinor = owedOn("loan");
+  const creditBalancesMinor = accounts
+    .filter((a) => (a.account.type === "credit_card" || a.account.type === "loan") && a.balanceMinor < 0)
+    .reduce((t, a) => t - a.balanceMinor, 0);
 
   let receivablesMinor = 0;
   let borrowedMinor = 0;
@@ -132,14 +141,14 @@ export function deriveState(book: Book, ledger: Ledger, asOf: string): Financial
       };
     });
 
-  const assetsTotal = cashMinor + investmentsMinor + receivablesMinor;
+  const assetsTotal = cashMinor + investmentsMinor + receivablesMinor + creditBalancesMinor;
   const liabilitiesTotal = creditCardsMinor + loansMinor + borrowedMinor;
 
   return {
     asOf,
     accounts,
     cashMinor,
-    assets: { totalMinor: assetsTotal, cashMinor, investmentsMinor, receivablesMinor },
+    assets: { totalMinor: assetsTotal, cashMinor, investmentsMinor, receivablesMinor, creditBalancesMinor },
     liabilities: {
       totalMinor: liabilitiesTotal,
       creditCardsMinor,

@@ -76,7 +76,7 @@ function BarRow({
               onPointerLeave={() => onActive(null)}
             >
               <span className="size-2 rounded-full" style={{ backgroundColor: s.color }} />
-              {s.label} <span className="tabular-nums text-slate-700">{formatCompactINR(s.value)}</span>
+              {s.label} <span className="tabular-nums text-slate-700">{formatHeadlineINR(s.value)}</span>
             </li>
           ))}
         </ul>
@@ -120,6 +120,7 @@ export function BalanceSheetSection({ state }: { state: FinancialState }) {
               { id: "cash", label: "Cash & bank", value: state.assets.cashMinor, color: "#38bdf8" },
               { id: "investments", label: "Investments", value: state.assets.investmentsMinor, color: "#6366f1" },
               { id: "owed", label: "Owed to you", value: state.assets.receivablesMinor, color: "#a5b4fc" },
+              { id: "credit", label: "Card / loan credit", value: state.assets.creditBalancesMinor, color: "#c7d2fe" },
             ]}
           />
           <BarRow

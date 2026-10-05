@@ -46,6 +46,8 @@ interface FinanceContextValue {
   restoreEvent: (event: FinancialEvent) => Result<string>;
   renamePerson: (id: string, name: string) => Result<null>;
   deletePerson: (id: string) => Result<null>;
+  /** Moves all of one person's entries onto another and removes the first. */
+  mergePeople: (keepId: string, dropId: string) => Result<null>;
   /** How many entries use this category. */
   categoryUsage: (id: string) => number;
   renameCategory: (id: string, name: string) => Promise<{ ok: true } | { ok: false; message: string }>;
@@ -216,6 +218,7 @@ export function FinanceProvider({
       restoreEvent: (event) => apply(ops.restoreEvent(bookRef.current, event), () => event.id, event.id),
       renamePerson: (id, name) => apply(ops.renamePerson(bookRef.current, id, name), () => null),
       deletePerson: (id) => apply(ops.deletePerson(bookRef.current, id), () => null),
+      mergePeople: (keepId, dropId) => apply(ops.mergePeople(bookRef.current, keepId, dropId), () => null),
       categoryUsage: (id) => bookRef.current.events.filter((e) => "categoryId" in e && e.categoryId === id).length,
       renameCategory: async (id, name) => {
         try {

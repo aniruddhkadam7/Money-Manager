@@ -71,7 +71,7 @@ export function EventRow({ event, onOpen }: { event: FinancialEvent; /** Tapping
         />
 
         <div className="min-w-0 flex-1">
-          <p className="truncate font-medium">{title}</p>
+          <p className="break-words font-medium leading-snug">{title}</p>
           <p className="truncate text-sm text-muted-foreground">
             {formatDisplayDate(event.date)} · {describer.subtitle(event)}
           </p>

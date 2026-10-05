@@ -170,11 +170,74 @@ export function deleteAccount(book: Book, id: string, choice?: DeleteAccountChoi
 /* ---------------- People ---------------- */
 
 /** Finds a person by name (case-insensitive) or creates them. */
+const nameWords = (s: string) => s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+
+/**
+ * Two names for the same person, as banks print them: equal, or one cut short ("Govindraj Ing" /
+ * "Govindraj Ingle", "Malu Shivaji K" / "Malu Shivaji Ka"). The shorter must be at least 8 letters, have
+ * two or more words, and every word must match the start of the other name's word in the same place.
+ */
+export function sameishName(a: string, b: string): boolean {
+  const x = nameWords(a);
+  const y = nameWords(b);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  const [short, long] = x.length <= y.length ? [x, y] : [y, x];
+  if (short.replace(/\s/g, "").length < 8 || !long.startsWith(short)) return false;
+  const sw = short.split(" ");
+  const lw = long.split(" ");
+  return sw.length >= 2 && sw.every((w, i) => lw[i]?.startsWith(w));
+}
+
+/** Pairs of people who look like one person under two spellings: [keep (the fuller name), merge in]. */
+export function likelySamePeople(book: Book): [Person, Person][] {
+  const out: [Person, Person][] = [];
+  const people = [...book.people].sort((p, q) => q.name.length - p.name.length);
+  const taken = new Set<string>();
+  for (let i = 0; i < people.length; i++) {
+    for (let j = i + 1; j < people.length; j++) {
+      const [keep, drop] = [people[i], people[j]];
+      if (taken.has(drop.id) || !sameishName(keep.name, drop.name)) continue;
+      out.push([keep, drop]);
+      taken.add(drop.id);
+    }
+  }
+  return out;
+}
+
+/** Moves every entry of `dropId` onto `keepId` and removes `dropId`: one person, one running balance. */
+export function mergePeople(book: Book, keepId: string, dropId: string): Result<Book> {
+  if (keepId === dropId) return invalid("Pick two different people.");
+  if (!book.people.some((p) => p.id === keepId) || !book.people.some((p) => p.id === dropId)) return invalid("That person no longer exists.", "not_found");
+  const events = book.events.map((e) => {
+    if (e.type === "split_expense") {
+      if (!e.shares.some((s) => s.personId === dropId)) return e;
+      // Both in one split: their shares become one.
+      const merged = new Map<string, number>();
+      for (const s of e.shares) {
+        const id = s.personId === dropId ? keepId : s.personId;
+        merged.set(id, (merged.get(id) ?? 0) + s.amountMinor);
+      }
+      return { ...e, shares: [...merged].map(([personId, amountMinor]) => ({ personId, amountMinor })) };
+    }
+    return "personId" in e && e.personId === dropId ? ({ ...e, personId: keepId } as FinancialEvent) : e;
+  });
+  return accept(book, { ...book, events, people: book.people.filter((p) => p.id !== dropId) });
+}
+
 export function ensurePerson(book: Book, name: string, clock: Clock = systemClock): { book: Book; person: Person } | null {
   const clean = cleanName(name);
   if (!clean) return null;
   const existing = book.people.find((p) => p.name.toLowerCase() === clean.toLowerCase());
   if (existing) return { book, person: existing };
+  // The same person with the name cut short (or now printed in full): reuse them, keeping the fuller name.
+  const alike = book.people.filter((p) => sameishName(p.name, clean));
+  if (alike.length === 1) {
+    const found = alike[0];
+    if (clean.length <= found.name.length) return { book, person: found };
+    const renamed = { ...found, name: clean };
+    return { book: { ...book, people: book.people.map((p) => (p.id === found.id ? renamed : p)) }, person: renamed };
+  }
   const person: Person = { id: clock.newId(), name: clean, createdAt: clock.now() };
   return { book: { ...book, people: [...book.people, person] }, person };
 }
@@ -203,6 +266,21 @@ export function renamePerson(book: Book, id: string, name: string): Result<Book>
     return invalid(`You already have someone called “${clean}”.`, "duplicate_name");
   }
   return { ok: true, value: { ...book, people: book.people.map((p) => (p.id === id ? { ...p, name: clean } : p)) } };
+}
+
+/**
+ * Takes back everything one statement import put in the book: entries it created are removed, and
+ * entries it only confirmed lose its link. Used to redo an import made into the wrong account. Not
+ * validated against the rest of the book on purpose: undoing must always be possible; anything left
+ * inconsistent shows up as "not counted" for the person to see. Returns how many entries were removed.
+ */
+export function removeImportEntries(book: Book, importId: string): { book: Book; removed: number } {
+  const created = (e: FinancialEvent) => e.sources?.some((s) => s.importId === importId && s.role === "created");
+  const kept = book.events.filter((e) => !created(e));
+  const events = kept.map((e) =>
+    e.sources?.some((s) => s.importId === importId) ? ({ ...e, sources: e.sources.filter((s) => s.importId !== importId) } as FinancialEvent) : e,
+  );
+  return { book: { ...book, events }, removed: book.events.length - kept.length };
 }
 
 /** Someone with history can't be deleted: that would silently rewrite the past. */

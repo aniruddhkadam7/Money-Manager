@@ -3,7 +3,7 @@ import * as ops from "@/lib/finance/book-ops";
 import { statementShape } from "@/lib/finance/duplicates";
 import { buildLedger } from "@/lib/finance/engine";
 import { formatRupees } from "@/lib/finance/describe";
-import { CASH_ACCOUNT_TYPES, type Book, type EventDraft, type EventSource } from "@/lib/finance/types";
+import { STATEMENT_ACCOUNT_TYPES, type Book, type EventDraft, type EventSource } from "@/lib/finance/types";
 import { cashEffects } from "./match";
 import { isDirectionCompatible } from "./rules";
 import { PERSON_EVENTS, SUPPORTED_EVENT_TYPES, type Classification, type ImportRecord, type StatementRow } from "./types";
@@ -156,7 +156,7 @@ export type CommitResult = { ok: true; book: Book; outcomes: CommitOutcome[] } |
 export function buildCommit(book: Book, record: Pick<ImportRecord, "id" | "filename" | "accountId">, rows: StatementRow[], ctx: PlanContext, clock: ops.Clock = ops.systemClock): CommitResult {
   const account = book.accounts.find((a) => a.id === record.accountId);
   if (!account) return { ok: false, failures: [{ message: "The account for this statement no longer exists." }] };
-  if (!CASH_ACCOUNT_TYPES.includes(account.type)) return { ok: false, failures: [{ message: `“${account.name}” isn't a bank or cash account.` }] };
+  if (!STATEMENT_ACCOUNT_TYPES.includes(account.type)) return { ok: false, failures: [{ message: `“${account.name}” isn't a bank, cash or credit card account.` }] };
 
   const ordered = [...rows].sort((a, b) => a.transactionDate.localeCompare(b.transactionDate) || a.index - b.index);
   const failures: CommitFailure[] = [];

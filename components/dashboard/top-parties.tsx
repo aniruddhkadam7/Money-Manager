@@ -72,7 +72,7 @@ function Row({
         {lead}
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-3">
-            <span className="truncate text-sm font-medium text-slate-900">{title}</span>
+            <span className="break-words text-sm font-medium text-slate-900">{title}</span>
             <span className="shrink-0 text-sm font-semibold tabular-nums text-slate-900">{amount}</span>
           </div>
           <Bar ratio={ratio} color={color} />

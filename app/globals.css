@@ -2,13 +2,13 @@
 @import "tw-animate-css";
 
 :root {
-  --background: #f6f7f9;
+  --background: #e7ebf0;
   --foreground: #0f172a;
   --card: #ffffff;
-  --muted: #f1f5f9;
-  --muted-foreground: #64748b;
-  --border: #e2e8f0;
-  --input: #cbd5e1;
+  --muted: #eef1f5;
+  --muted-foreground: #526075;
+  --border: #d6dde6;
+  --input: #c2cbd7;
   --primary: #059669;
   --primary-foreground: #ffffff;
   --destructive: #dc2626;

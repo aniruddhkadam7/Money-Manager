@@ -21,6 +21,7 @@ import { useQuickRepaymentReceived } from "../events/quick-repay";
 import { PictureIcon } from "../picture-icon";
 import { useFinance } from "../finance-provider";
 import { DuplicatesBanner } from "./duplicates-banner";
+import { WaitingLines } from "./waiting-lines";
 
 const ALL = "all";
 
@@ -404,6 +405,8 @@ function ActivityContent() {
           </div>
         </CardContent>
       </Card>
+
+      <WaitingLines query={query} />
 
       <div className="-mb-2 flex flex-wrap items-center justify-between gap-2 px-1">
         <p className="text-sm text-muted-foreground" aria-live="polite">

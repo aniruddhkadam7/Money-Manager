@@ -22,9 +22,10 @@ describe("chart formatting", () => {
     expect(formatCompactINR(rs(21_500_000))).toBe("₹2.15Cr");
     expect(formatCompactINR(-rs(1_000_000))).toBe("−₹10L");
   });
-  it("headline is exact under ₹1L and compact above", () => {
+  it("headline is always exact, never shortened to L / Cr", () => {
     expect(formatHeadlineINR(rs(64_200))).toBe("₹64,200");
-    expect(formatHeadlineINR(rs(1_840_000))).toBe("₹18.4L");
+    expect(formatHeadlineINR(rs(114_800))).toBe("₹1,14,800");
+    expect(formatHeadlineINR(rs(1_840_000))).toBe("₹18,40,000");
   });
   it("exact, signed and percent", () => {
     expect(formatExactINR(rs(1_842_500))).toBe("₹18,42,500");

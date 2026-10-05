@@ -161,7 +161,8 @@ export function buildLedger(book: Book): Ledger {
 
       case "income": {
         const a = amount(e.amountMinor);
-        const acct = account(e.accountId, moneyAccounts, "Received in");
+        // Money back on a card (a refund, cashback) lowers what the card is owed, so a card can receive it too.
+        const acct = account(e.accountId, [...moneyAccounts, "credit_card"], "Received in");
         if (!e.categoryId) fail("missing_category", "Choose a category.");
         return {
           flow: "income",

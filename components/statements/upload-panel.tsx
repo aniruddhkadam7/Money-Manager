@@ -8,7 +8,8 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import type { Progress, Stage } from "@/lib/statements/pipeline";
+import { STATEMENT_ACCOUNT_TYPES } from "@/lib/finance/types";
+import { looksLikeCardStatement, type Progress, type Stage } from "@/lib/statements/pipeline";
 import { useFinance } from "../finance-provider";
 import { ACCEPTED_EXTENSIONS } from "@/lib/statements/tabular";
 import { useStatements, type UploadResult } from "./statements-provider";
@@ -30,7 +31,7 @@ export function UploadPanel({ onDone }: { onDone: (importId: string) => void }) 
   const statements = useStatements();
   const input = useRef<HTMLInputElement>(null);
 
-  const accounts = book.accounts.filter((a) => a.type === "bank" || a.type === "cash");
+  const accounts = book.accounts.filter((a) => STATEMENT_ACCOUNT_TYPES.includes(a.type));
   const [accountId, setAccountId] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [password, setPassword] = useState("");
@@ -58,6 +59,9 @@ export function UploadPanel({ onDone }: { onDone: (importId: string) => void }) 
 
   const choose = (f: File | null | undefined) => {
     if (!f) return;
+    // A file named after a masked card number is a card statement: point it at the card.
+    const card = accounts.find((a) => a.type === "credit_card");
+    if (card && looksLikeCardStatement(f.name)) setAccountId(card.id);
     setFile(f);
     setResult(null);
     setPassword("");

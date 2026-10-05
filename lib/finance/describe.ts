@@ -1,4 +1,5 @@
 import { idOf } from "./engine";
+import { paymentMethodOf } from "./payment-method";
 import { isAssetAccount, type Account, type Book, type FinancialEvent, type LedgerEntry } from "./types";
 
 /**
@@ -32,6 +33,17 @@ export function makeDescriber(book: Book, categoryName: (id: string) => string):
   const people = new Map(book.people.map((p) => [p.id, p.name]));
   const acct = (id: string) => accounts.get(id)?.name ?? "a deleted account";
   const who = (id: string) => people.get(id) ?? "someone";
+  /**
+   * "UPI from Kotak Mahindra Bank", "Card · HDFC Credit Card", "from Cash": how it was paid, when the bank line
+   * says, then which account. A card or cash account already says how, so it isn't repeated.
+   */
+  const via = (e: FinancialEvent, id: string, word: "from" | "into") => {
+    const account = accounts.get(id);
+    const method = paymentMethodOf(e, account);
+    if (!method || account?.type === "credit_card" || account?.type === "cash") return `${word} ${acct(id)}`;
+    return `${method} ${word} ${acct(id)}`;
+  };
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
   const title = (e: FinancialEvent): string => {
     switch (e.type) {
@@ -67,23 +79,23 @@ export function makeDescriber(book: Book, categoryName: (id: string) => string):
   const subtitle = (e: FinancialEvent): string => {
     switch (e.type) {
       case "expense":
-        return `${categoryName(e.categoryId)} · from ${acct(e.accountId)}`;
+        return `${categoryName(e.categoryId)} · ${via(e, e.accountId, "from")}`;
       case "income":
-        return `${categoryName(e.categoryId)} · into ${acct(e.accountId)}`;
+        return `${categoryName(e.categoryId)} · ${via(e, e.accountId, "into")}`;
       case "transfer":
-        return `From ${acct(e.fromAccountId)}`;
+        return cap(via(e, e.fromAccountId, "from"));
       case "lend":
       case "repayment_made":
-        return `From ${acct(e.accountId)}`;
+        return cap(via(e, e.accountId, "from"));
       case "borrow":
       case "repayment_received":
-        return `Into ${acct(e.accountId)}`;
+        return cap(via(e, e.accountId, "into"));
       case "split_expense": {
         const others = e.shares.reduce((t, s) => t + s.amountMinor, 0);
         return `${categoryName(e.categoryId)} · your share ${formatRupees(e.totalMinor - others)} of ${formatRupees(e.totalMinor)}`;
       }
       case "reimbursable_expense":
-        return `${who(e.personId)} will reimburse you · from ${acct(e.accountId)}`;
+        return `${who(e.personId)} will reimburse you · ${via(e, e.accountId, "from")}`;
       case "invest":
         return `From ${acct(e.fromAccountId)}`;
       case "sell_investment":

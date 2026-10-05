@@ -19,7 +19,7 @@ export function ChartCard({
   headerClassName?: string;
 }) {
   return (
-    <section className={cn("rounded-3xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.08)] sm:p-5", className)}>
+    <section className={cn("rounded-3xl border border-slate-300/60 bg-white p-4 shadow-[0_1px_3px_rgba(15,23,42,0.07),0_12px_32px_-16px_rgba(15,23,42,0.22)] sm:p-5", className)}>
       <div className={cn("mb-3 flex flex-wrap items-center justify-between gap-2", headerClassName)}>
         <h2 className="text-sm font-semibold tracking-tight text-slate-900">{title}</h2>
         {action}

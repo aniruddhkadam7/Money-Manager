@@ -36,6 +36,8 @@ export const ASSET_ACCOUNT_TYPES: AccountType[] = ["bank", "cash", "investment"]
 export const LIABILITY_ACCOUNT_TYPES: AccountType[] = ["credit_card", "loan"];
 /** Accounts that hold spendable money. */
 export const CASH_ACCOUNT_TYPES: AccountType[] = ["bank", "cash"];
+/** Accounts a statement can be imported into: bank and cash statements, and credit card statements. */
+export const STATEMENT_ACCOUNT_TYPES: AccountType[] = ["bank", "cash", "credit_card"];
 
 export const isAssetAccount = (type: AccountType) => ASSET_ACCOUNT_TYPES.includes(type);
 export const isLiabilityAccount = (type: AccountType) => LIABILITY_ACCOUNT_TYPES.includes(type);

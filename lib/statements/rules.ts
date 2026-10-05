@@ -1,3 +1,5 @@
+import { sameishName } from "@/lib/finance/book-ops";
+import { CARD_BILL_TEXT } from "@/lib/finance/card-spend";
 import type { Book, Ledger } from "@/lib/finance/types";
 import { looksLikePerson } from "./normalize";
 import {
@@ -67,7 +69,10 @@ export function findPerson(name: string, people: { name: string }[]): string | n
     const parts = p.name.toLowerCase().split(/\s+/);
     return parts.length >= 2 && parts.every((w) => words.has(w));
   });
-  return partial.length === 1 ? partial[0].name : null;
+  if (partial.length === 1) return partial[0].name;
+  // The bank cut the name short (or printed it in full this time).
+  const alike = people.filter((p) => sameishName(p.name, name));
+  return alike.length === 1 ? alike[0].name : null;
 }
 
 /* ---------------- User-taught rules ---------------- */
@@ -181,11 +186,13 @@ const MERCHANTS: MerchantRule[] = [
   { re: /\b(apollo|pharmeasy|1mg|tata 1mg|netmeds|medplus|practo|cult\.?fit|gym|fitness|fortis|manipal hospital|max hospital|diagnostics?|pathology|path lab|lab|pharmacy|pharma|chemist|chemists|medical|medicals|medicos?|medical store|hospital|clinic|dental|dentist|doctor|dr\.? |eye care|lenskart)\b/, name: "", category: "Health" },
 ];
 
+/** A company, as banks print it: "INVECTO TECHNOLOGIES PVT LTD", "ACME SOLUTIONS LLP". */
+const COMPANY = /\b(pvt|private|ltd|limited|llp|inc|corp|corporation|technologies|technology|solutions|services|systems|software|infotech|consultancy|consulting|labs|enterprises|industries)\b/i;
 const SALARY = /\b(salary|sal cr|payroll|stipend)\b/i;
 const INTEREST = /\b(int\.? ?pd|int\.? ?paid|interest (paid|credit|cr)|credit interest|savings interest|int on|int cr|interest)\b/i;
 const BANK_CHARGE = /\b(sms (charges|chrg|alert)|chrg|charges?|annual fee|amc|min(imum)? bal(ance)? (charge|penalty)|gst|service tax|debit card (fee|charges)|atm (fee|charges)|folio charges|late fee|processing fee|cgst|sgst|igst)\b/i;
 const ATM = /\b(atm|cash wdl|cash withdrawal|nwd|cwdr|cash w\/d)\b/i;
-const CARD_PAYMENT = /\b(credit card|cc payment|card payment|cc bill|ccbill|cred club|cred\.club|billdesk.*card|card bill|autopay.*card)\b/i;
+const CARD_PAYMENT = CARD_BILL_TEXT;
 const EMI = /\b(emi|loan (repay|instal)|loan a\/c|nach.*loan|home loan|car loan|personal loan|bajaj finance|bajaj finserv|hdb financial|tata capital|fullerton)\b/i;
 const INVEST = /\b(zerodha|groww|upstox|kuvera|coin by zerodha|paytm money|et money|angel (one|broking)|icici direct|hdfc securities|5paisa|smallcase|sip|mutual fund|mf purchase|nps|ppf|elss|bse star|nse clearing|ccil|indian clearing)\b/i;
 const SELL = /\b(redemption|redeem|sale proceeds|sell proceeds|mf redemption|sip redemption)\b/i;
@@ -194,8 +201,34 @@ const MAINTENANCE = /\b(maintenance|maint|society|repairs?|servicing|plumber|ele
 const REFUND = /\b(refund\w*|reversal|reversed|rev|cashback|cash back|chargeback|\w*cradj\w*|credit adj\w*)\b/i;
 const REIMBURSE = /\b(reimb\w*|expense claim|claim settle\w*)\b/i;
 
+/**
+ * Banks and UPI apps often print the merchant's trade after its name, as card networks label it:
+ * "… Restaurants", "… Eating Places", "… Grocery Stores, Supermarkets", "… Drug Stores and Pharmacies",
+ * "… Service Stations". These say what was bought, so they decide the category on their own.
+ */
+const TRADE_LABELS: { re: RegExp; category: string }[] = [
+  { re: /\b(eating places?|fast food|restaurants?|caterers?|bakeries|bakery|tea (centre|center|stall|shop|house)|coffee|snacks?|hotel|hotels|bhojanalaya|food ?(plaza|corner|centre|center|point|zone))\b/, category: "Food" },
+  { re: /\b(grocery stores?|supermarkets?|convenience stores?|dairy products?|dairies|kirana stores?|provision stores?|vegetables? (shop|market|vendor))\b/, category: "Grocery" },
+  { re: /\b(drug stores?|pharmacies|chemists?|medical stores?|medicals|doctors?|hospitals?|clinics?|dentists?|opticians?|laborator(y|ies))\b/, category: "Health" },
+  { re: /\b(service stations?|fuel (dealers?|stations?)|petrol (pumps?|bunks?)|automated fuel)\b/, category: "Petrol" },
+  { re: /\b(taxicabs?|limousines?|bus lines?|commuter transport|parking lots?|toll (and|&) bridge fees?|auto (rickshaw|stand))\b/, category: "Transport" },
+  { re: /\b(liquor stores?|package stores?|beer|wine|bars?|taverns?|nightclubs?|cocktail lounges?)\b/, category: "Alcohol" },
+  { re: /\b(cigar stores?|tobacco|paan|pan shop)\b/, category: "Smoking" },
+  { re: /\b(stationery|book stores?|clothing|apparel|shoe stores?|footwear|electronics?|department stores?|variety stores?|gift shops?|hardware|furniture|jewel(le)?ry)\b/, category: "Shopping" },
+  { re: /\b(utilities|electric(ity)?|telecommunication|cable|satellite|insurance)\b/, category: "Bills" },
+  { re: /\b(motion picture|theatres?|theaters?|amusement|recreation)\b/, category: "Entertainment" },
+  { re: /\b(lodging|motels?|resorts?|airlines?|air carriers?|travel agenc(y|ies)|railways?)\b/, category: "Travel" },
+];
+
+/** "Restaurants" should match "restaurant": every merchant keyword also matches its plural. */
+const PLURAL_TOLERANT = MERCHANTS.map((m) => ({ ...m, re: new RegExp(m.re.source.replace(/\)\\b$/, ")(?:e?s)?\\b"), m.re.flags) }));
+
 function merchantCategory(text: string): string | null {
-  for (const m of MERCHANTS) if (m.re.test(text)) return m.category;
+  // A known travel brand wins over the trade words ("Treebo Hotels" is a stay, not a meal).
+  const travel = PLURAL_TOLERANT.find((m) => m.category === "Travel");
+  if (travel?.re.test(text)) return "Travel";
+  for (const t of TRADE_LABELS) if (t.re.test(text)) return t.category;
+  for (const m of PLURAL_TOLERANT) if (m.re.test(text)) return m.category;
   return null;
 }
 
@@ -265,6 +298,15 @@ export function classifyByRules(row: StatementRow, ctx: RuleContext): Classifica
   }
 
   if (credit && SALARY.test(text)) return make("rule", "INCOME", 0.97, "Salary credit.", { category: "Salary", merchant: row.normalized.counterparty, alternatives: ["TRANSFER"] });
+  // Money from a company by bank transfer is most often salary (or a client paying you), but the line
+  // doesn't say which: suggested, for one click, below the line where it would import on its own.
+  if (credit && COMPANY.test(text) && !/\b(refund|reversal|cashback|interest|dividend|redemption)\b/i.test(text)) {
+    return make("rule", "INCOME", 0.75, `Money from ${row.normalized.counterparty || "a company"}. Probably your salary, or a client paying you — confirm it.`, {
+      category: "Salary",
+      merchant: row.normalized.counterparty,
+      alternatives: ["INCOME", "TRANSFER", "REIMBURSEMENT"],
+    });
+  }
   if (credit && INTEREST.test(text) && !/\bloan\b/i.test(text)) return make("rule", "INCOME", 0.97, "Interest credited by the bank.", { category: "Interest", merchant: "Interest" });
 
   if (!credit && CARD_PAYMENT.test(text)) {

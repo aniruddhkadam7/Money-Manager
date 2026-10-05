@@ -4,14 +4,17 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { aiAvailable } from "@/lib/statements/ai";
 import { browserOcr, browserOcrImage, loadPdfjs } from "@/lib/statements/browser";
 import {
-  acceptAllFlagged, discardImport, failedImport, markFailures, markImported, processStatement, readiness, resolveRow, setOverride,
+  acceptAllFlagged, discardImport, failedImport, markFailures, markImported, forgetImport, processStatement, readiness, reclassifyWaiting, resolveRow, setOverride,
   type Decision, type Progress, type Readiness,
 } from "@/lib/statements/pipeline";
 import { buildCommit, type CommitFailure } from "@/lib/statements/plan";
 import { LocalStorageImportRepository, type ImportRepository } from "@/lib/statements/store";
 import { emptyImportStore, StatementError, type ImportRecord, type ImportSettings, type ImportStoreData, type StatementRow } from "@/lib/statements/types";
+import { removeImportEntries } from "@/lib/finance/book-ops";
 import { useFinance } from "../finance-provider";
-import { deleteStatementFile, saveStatementFile } from "@/lib/statements/files";
+import { deleteStatementFile, loadStatementFile, saveStatementFile } from "@/lib/statements/files";
+import { readCardBill, type CardBill } from "@/lib/statements/card-bill";
+import { extractPdfText } from "@/lib/statements/pdf";
 
 type Status = "loading" | "ready" | "error";
 
@@ -35,9 +38,13 @@ interface StatementsContextValue {
   upload: (p: { file: File; accountId: string; password?: string; useAi: boolean; onProgress: (p: Progress) => void }) => Promise<UploadResult>;
   resolve: (rowId: string, decision: Decision) => { ok: true; applied: number } | { ok: false; message: string };
   acceptAllFlagged: (importId: string) => void;
+  /** Re-reads this statement's waiting lines with the latest rules. */
+  recheck: (importId: string) => { changed: number; settled: number; hardToRead: number };
   setReconciliationOverride: (importId: string, override: boolean) => void;
   commit: (importId: string) => Promise<CommitOutcomeResult>;
   discard: (importId: string) => void;
+  /** Takes an import back out of your records entirely, so the file can be imported again (into the right account). */
+  undoImport: (importId: string) => Promise<{ ok: true; removed: number } | { ok: false; message: string }>;
   updateSettings: (changes: Partial<ImportSettings>) => void;
   suggestedAccountFor: (key: string) => string | undefined;
 }
@@ -47,6 +54,8 @@ const Ctx = createContext<StatementsContextValue | null>(null);
 const repo: ImportRepository = new LocalStorageImportRepository();
 
 const nowISO = () => new Date().toISOString();
+
+const PLACEHOLDER_NAMES = new Set(["net banking", "upi", "debit card", "bank", "bank account"]);
 
 export function StatementsProvider({ children, repository = repo }: { children: ReactNode; repository?: ImportRepository }) {
   const finance = useFinance();
@@ -72,6 +81,68 @@ export function StatementsProvider({ children, repository = repo }: { children: 
       cancelled = true;
     };
   }, [repository]);
+
+  /**
+   * A placeholder account ("Net banking", "UPI", "Debit card") that a statement shows is really a bank
+   * account takes the bank's name, so entries read "UPI from Kotak Mahindra Bank". Names you chose are kept.
+   */
+  const nameAccountsAfterBanks = useCallback(
+    (imports: ImportRecord[]) => {
+      const book = finance.getBook();
+      for (const i of imports) {
+        const account = book.accounts.find((a) => a.id === i.accountId);
+        const bank = i.bankHint?.trim();
+        if (!account || !bank || account.type !== "bank" || !PLACEHOLDER_NAMES.has(account.name.toLowerCase())) continue;
+        if (book.accounts.some((a) => a.id !== account.id && a.name.toLowerCase() === bank.toLowerCase())) continue;
+        finance.updateAccount(account.id, { name: bank });
+      }
+    },
+    [finance],
+  );
+
+  // Once both are loaded: lines still waiting get the benefit of rules added since they were read.
+  const rechecked = useRef(false);
+  useEffect(() => {
+    if (rechecked.current || status !== "ready" || finance.status !== "ready") return;
+    rechecked.current = true;
+    nameAccountsAfterBanks(storeRef.current.imports.filter((i) => i.status !== "FAILED"));
+    const { store: next, changed } = reclassifyWaiting(storeRef.current, finance.getBook());
+    if (changed === 0) return;
+    storeRef.current = next;
+    setStore(next);
+    repository.save(next).catch(() => setSaveError("Couldn't save import progress in this browser (is storage full?)."));
+  }, [status, finance, repository, nameAccountsAfterBanks]);
+
+  // Card statements imported before the bill summary was read: read it from the saved PDF, once.
+  const billsRead = useRef(false);
+  useEffect(() => {
+    if (billsRead.current || status !== "ready" || finance.status !== "ready") return;
+    billsRead.current = true;
+    const book = finance.getBook();
+    const missing = storeRef.current.imports.filter(
+      (i) => !i.cardBill && i.status !== "FAILED" && (i.cardStatement || book.accounts.find((a) => a.id === i.accountId)?.type === "credit_card"),
+    );
+    if (missing.length === 0) return;
+    (async () => {
+      const found: Record<string, CardBill> = {};
+      for (const i of missing) {
+        const data = await loadStatementFile(i.id);
+        if (!data) continue;
+        try {
+          const pdf = await extractPdfText(data, await loadPdfjs());
+          const bill = readCardBill(pdf.pages.flat().map((t) => t.str).join(" "));
+          if (bill) found[i.id] = bill;
+        } catch {
+          /* password-protected or unreadable: the dashboard estimates from the entries instead */
+        }
+      }
+      if (Object.keys(found).length === 0) return;
+      const next = { ...storeRef.current, imports: storeRef.current.imports.map((i) => (found[i.id] ? { ...i, cardBill: found[i.id] } : i)) };
+      storeRef.current = next;
+      setStore(next);
+      repository.save(next).catch(() => undefined);
+    })();
+  }, [status, finance, repository]);
 
   /** Keeps memory and storage in step; reports (and keeps going) if the browser refuses to save. */
   const persist = useCallback(
@@ -154,11 +225,28 @@ export function StatementsProvider({ children, repository = repo }: { children: 
         apply(res.store);
         return { ok: true, applied: res.applied ?? 0 };
       },
+      recheck: (importId) => {
+        const { store: next, changed, settled, hardToRead } = reclassifyWaiting(storeRef.current, finance.getBook(), importId);
+        if (changed > 0) apply(next);
+        return { changed, settled, hardToRead };
+      },
       acceptAllFlagged: (importId) => apply(acceptAllFlagged(storeRef.current, importId, { book: finance.getBook(), now: nowISO() }).store),
       setReconciliationOverride: (importId, override) => apply(setOverride(storeRef.current, importId, override)),
       discard: (importId) => {
         void deleteStatementFile(importId);
         apply(discardImport(storeRef.current, importId));
+      },
+      undoImport: async (importId) => {
+        const before = finance.getBook();
+        const { book, removed } = removeImportEntries(before, importId);
+        const saved = await finance.commitBook(book);
+        if (!saved.ok) return { ok: false, message: saved.message };
+        if (!(await persist(forgetImport(storeRef.current, importId)))) {
+          await finance.commitBook(before);
+          return { ok: false, message: "Couldn't save the change in this browser, so nothing was undone." };
+        }
+        void deleteStatementFile(importId);
+        return { ok: true, removed };
       },
       updateSettings: (changes) => apply({ ...storeRef.current, settings: { ...storeRef.current.settings, ...changes } }),
 
@@ -186,6 +274,7 @@ export function StatementsProvider({ children, repository = repo }: { children: 
           await finance.commitBook(previousBook);
           return { ok: false, message: "Couldn't record the import in this browser, so it was rolled back. Nothing was changed.", failures: [] };
         }
+        nameAccountsAfterBanks([record]);
         return { ok: true, created: built.outcomes.filter((o) => o.role === "created").length, matched: built.outcomes.filter((o) => o.role === "matched").length };
       },
     };
