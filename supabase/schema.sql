@@ -35,3 +35,40 @@ create policy "own rows, allowed users" on public.kv
 
 revoke all on public.kv from anon;
 grant select, insert, update, delete on public.kv to authenticated;
+revoke all on private.allowed_emails from anon, authenticated;
+
+-- Every upload states the version it was based on; the app only writes where it still matches, so a
+-- device holding an old copy can't overwrite newer changes from another device.
+alter table public.kv add column if not exists version bigint not null default 1;
+
+-- Backups: before a row is changed or deleted, its previous value is kept, one snapshot per key per day
+-- (the state at the start of that day), for 14 days. Restore by copying a snapshot back into public.kv.
+create table if not exists private.kv_history (
+  user_id uuid not null,
+  key text not null,
+  day date not null,
+  value text not null,
+  version bigint not null,
+  saved_at timestamptz not null default now(),
+  primary key (user_id, key, day)
+);
+revoke all on private.kv_history from anon, authenticated;
+
+create or replace function private.keep_kv_history() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  insert into private.kv_history (user_id, key, day, value, version)
+  values (old.user_id, old.key, current_date, old.value, old.version)
+  on conflict (user_id, key, day) do nothing;
+  delete from private.kv_history where saved_at < now() - interval '14 days';
+  return null;
+end
+$$;
+
+drop trigger if exists keep_kv_history on public.kv;
+create trigger keep_kv_history after update or delete on public.kv
+  for each row execute function private.keep_kv_history();
+
+-- Pinged daily by the app's cron (/api/keepalive) so Supabase doesn't pause the project for inactivity.
+create or replace function public.ping() returns integer language sql stable as $$ select 1 $$;
+grant execute on function public.ping() to anon;
