@@ -7,6 +7,7 @@ import { formatBps, formatExactINR, formatHeadlineINR } from "@/lib/charts/forma
 import { formatDayMonth, monthEnd, monthStart, shiftMonth } from "@/lib/domain/dates";
 import { incomeSources } from "@/lib/finance/sources";
 import type { FinancialState, PersonSummary } from "@/lib/finance/state";
+import { brandFor } from "@/lib/finance/brands";
 import { CategoryIcon } from "../category-icon";
 import { PartyLogo } from "../brand-logo";
 import { ChartCard, EmptyChart, RangeTabs } from "../charts/primitives";
@@ -68,12 +69,13 @@ function Row({
   href: string;
 }) {
   return (
-    <li>
-      <Link href={href} className="flex items-center gap-3 rounded-xl px-1.5 py-1.5 outline-none hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-ring">
+    <li className="min-w-0">
+      <Link href={href} className="flex min-w-0 items-center gap-3 rounded-xl px-1.5 py-1.5 outline-none hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-ring">
         {lead}
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-3">
-            <span className="break-words text-sm font-medium text-slate-900">{title}</span>
+            {/* Bank text can hold long unbroken codes ("HSBC01100"): let them wrap anywhere rather than push out of the card. */}
+            <span className="min-w-0 text-sm font-medium text-slate-900 [overflow-wrap:anywhere]">{title}</span>
             <span className="shrink-0 text-sm font-semibold tabular-nums text-slate-900">{amount}</span>
           </div>
           <Bar ratio={ratio} color={color} />
@@ -132,13 +134,14 @@ function IncomeSourcesCard() {
           <p className="mb-2 text-xs text-slate-500">
             <span className="text-base font-semibold tabular-nums text-slate-900">{formatHeadlineINR(total)}</span> earned in {range.label}
           </p>
-          <ul key={span} className="grid gap-0.5">
+          <ul key={span} className="grid grid-cols-1 gap-0.5">
             {shown.map((s) => (
               <Row
                 key={s.key}
                 href={activityHref({ category: s.categoryId, q: s.name, from: range.from, to: range.to })}
                 lead={<PartyLogo name={s.name} className="!rounded-full [&>img]:!size-6" fallback={<CategoryIcon category={getCategory(s.categoryId)} tile className="!size-9 !rounded-full" />} />}
-                title={s.name}
+                // A known company by its own name ("EY"), not the bank's text ("ERNST YOUNG LLP HSBC01100").
+                title={brandFor(s.name)?.name ?? s.name}
                 caption={`${formatBps(Math.round((s.amountMinor / total) * 10_000))} of income · ${s.count} ${s.count === 1 ? "payment" : "payments"} · last ${formatDayMonth(s.lastDate)}`}
                 amount={formatExactINR(s.amountMinor)}
                 ratio={s.amountMinor / shown[0].amountMinor}
@@ -186,7 +189,7 @@ function PeopleCard({ title, side, people }: { title: string; side: "borrowers" 
             <span className="text-base font-semibold tabular-nums text-slate-900">{formatHeadlineINR(total)}</span>{" "}
             {mine ? `owed to you by ${rows.length} ${rows.length === 1 ? "person" : "people"}` : `owed by you to ${rows.length} ${rows.length === 1 ? "person" : "people"}`}
           </p>
-          <ul className="grid gap-0.5">
+          <ul className="grid grid-cols-1 gap-0.5">
             {shown.map((r) => (
               <Row
                 key={r.person.id}

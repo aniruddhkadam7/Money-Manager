@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FileUp, LayoutDashboard, Plus, ReceiptText, Wallet } from "lucide-react";
+import { useState } from "react";
+import { FileUp, LayoutDashboard, Plus, ReceiptText, RefreshCw, Wallet } from "lucide-react";
+import { flush } from "@/lib/cloud/sync";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { CloudStatus } from "./cloud-status";
@@ -57,6 +59,7 @@ export function AppHeader() {
             <Button className="hidden sm:inline-flex" onClick={() => openAdd()}>
               <Plus /> Add
             </Button>
+            <RefreshButton />
             <CloudStatus />
           </div>
         </div>
@@ -112,5 +115,30 @@ function MobileNav({ pathname, onAdd }: { pathname: string; onAdd: () => void })
         {TABS.slice(2).map(tab)}
       </div>
     </nav>
+  );
+}
+
+/**
+ * Phones have no reload button in a home-screen app, and pull-to-refresh is easy to miss: this saves anything
+ * waiting to upload, then reloads so the latest data (from other devices too) is shown.
+ */
+function RefreshButton() {
+  const [busy, setBusy] = useState(false);
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="sm:hidden"
+      aria-label="Refresh"
+      title="Refresh"
+      disabled={busy}
+      onClick={async () => {
+        setBusy(true);
+        await flush().catch(() => undefined);
+        window.location.reload();
+      }}
+    >
+      <RefreshCw className={cn(busy && "animate-spin")} />
+    </Button>
   );
 }

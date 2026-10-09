@@ -1,3 +1,5 @@
+import { brandFor } from "./brands";
+import { isMoneyBack } from "./state";
 import type { Book, Ledger } from "./types";
 
 /** Where income comes from, grouped by who paid (or by category when no payer was named). */
@@ -13,7 +15,9 @@ export interface IncomeSource {
 
 /**
  * Income received between `from` and `to` (inclusive), largest first. Only real
- * income counts: borrowed money, repayments and investment sales are not income.
+ * income counts: borrowed money, repayments, investment sales, refunds and reimbursements are not income
+ * (as everywhere else in the app). A recognised company is one source under its own name, however the
+ * bank wrote it ("ERNST YOUNG LLP HSBC01100" and "EY" are both EY).
  */
 export function incomeSources(
   book: Book,
@@ -26,10 +30,11 @@ export function incomeSources(
   const groups = new Map<string, IncomeSource>();
 
   for (const e of book.events) {
-    if (e.type !== "income" || !applied.has(e.id) || e.date < from || e.date > to) continue;
+    if (e.type !== "income" || isMoneyBack(e) || !applied.has(e.id) || e.date < from || e.date > to) continue;
     const payer = e.description?.trim();
-    const name = payer || categoryName(e.categoryId);
-    const key = name.toLowerCase();
+    const brand = payer ? brandFor(payer) : null;
+    const name = brand?.name ?? (payer || categoryName(e.categoryId));
+    const key = brand ? `brand:${brand.slug}` : name.toLowerCase();
     const existing = groups.get(key);
     if (existing) {
       existing.amountMinor += e.amountMinor;
