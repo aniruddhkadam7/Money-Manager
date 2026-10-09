@@ -33,6 +33,8 @@ interface Values {
   soldValue: string;
   date: string;
   shares: { person: string; amount: string }[];
+  /** Lend / borrow: owed from before records began, so no money moves in an account now. */
+  beforeTracking: boolean;
 }
 
 const ACCOUNT_PICTURE: Record<AccountType, PictureName> = {
@@ -131,6 +133,7 @@ export function EventForm({
       soldValue: "",
       date: todayISO(),
       shares: [{ person: "", amount: "" }],
+      beforeTracking: false,
     };
     if (!e) return base;
     base.date = editing ? e.date : todayISO();
@@ -143,6 +146,7 @@ export function EventForm({
         return { ...base, amount: minorToInputString(e.amountMinor), accountId: e.fromAccountId, toAccountId: e.toAccountId };
       case "lend":
       case "borrow":
+        return { ...base, amount: minorToInputString(e.amountMinor), accountId: e.accountId, person: personName(e.personId), beforeTracking: !!e.predatesRecords };
       case "repayment_received":
       case "repayment_made":
         return { ...base, amount: minorToInputString(e.amountMinor), accountId: e.accountId, person: personName(e.personId) };
@@ -215,7 +219,7 @@ export function EventForm({
     if (has("amount") && amountMinor === null) next.amount = "Enter an amount, e.g. 850 or 99.50";
     if (has("description") && spec.descriptionRequired && !values.description.trim()) next.description = "Add a short description";
     if (has("category") && !values.categoryId) next.category = "Pick a category";
-    if (has("account") && !values.accountId) next.account = "Choose an account";
+    if (has("account") && !values.accountId && !values.beforeTracking) next.account = "Choose an account";
     if (has("toAccount") && !values.toAccountId) next.toAccount = "Choose an account";
     if (has("person") && !values.person.trim()) next.person = "Enter a name";
     if (has("holdingName") && !values.holdingName.trim()) next.holdingName = "Enter what you invested in";
@@ -267,7 +271,8 @@ export function EventForm({
       case "lend":
       case "borrow": {
         const id = personId();
-        return id ? { type, date, personId: id, accountId: values.accountId, amountMinor: amount } : null;
+        if (!id) return null;
+        return { type, date, personId: id, accountId: values.accountId, amountMinor: amount, ...(values.beforeTracking ? { predatesRecords: true } : {}) };
       }
       case "repayment_received":
       case "repayment_made": {
@@ -405,8 +410,8 @@ export function EventForm({
           </Field>
         );
 
-      case "account":
-        return (
+      case "account": {
+        const accountField = (
           <AccountField
             key={key}
             id="account"
@@ -417,6 +422,29 @@ export function EventForm({
             error={errors.account}
           />
         );
+        if (type !== "lend" && type !== "borrow") return accountField;
+        // A debt from before you started tracking: it counts in what you owe (or are owed), but no account moves.
+        return (
+          <div key={key} className="grid gap-3">
+            <label className="flex items-start gap-2 rounded-lg border bg-muted/40 p-3 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-4"
+                checked={values.beforeTracking}
+                onChange={(e) => set("beforeTracking", e.target.checked)}
+                data-testid="before-tracking"
+              />
+              <span>
+                <span className="font-medium">{type === "borrow" ? "I owed this before I started tracking" : "They owed me this before I started tracking"}</span>
+                <span className="block text-xs text-muted-foreground">
+                  No money {type === "borrow" ? "arrives in" : "leaves"} an account now: only {type === "borrow" ? "what you owe" : "what you're owed"} changes.
+                </span>
+              </span>
+            </label>
+            {!values.beforeTracking && accountField}
+          </div>
+        );
+      }
 
       case "toAccount":
         return (

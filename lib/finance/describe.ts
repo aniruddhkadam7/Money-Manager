@@ -86,9 +86,11 @@ export function makeDescriber(book: Book, categoryName: (id: string) => string):
         return cap(via(e, e.fromAccountId, "from"));
       case "lend":
       case "repayment_made":
+        if (e.type === "lend" && e.predatesRecords) return "From before you started tracking";
         return cap(via(e, e.accountId, "from"));
       case "borrow":
       case "repayment_received":
+        if (e.type === "borrow" && e.predatesRecords) return "From before you started tracking";
         return cap(via(e, e.accountId, "into"));
       case "split_expense": {
         const others = e.shares.reduce((t, s) => t + s.amountMinor, 0);

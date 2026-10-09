@@ -102,6 +102,8 @@ export interface LendEvent extends EventBase {
   personId: string;
   accountId: string;
   amountMinor: number;
+  /** Lent before records began: they owe it, but no money leaves `accountId` now. */
+  predatesRecords?: boolean;
 }
 
 /** I borrowed money from someone. */
@@ -110,6 +112,8 @@ export interface BorrowEvent extends EventBase {
   personId: string;
   accountId: string;
   amountMinor: number;
+  /** Borrowed before records began: you owe it, but no money arrives in `accountId` now. */
+  predatesRecords?: boolean;
 }
 
 /** Someone paid me back (a loan, their share of a bill, a reimbursement). */

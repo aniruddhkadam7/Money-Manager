@@ -190,8 +190,18 @@ export function buildLedger(book: Book): Ledger {
 
       case "lend": {
         const a = amount(e.amountMinor);
-        const acct = account(e.accountId, moneyAccounts, "Paid from");
         person(e.personId);
+        // Lent before records began: they owe it, but no money leaves an account now.
+        if (e.predatesRecords) {
+          return {
+            flow: "opening",
+            postings: [
+              { ledger: ledgerIds.receivable(e.personId), amountMinor: a },
+              { ledger: ledgerIds.OPENING, amountMinor: -a },
+            ],
+          };
+        }
+        const acct = account(e.accountId, moneyAccounts, "Paid from");
         return {
           flow: "lending",
           postings: [
@@ -203,8 +213,18 @@ export function buildLedger(book: Book): Ledger {
 
       case "borrow": {
         const a = amount(e.amountMinor);
-        const acct = account(e.accountId, moneyAccounts, "Received in");
         person(e.personId);
+        // Borrowed before records began: you owe it, but no money arrives in an account now.
+        if (e.predatesRecords) {
+          return {
+            flow: "opening",
+            postings: [
+              { ledger: ledgerIds.payable(e.personId), amountMinor: -a },
+              { ledger: ledgerIds.OPENING, amountMinor: a },
+            ],
+          };
+        }
+        const acct = account(e.accountId, moneyAccounts, "Received in");
         return {
           flow: "borrowing",
           postings: [

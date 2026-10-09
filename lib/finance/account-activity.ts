@@ -31,8 +31,11 @@ export function accountActivity(book: Book, accountId: string, from: string, to:
       case "split_expense":
         if (e.accountId === accountId) out.spentMinor += e.totalMinor;
         break;
-      case "income":
       case "borrow":
+        // Owed from before records began: nothing arrived in the account.
+        if (e.accountId === accountId && !e.predatesRecords) out.receivedMinor += e.amountMinor;
+        break;
+      case "income":
       case "repayment_received":
         if (e.accountId === accountId) out.receivedMinor += e.amountMinor;
         break;
