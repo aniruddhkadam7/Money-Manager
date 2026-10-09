@@ -588,7 +588,11 @@ export function ImportDetail({ importId, onBack }: { importId: string; onBack: (
       )}
 
       {!imported && record.status !== "FAILED" && (
-        <div className="sticky bottom-3 z-30 flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-card/95 p-3 shadow-lg backdrop-blur" data-testid="import-bar">
+        <div
+          // Pinned to the bottom on wider screens; on phones the tab bar owns the bottom, so it sits at the end of the page.
+          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-card p-3 shadow-sm sm:sticky sm:bottom-3 sm:z-30 sm:bg-card/95 sm:shadow-lg sm:backdrop-blur"
+          data-testid="import-bar"
+        >
           <div className="min-w-0 text-sm">
             {ready.canImportReady ? (
               <span>
