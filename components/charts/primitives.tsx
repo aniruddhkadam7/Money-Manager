@@ -91,7 +91,7 @@ export function RangeTabs<T extends string>({
           aria-selected={o.value === value}
           onClick={() => onChange(o.value)}
           className={cn(
-            "rounded-full px-2.5 py-0.5 text-xs font-medium transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "rounded-full px-3 py-1.5 text-sm font-medium transition-all outline-none sm:px-2.5 sm:py-0.5 sm:text-xs focus-visible:ring-2 focus-visible:ring-ring",
             o.value === value ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800",
           )}
         >

@@ -50,7 +50,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           key={toast.id}
           role="status"
           aria-live="polite"
-          className="fade-up fixed inset-x-0 bottom-5 z-[70] mx-auto flex w-[calc(100%-2rem)] max-w-md items-center gap-3 rounded-2xl bg-slate-900 px-4 py-3 text-sm text-white shadow-2xl"
+          className="fade-up fixed inset-x-0 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-[70] sm:bottom-5 mx-auto flex w-[calc(100%-2rem)] max-w-md items-center gap-3 rounded-2xl bg-slate-900 px-4 py-3 text-sm text-white shadow-2xl"
         >
           <span className="flex-1">{toast.message}</span>
           {toast.actionLabel && (

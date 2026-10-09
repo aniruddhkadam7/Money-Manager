@@ -95,7 +95,7 @@ export function SoFarSection() {
             )}
           </p>
         </div>
-        <div role="group" aria-label="Period" className="inline-flex flex-wrap rounded-lg bg-muted p-0.5">
+        <div role="group" aria-label="Period" className="flex max-w-full overflow-x-auto rounded-lg bg-muted p-0.5 [scrollbar-width:none] sm:inline-flex sm:flex-wrap [&::-webkit-scrollbar]:hidden">
           {SPANS.map((s) => (
             <button
               key={s.id}
@@ -103,7 +103,7 @@ export function SoFarSection() {
               aria-pressed={span === s.id}
               title={s.hint}
               onClick={() => setSpan(s.id)}
-              className={cn("rounded-md px-3 py-1 text-xs font-medium", span === s.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+              className={cn("shrink-0 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium sm:py-1 sm:text-xs", span === s.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
             >
               {s.label}
             </button>

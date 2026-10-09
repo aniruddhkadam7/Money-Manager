@@ -41,7 +41,7 @@ export function MoneyView() {
   const iOwe = state.people.filter((p) => p.iOwe.originalMinor > 0 || p.iOwe.outstandingMinor > 0);
 
   return (
-    <div className="mx-auto grid w-full max-w-[1400px] gap-4 sm:gap-6">
+    <div className="mx-auto grid w-full max-w-[1400px] grid-cols-1 gap-4 sm:gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">Money</h1>

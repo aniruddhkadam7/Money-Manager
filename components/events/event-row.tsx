@@ -41,7 +41,8 @@ export function headline(e: FinancialEvent): { amountMinor: number; tone: "in" |
 
 /**
  * One entry in a list. Click the row for the full "what changed" view; the
- * pencil, copy and bin buttons are always visible so correcting a mistake is obvious.
+ * pencil is always visible so correcting a mistake is obvious. Copy and bin show
+ * from tablet width up; on phones they live in the row's details.
  */
 export function EventRow({ event, onOpen }: { event: FinancialEvent; /** Tapping the row does this instead of opening the details. */ onOpen?: () => void }) {
   const { book, describer, getCategory, issuesByEvent } = useFinance();
@@ -57,12 +58,12 @@ export function EventRow({ event, onOpen }: { event: FinancialEvent; /** Tapping
   const title = describer.title(event);
 
   return (
-    <li className="flex items-center gap-1 pr-2 transition-colors hover:bg-muted/50 sm:pr-3">
+    <li className="flex items-center gap-0.5 pr-1 transition-colors hover:bg-muted/50 sm:gap-1 sm:pr-3">
       <button
         type="button"
         onClick={() => (onOpen ? onOpen() : openDetail(event.id))}
         aria-label={onOpen ? `${title}. See every entry with ${title}.` : `${title}. See what changed.`}
-        className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left outline-none focus-visible:bg-muted/60 sm:px-5"
+        className="flex min-w-0 flex-1 items-center gap-2.5 py-3 pl-3 pr-1 text-left outline-none focus-visible:bg-muted/60 sm:gap-3 sm:px-5"
       >
         <BrandLogo
           slug={brand?.slug}
@@ -122,7 +123,8 @@ export function EventRow({ event, onOpen }: { event: FinancialEvent; /** Tapping
           size="icon"
           aria-label={`Delete ${title}`}
           title="Delete"
-          className="hover:bg-red-50 hover:text-destructive"
+          // Phones: tap the row instead; its details offer Delete, which leaves room for the title.
+          className="hidden hover:bg-red-50 hover:text-destructive sm:inline-flex"
           onClick={() => requestDelete(event.id)}
         >
           <Trash2 />

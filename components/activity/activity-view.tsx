@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, Plus, Search } from "lucide-react";
+import { ArrowLeft, Plus, Search, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -119,6 +119,9 @@ function ActivityContent() {
   // Tapping an entry narrows the list to everything with the same shop, company or name.
   const [party, setParty] = useState<{ key: string; label: string } | null>(null);
   const [owed, setOwed] = useState<string | null>(params.get("owed"));
+  // Phones: the detailed filters fold away; open when a link arrives with one of them set.
+  const detailFilters = [categoryId !== ALL, accountId !== ALL, personId !== ALL, from !== "", to !== ""].filter(Boolean).length;
+  const [moreOpen, setMoreOpen] = useState(detailFilters > 0);
 
   const owedPeople = useMemo(() => {
     if (!owed) return null;
@@ -190,7 +193,7 @@ function ActivityContent() {
     : null;
 
   return (
-    <div className="mx-auto grid w-full max-w-[1400px] gap-4 sm:gap-6">
+    <div className="mx-auto grid w-full max-w-[1400px] grid-cols-1 gap-4 sm:gap-6">
       <DuplicatesBanner />
 
       {party && partyTotals && (
@@ -271,7 +274,12 @@ function ActivityContent() {
 
       <Card>
         <CardContent className="grid gap-4">
-          <div className="flex flex-wrap gap-2" role="group" aria-label="Quick filters" data-testid="quick-filters">
+          <div
+            className="-mx-5 flex gap-2 overflow-x-auto px-5 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 [&::-webkit-scrollbar]:hidden"
+            role="group"
+            aria-label="Quick filters"
+            data-testid="quick-filters"
+          >
             {QUICK.map((q) => (
               <button
                 key={q.value}
@@ -279,7 +287,7 @@ function ActivityContent() {
                 aria-pressed={group === q.value}
                 onClick={() => setGroup(q.value)}
                 className={cn(
-                  "rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors",
+                  "shrink-0 whitespace-nowrap rounded-full border px-3.5 py-2 text-sm font-medium transition-colors sm:py-1.5",
                   group === q.value ? "border-primary bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
               >
@@ -290,7 +298,9 @@ function ActivityContent() {
 
           <div className="flex items-end gap-3">
             <div className="grid flex-1 gap-1.5">
-              <Label htmlFor="search">Search</Label>
+              <Label htmlFor="search" className="max-sm:sr-only">
+                Search
+              </Label>
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -304,12 +314,21 @@ function ActivityContent() {
                 />
               </div>
             </div>
-            <Button variant="ghost" disabled={!hasFilters} onClick={clear}>
+            <Button
+              variant="outline"
+              className="h-11 sm:hidden"
+              aria-expanded={moreOpen}
+              aria-controls="detail-filters"
+              onClick={() => setMoreOpen((o) => !o)}
+            >
+              <SlidersHorizontal /> {detailFilters > 0 ? `Filters (${detailFilters})` : "Filters"}
+            </Button>
+            <Button variant="ghost" className={cn("max-sm:h-11 max-sm:px-2", !hasFilters && "max-sm:hidden")} disabled={!hasFilters} onClick={clear}>
               Clear
             </Button>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-6">
+          <div id="detail-filters" className={cn("grid gap-4 sm:grid-cols-3 lg:grid-cols-6", !moreOpen && "max-sm:hidden")}>
             <div className="grid gap-1.5">
               <Label htmlFor="filter-group">Show</Label>
               <Select value={group} onValueChange={setGroup}>
@@ -411,7 +430,7 @@ function ActivityContent() {
       <div className="-mb-2 flex flex-wrap items-center justify-between gap-2 px-1">
         <p className="text-sm text-muted-foreground" aria-live="polite">
           {hasFilters ? `${filtered.length} of ${book.events.length} entries` : `${book.events.length} ${book.events.length === 1 ? "entry" : "entries"}`}
-          {book.events.length > 0 && " · use the pencil to correct, the bin to remove"}
+          {book.events.length > 0 && " · tap an entry to see, fix or remove it"}
         </p>
         <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
           <SelectTrigger className="h-8 w-44 text-xs" aria-label="Sort entries">

@@ -146,7 +146,7 @@ function AccountForm({ editing, onDone }: { editing: Account | null; onDone: () 
               {others.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2">
                   <span>Move to</span>
-                  <select value={moveTo} onChange={(e) => setMoveTo(e.target.value)} className="h-8 rounded-md border bg-card px-2" aria-label="Move entries to">
+                  <select value={moveTo} onChange={(e) => setMoveTo(e.target.value)} className="h-10 rounded-md border bg-card px-2 text-base sm:h-8 sm:text-sm" aria-label="Move entries to">
                     {others.map((a) => (
                       <option key={a.id} value={a.id}>
                         {a.name}
