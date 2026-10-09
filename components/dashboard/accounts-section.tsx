@@ -21,9 +21,10 @@ function AccountLogo({ account, bankHint }: { account: Account; bankHint?: strin
   const [broken, setBroken] = useState(false);
   if (!brand || broken) return <PictureIcon name={ACCOUNT_TYPE_INFO[account.type].picture} tile />;
   return (
-    <span className="flex h-10 min-w-10 max-w-28 shrink-0 items-center justify-center rounded-lg border border-slate-100 bg-white px-1.5">
+    // A fixed box: most bank logos carry the bank's name, so they need width more than height.
+    <span className="flex h-11 w-24 shrink-0 items-center justify-center rounded-lg border border-slate-100 bg-white p-1.5">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={bankLogoSrc(brand)} alt={`${brand.name} logo`} className="max-h-7 max-w-full object-contain" loading="lazy" onError={() => setBroken(true)} />
+      <img src={bankLogoSrc(brand)} alt={`${brand.name} logo`} className="h-full w-full object-contain" loading="lazy" onError={() => setBroken(true)} />
     </span>
   );
 }
