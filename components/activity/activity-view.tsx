@@ -119,9 +119,9 @@ function ActivityContent() {
   // Tapping an entry narrows the list to everything with the same shop, company or name.
   const [party, setParty] = useState<{ key: string; label: string } | null>(null);
   const [owed, setOwed] = useState<string | null>(params.get("owed"));
-  // Phones: the detailed filters fold away; open when a link arrives with one of them set.
+  // Phones: the detailed filters fold away behind "Filters (n)", which counts the ones set (a dashboard link sets dates).
   const detailFilters = [categoryId !== ALL, accountId !== ALL, personId !== ALL, from !== "", to !== ""].filter(Boolean).length;
-  const [moreOpen, setMoreOpen] = useState(detailFilters > 0);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   const owedPeople = useMemo(() => {
     if (!owed) return null;
@@ -328,7 +328,7 @@ function ActivityContent() {
             </Button>
           </div>
 
-          <div id="detail-filters" className={cn("grid gap-4 sm:grid-cols-3 lg:grid-cols-6", !moreOpen && "max-sm:hidden")}>
+          <div id="detail-filters" className={cn("grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-6", !moreOpen && "max-sm:hidden")}>
             <div className="grid gap-1.5">
               <Label htmlFor="filter-group">Show</Label>
               <Select value={group} onValueChange={setGroup}>

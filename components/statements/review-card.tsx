@@ -15,6 +15,7 @@ import type { Decision } from "@/lib/statements/pipeline";
 import { useFinance } from "../finance-provider";
 import { useToast } from "../toast";
 import { describeClassification, EVENT_LABEL, optionsFor, signedAmount, SOURCE_LABEL } from "./labels";
+import { CategorySelect, CounterAccountSelect } from "./pickers";
 import { useStatements } from "./statements-provider";
 import { ViewInStatement } from "./source-viewer";
 
@@ -273,9 +274,14 @@ export function ReviewCard({ row, siblings, compact = false }: { row: StatementR
             {!picking && c && !suggestionIssue && needs(c.eventType, row.direction).category && (
               <div className="flex items-center gap-1.5" data-testid="category-pick">
                 <span className="text-xs text-muted-foreground">Category</span>
-                <Select
+                <CategorySelect
+                  names={categoryList}
                   value=""
-                  onValueChange={(cat) =>
+                  placeholder={c.category ?? "Pick…"}
+                  allowNew={row.direction === "debit"}
+                  className="h-8 w-44"
+                  ariaLabel="Pick a category"
+                  onChange={(cat) =>
                     decide(
                       { kind: "classify", eventType: c.eventType, category: cat, person: c.person, counterAccountId: c.counterAccountId, holding: c.holding },
                       c.eventType,
@@ -283,18 +289,7 @@ export function ReviewCard({ row, siblings, compact = false }: { row: StatementR
                       describeClassification({ ...c, category: cat }, row.direction, book.accounts),
                     )
                   }
-                >
-                  <SelectTrigger className="h-8 w-44" aria-label="Pick a category">
-                    <SelectValue placeholder={c.category ?? "Pick…"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categoryList.map((name) => (
-                      <SelectItem key={name} value={name}>
-                        {name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                />
               </div>
             )}
             <div className="flex items-center gap-1.5" data-testid="type-pick">
@@ -315,18 +310,15 @@ export function ReviewCard({ row, siblings, compact = false }: { row: StatementR
             {picking && n?.category && (
               <div className="flex items-center gap-1.5" data-testid="category-inline">
                 <span className="text-xs text-muted-foreground">Category</span>
-                <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
-                  <SelectTrigger className="h-8 w-44" aria-label="Category">
-                    <SelectValue placeholder="Choose" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categoryList.map((name) => (
-                      <SelectItem key={name} value={name}>
-                        {name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <CategorySelect
+                  names={categoryList}
+                  value={form.category}
+                  placeholder="Choose"
+                  allowNew={row.direction === "debit"}
+                  className="h-8 w-44"
+                  ariaLabel="Category"
+                  onChange={(v) => setForm({ ...form, category: v })}
+                />
               </div>
             )}
             {picking && n && !n.person && !n.account && !n.holding && (
@@ -355,19 +347,14 @@ export function ReviewCard({ row, siblings, compact = false }: { row: StatementR
               {n.account && (
                 <div className="min-w-40 flex-1 text-xs font-medium">
                   <span>{picking === "CREDIT_CARD_PAYMENT" ? "Which card?" : picking === "LOAN_REPAYMENT" ? "Which loan?" : row.direction === "debit" ? "Moved to" : "Moved from"}</span>
-                  <Select value={form.account} onValueChange={(v) => setForm({ ...form, account: v })}>
-                    <SelectTrigger className="mt-1" aria-label="Account">
-                      <SelectValue placeholder="Choose" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {accountChoices(picking).map((a) => (
-                        <SelectItem key={a.id} value={a.id}>
-                          {a.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {accountChoices(picking).length === 0 && <span className="mt-1 block text-[11px] text-destructive">You have no such account yet. <a href="/money" className="underline">Add one on the Money page</a>, then come back.</span>}
+                  <CounterAccountSelect
+                    type={picking}
+                    excludeId={row.accountId}
+                    value={form.account}
+                    onChange={(v) => setForm({ ...form, account: v })}
+                    className="mt-1"
+                    ariaLabel="Account"
+                  />
                 </div>
               )}
               {n.holding && (

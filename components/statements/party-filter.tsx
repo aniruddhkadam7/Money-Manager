@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { useFinance } from "../finance-provider";
 import { EVENT_LABEL, optionsFor } from "./labels";
 import { needs } from "./review-card";
+import { CategorySelect, CounterAccountSelect } from "./pickers";
 import { useStatements } from "./statements-provider";
 
 /**
@@ -303,9 +304,6 @@ export function BulkApply({ party, onDone }: { party: Party; onDone: () => void 
 
   const need = needs(type, party.direction);
   const categories = (credit ? incomeCategories : expenseCategories).map((c) => c.name);
-  const accounts = book.accounts.filter(
-    (a) => a.id !== sample?.accountId && (type === "CREDIT_CARD_PAYMENT" ? a.type === "credit_card" : type === "LOAN_REPAYMENT" ? a.type === "loan" : a.type === "bank" || a.type === "cash"),
-  );
   const ready = (!need.person || person.trim()) && (!need.account || account) && (!need.holding || holding.trim());
   const total = open.reduce((t, r) => t + r.amountMinor, 0);
 
@@ -351,18 +349,7 @@ export function BulkApply({ party, onDone }: { party: Party; onDone: () => void 
         {need.category && (
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-muted-foreground">Category</span>
-            <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger className="h-8 w-44" aria-label="Category for all">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map((name) => (
-                  <SelectItem key={name} value={name}>
-                    {name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <CategorySelect names={categories} value={category} onChange={setCategory} allowNew={!credit} className="h-8 w-44" ariaLabel="Category for all" />
           </div>
         )}
 
@@ -381,18 +368,7 @@ export function BulkApply({ party, onDone }: { party: Party; onDone: () => void 
         {need.account && (
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-muted-foreground">{type === "CREDIT_CARD_PAYMENT" ? "Card" : type === "LOAN_REPAYMENT" ? "Loan" : credit ? "From" : "To"}</span>
-            <Select value={account} onValueChange={setAccount}>
-              <SelectTrigger className="h-8 w-44" aria-label="Account for all">
-                <SelectValue placeholder="Choose" />
-              </SelectTrigger>
-              <SelectContent>
-                {accounts.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <CounterAccountSelect type={type} excludeId={sample?.accountId} value={account} onChange={setAccount} className="h-8 w-44" ariaLabel="Account for all" />
           </div>
         )}
 
@@ -424,7 +400,7 @@ export function BulkApply({ party, onDone }: { party: Party; onDone: () => void 
  * you picked a money-out type) are left for you and counted in the message.
  */
 function MultiBulkApply({ parties, onDone }: { parties: Party[]; onDone: () => void }) {
-  const { book, expenseCategories, incomeCategories } = useFinance();
+  const { expenseCategories, incomeCategories } = useFinance();
   const statements = useStatements();
   const open = useMemo(() => parties.flatMap((p) => p.rows.filter((r) => r.status === "review" || r.status === "auto_flagged").map((r) => ({ r, party: p }))), [parties]);
   const debits = open.filter((x) => x.r.direction === "debit").length;
@@ -441,9 +417,6 @@ function MultiBulkApply({ parties, onDone }: { parties: Party[]; onDone: () => v
   const need = needs(type, direction);
   const categories = (credit ? incomeCategories : expenseCategories).map((c) => c.name);
   const sourceAccount = open[0]?.r.accountId;
-  const accounts = book.accounts.filter(
-    (a) => a.id !== sourceAccount && (type === "CREDIT_CARD_PAYMENT" ? a.type === "credit_card" : type === "LOAN_REPAYMENT" ? a.type === "loan" : a.type === "bank" || a.type === "cash"),
-  );
   const matching = open.filter((x) => x.r.direction === direction);
   const total = matching.reduce((t, x) => t + x.r.amountMinor, 0);
   const ready = (!need.account || account) && matching.length > 0;
@@ -492,35 +465,13 @@ function MultiBulkApply({ parties, onDone }: { parties: Party[]; onDone: () => v
         {need.category && (
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-muted-foreground">Category</span>
-            <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger className="h-8 w-44" aria-label="Category for the selected names">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map((name) => (
-                  <SelectItem key={name} value={name}>
-                    {name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <CategorySelect names={categories} value={category} onChange={setCategory} allowNew={!credit} className="h-8 w-44" ariaLabel="Category for the selected names" />
           </div>
         )}
         {need.account && (
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-muted-foreground">{type === "CREDIT_CARD_PAYMENT" ? "Card" : type === "LOAN_REPAYMENT" ? "Loan" : credit ? "From" : "To"}</span>
-            <Select value={account} onValueChange={setAccount}>
-              <SelectTrigger className="h-8 w-44" aria-label="Account for the selected names">
-                <SelectValue placeholder="Choose" />
-              </SelectTrigger>
-              <SelectContent>
-                {accounts.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <CounterAccountSelect type={type} excludeId={sourceAccount} value={account} onChange={setAccount} className="h-8 w-44" ariaLabel="Account for the selected names" />
           </div>
         )}
         {need.person && <span className="text-xs text-muted-foreground">Each name is used as the person</span>}
