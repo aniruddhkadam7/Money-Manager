@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { useFinance } from "../finance-provider";
 import { EVENT_LABEL, optionsFor } from "./labels";
 import { needs } from "./review-card";
+import { PartyLogo } from "../brand-logo";
 import { CategorySelect, CounterAccountSelect } from "./pickers";
 import { useStatements } from "./statements-provider";
 
@@ -250,9 +251,15 @@ export function PartyRanking({
                   )}
                 >
                   <span className="flex items-center gap-2.5">
-                    <span className={cn("flex size-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold tabular-nums", i < 3 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>
-                      {i + 1}
-                    </span>
+                    <PartyLogo
+                      name={p.name}
+                      className="!size-6 !rounded-full [&>img]:!size-5"
+                      fallback={
+                        <span className={cn("flex size-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold tabular-nums", i < 3 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>
+                          {i + 1}
+                        </span>
+                      }
+                    />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[13px] font-semibold leading-tight">{p.name}</span>
                       <span className="text-[11px] text-muted-foreground">

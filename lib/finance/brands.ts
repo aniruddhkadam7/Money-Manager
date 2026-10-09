@@ -78,9 +78,17 @@ export const BRANDS: Brand[] = [
   b("redbus", "redBus", "redbus.in", /redbus/, false),
   b("zerodha", "Zerodha", "zerodha.com", /zerodha/, false),
   b("groww", "Groww", "groww.in", /groww/, false),
+  // Employers and companies that pay you or reimburse you.
+  // "EY" only on its own (or EY LLP / GDS / India): a bank line like "PAN EY TEA STALL" is not EY.
+  b("ey", "EY", "ey.com", /^\s*ey(\s+(llp|gds|india|global|services))?\s*$|ernst\s*(&|and)?\s*young/, false),
 ];
 
 /** Services found by name in any text (a description, a bank narration). Subscriptions win over plain shops. */
+/** Brands whose official vector logo is in /public/brands as `<slug>.svg`; the rest use `<slug>.png`. */
+const VECTOR = new Set(["ey"]);
+
+export const brandLogoSrc = (slug: string): string => `/brands/${slug}.${VECTOR.has(slug) ? "svg" : "png"}`;
+
 export function brandFor(text: string): Brand | null {
   const t = text.toLowerCase();
   const hits = BRANDS.filter((x) => x.re.test(t));
@@ -92,7 +100,7 @@ export const subscriptionBrandFor = (text: string): Brand | null => {
   return BRANDS.find((x) => x.subscription && x.re.test(t)) ?? null;
 };
 
-export const logoSrc = (brand: Pick<Brand, "slug">) => `/brands/${brand.slug}.png`;
+export const logoSrc = (brand: Pick<Brand, "slug">) => brandLogoSrc(brand.slug);
 
 /** Insurance and similar with no specific brand: still a subscription, no logo. */
 export const GENERIC_SUBSCRIPTION = /insurance|premium|mutual fund sip/;

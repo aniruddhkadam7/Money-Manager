@@ -14,6 +14,7 @@ import { isMoneyBack } from "@/lib/finance/state";
 import type { EventType, FinancialEvent } from "@/lib/finance/types";
 import { cn } from "@/lib/utils";
 import { CategoryIcon } from "../category-icon";
+import { PartyLogo } from "../brand-logo";
 import { useEventDialog } from "../events/event-dialog";
 import { EVENT_OPTIONS } from "../events/event-meta";
 import { EventRow, headline } from "../events/event-row";
@@ -224,9 +225,15 @@ function ActivityContent() {
         <Card>
           <CardContent className="flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
             <div className="flex items-center gap-4">
-              <span className="grid size-12 shrink-0 place-items-center rounded-full bg-indigo-50 text-lg font-semibold text-indigo-600">
-                {person.person.name.charAt(0).toUpperCase()}
-              </span>
+              <PartyLogo
+                name={person.person.name}
+                className="!size-12 !rounded-full"
+                fallback={
+                  <span className="grid size-12 shrink-0 place-items-center rounded-full bg-indigo-50 text-lg font-semibold text-indigo-600">
+                    {person.person.name.charAt(0).toUpperCase()}
+                  </span>
+                }
+              />
               <div>
                 <button
                   type="button"

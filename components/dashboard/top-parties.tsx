@@ -8,6 +8,7 @@ import { formatDayMonth, monthEnd, monthStart, shiftMonth } from "@/lib/domain/d
 import { incomeSources } from "@/lib/finance/sources";
 import type { FinancialState, PersonSummary } from "@/lib/finance/state";
 import { CategoryIcon } from "../category-icon";
+import { PartyLogo } from "../brand-logo";
 import { ChartCard, EmptyChart, RangeTabs } from "../charts/primitives";
 import { useFinance } from "../finance-provider";
 
@@ -136,7 +137,7 @@ function IncomeSourcesCard() {
               <Row
                 key={s.key}
                 href={activityHref({ category: s.categoryId, q: s.name, from: range.from, to: range.to })}
-                lead={<CategoryIcon category={getCategory(s.categoryId)} tile className="!size-9 !rounded-full" />}
+                lead={<PartyLogo name={s.name} className="!rounded-full [&>img]:!size-6" fallback={<CategoryIcon category={getCategory(s.categoryId)} tile className="!size-9 !rounded-full" />} />}
                 title={s.name}
                 caption={`${formatBps(Math.round((s.amountMinor / total) * 10_000))} of income · ${s.count} ${s.count === 1 ? "payment" : "payments"} · last ${formatDayMonth(s.lastDate)}`}
                 amount={formatExactINR(s.amountMinor)}
@@ -190,7 +191,7 @@ function PeopleCard({ title, side, people }: { title: string; side: "borrowers" 
               <Row
                 key={r.person.id}
                 href={activityHref({ person: r.person.id })}
-                lead={<Avatar name={r.person.name} />}
+                lead={<PartyLogo name={r.person.name} className="!rounded-full [&>img]:!size-6" fallback={<Avatar name={r.person.name} />} />}
                 title={r.person.name}
                 caption={
                   r.settled > 0

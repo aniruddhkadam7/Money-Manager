@@ -10,6 +10,7 @@ import { activityHref } from "@/lib/charts/links";
 import { formatRupees } from "@/lib/finance/describe";
 import { CategoryIcon } from "../category-icon";
 import { useFinance } from "../finance-provider";
+import { PartyLogo } from "../brand-logo";
 import { SamePeopleBanner } from "./same-people-banner";
 
 /** One line with inline rename and delete. Shows why when something can't be removed. */
@@ -164,7 +165,13 @@ export function ManageLists() {
               return (
                 <ManagedRow
                   key={p.person.id}
-                  lead={<span className="grid size-9 shrink-0 place-items-center rounded-full bg-slate-100 text-sm font-semibold text-slate-600">{p.person.name.charAt(0).toUpperCase()}</span>}
+                  lead={
+                    <PartyLogo
+                      name={p.person.name}
+                      className="!rounded-full [&>img]:!size-6"
+                      fallback={<span className="grid size-9 shrink-0 place-items-center rounded-full bg-slate-100 text-sm font-semibold text-slate-600">{p.person.name.charAt(0).toUpperCase()}</span>}
+                    />
+                  }
                   name={p.person.name}
                   detail={detail}
                   href={activityHref({ person: p.person.id })}

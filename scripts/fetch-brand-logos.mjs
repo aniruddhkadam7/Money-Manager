@@ -38,6 +38,11 @@ for (const { slug, domain } of brands) {
     missing.push(slug);
     continue;
   }
+  // The service sometimes answers with a JPEG or ICO; the app loads `<slug>.png`, so only real PNGs are kept.
+  if (png.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a") {
+    missing.push(`${slug} (not a PNG: convert it by hand)`);
+    continue;
+  }
   writeFileSync(file, png);
   ok++;
 }
