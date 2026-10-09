@@ -45,14 +45,53 @@ export function buildBreakdown(state: FinancialState): { own: Line[]; owe: Line[
 }
 
 /** The itemised net worth in a "How it adds up" sheet. */
-export function NetWorthBreakdownSheet({ state, open, onOpenChange }: { state: FinancialState; open: boolean; onOpenChange: (open: boolean) => void }) {
+/**
+ * The itemised net worth in a "How it adds up" sheet. `only` narrows it to one side, so the ⓘ on Total assets
+ * explains just the assets and the one on Liabilities just the liabilities.
+ */
+export function NetWorthBreakdownSheet({
+  state,
+  open,
+  onOpenChange,
+  only,
+}: {
+  state: FinancialState;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  only?: "own" | "owe";
+}) {
   const { own, owe } = buildBreakdown(state);
+  const asOf = formatDisplayDate(state.asOf);
+  if (only === "own") {
+    return (
+      <ExplainSheet
+        open={open}
+        onOpenChange={onOpenChange}
+        title="What you own"
+        description={<>Your total assets as of {asOf}: bank and cash, money people owe you, investments, and cards paid ahead. Tap a line to see its entries.</>}
+        sections={[{ title: "What you own", rows: own, totalMinor: state.assets.totalMinor, empty: "Nothing recorded yet." }]}
+        steps={[{ label: "Total assets", amountMinor: state.assets.totalMinor, op: "=" }]}
+      />
+    );
+  }
+  if (only === "owe") {
+    return (
+      <ExplainSheet
+        open={open}
+        onOpenChange={onOpenChange}
+        title="What you owe"
+        description={<>Your liabilities as of {asOf}: money you owe people, card bills and loans. Tap a line to see its entries.</>}
+        sections={[{ title: "What you owe", rows: owe, totalMinor: state.liabilities.totalMinor, empty: "You don't owe anything." }]}
+        steps={[{ label: "Liabilities", amountMinor: state.liabilities.totalMinor, op: "=" }]}
+      />
+    );
+  }
   return (
     <ExplainSheet
       open={open}
       onOpenChange={onOpenChange}
       title="How your net worth adds up"
-      description={<>Everything you own, less everything you owe, as of {formatDisplayDate(state.asOf)}. Tap a line to see its entries.</>}
+      description={<>Everything you own, less everything you owe, as of {asOf}. Tap a line to see its entries.</>}
       sections={[
         { title: "What you own", rows: own, totalMinor: state.assets.totalMinor, empty: "Nothing recorded yet." },
         { title: "What you owe", rows: owe, totalMinor: state.liabilities.totalMinor, empty: "You don't owe anything." },
