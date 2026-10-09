@@ -14,6 +14,7 @@ import { removeImportEntries } from "@/lib/finance/book-ops";
 import { useFinance } from "../finance-provider";
 import { deleteStatementFile, loadStatementFile, saveStatementFile } from "@/lib/statements/files";
 import { readCardBill, type CardBill } from "@/lib/statements/card-bill";
+import { readCardNumber } from "@/lib/statements/mask";
 import { extractPdfText } from "@/lib/statements/pdf";
 
 type Status = "loading" | "ready" | "error";
@@ -113,31 +114,36 @@ export function StatementsProvider({ children, repository = repo }: { children: 
     repository.save(next).catch(() => setSaveError("Couldn't save import progress in this browser (is storage full?)."));
   }, [status, finance, repository, nameAccountsAfterBanks]);
 
-  // Card statements imported before the bill summary was read: read it from the saved PDF, once.
+  // Card statements imported before the bill summary or card number was read: read them from the saved PDF, once.
   const billsRead = useRef(false);
   useEffect(() => {
     if (billsRead.current || status !== "ready" || finance.status !== "ready") return;
     billsRead.current = true;
     const book = finance.getBook();
     const missing = storeRef.current.imports.filter(
-      (i) => !i.cardBill && i.status !== "FAILED" && (i.cardStatement || book.accounts.find((a) => a.id === i.accountId)?.type === "credit_card"),
+      (i) =>
+        (!i.cardBill || !i.accountMask) &&
+        i.status !== "FAILED" &&
+        (i.cardStatement || book.accounts.find((a) => a.id === i.accountId)?.type === "credit_card"),
     );
     if (missing.length === 0) return;
     (async () => {
-      const found: Record<string, CardBill> = {};
+      const found: Record<string, Pick<ImportRecord, "cardBill" | "accountMask">> = {};
       for (const i of missing) {
         const data = await loadStatementFile(i.id);
         if (!data) continue;
         try {
           const pdf = await extractPdfText(data, await loadPdfjs());
-          const bill = readCardBill(pdf.pages.flat().map((t) => t.str).join(" "));
-          if (bill) found[i.id] = bill;
+          const text = pdf.pages.flat().map((t) => t.str).join(" ");
+          const cardBill: CardBill | undefined = i.cardBill ?? readCardBill(text);
+          const accountMask = i.accountMask ?? readCardNumber(text);
+          if (cardBill !== i.cardBill || accountMask !== i.accountMask) found[i.id] = { cardBill, accountMask };
         } catch {
           /* password-protected or unreadable: the dashboard estimates from the entries instead */
         }
       }
       if (Object.keys(found).length === 0) return;
-      const next = { ...storeRef.current, imports: storeRef.current.imports.map((i) => (found[i.id] ? { ...i, cardBill: found[i.id] } : i)) };
+      const next = { ...storeRef.current, imports: storeRef.current.imports.map((i) => (found[i.id] ? { ...i, ...found[i.id] } : i)) };
       storeRef.current = next;
       setStore(next);
       repository.save(next).catch(() => undefined);

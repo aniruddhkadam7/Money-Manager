@@ -50,7 +50,7 @@ export function DuplicatesBanner() {
             <strong>{extras.length}</strong> {extras.length === 1 ? "entry looks" : "entries look"} like {extras.length === 1 ? "a repeat" : "repeats"} from importing the same statement twice.
           </span>
         </span>
-        <Button size="sm" variant="outline" className="bg-white" onClick={() => { setSkip(new Set()); setErrors([]); setOpen(true); }} data-testid="review-duplicates">
+        <Button size="sm" variant="outline" onClick={() => { setSkip(new Set()); setErrors([]); setOpen(true); }} data-testid="review-duplicates">
           Review and remove
         </Button>
       </div>
@@ -60,7 +60,7 @@ export function DuplicatesBanner() {
           <DialogHeader>
             <DialogTitle>Remove repeated entries</DialogTitle>
             <DialogDescription>
-              Each pair below is the same statement line recorded twice. The first is kept; tick the repeats you want to remove. Anything you untick stays.
+              Each pair is one statement line recorded twice. The first is kept; tick repeats to remove.
             </DialogDescription>
           </DialogHeader>
 

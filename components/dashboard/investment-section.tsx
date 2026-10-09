@@ -7,7 +7,7 @@ import { activityHref } from "@/lib/charts/links";
 import { formatBps, formatCompactINR, formatExactINR, formatHeadlineINR, formatSignedINR } from "@/lib/charts/format";
 import { addDays, daysBetween } from "@/lib/domain/dates";
 import type { DashboardModel } from "@/lib/finance/dashboard-model";
-import { balanceSeries, rangeStart, sampleDates, type RangeKey } from "@/lib/finance/series";
+import { balanceSeries, DEFAULT_PERIOD, PERIODS, rangeStart, sampleDates, type RangeKey } from "@/lib/finance/series";
 import { LineChart, type ChartSeries } from "../charts/line-chart";
 import { ChartCard, EmptyChart, Headline, RangeTabs } from "../charts/primitives";
 import { TooltipCard, TooltipHint, TooltipRow, TooltipTitle } from "../charts/tooltip";
@@ -15,20 +15,12 @@ import { useEventDialog } from "../events/event-dialog";
 import { useFinance } from "../finance-provider";
 import { axisLabel, dateTitle, GAIN, LOSS } from "./net-worth-section";
 
-const RANGES: { value: RangeKey; label: string }[] = [
-  { value: "1M", label: "1M" },
-  { value: "6M", label: "6M" },
-  { value: "1Y", label: "1Y" },
-  { value: "3Y", label: "3Y" },
-  { value: "ALL", label: "All" },
-];
-
 /** Are my investments growing? Value over time against what I put in. */
 export function InvestmentSection({ model }: { model: DashboardModel }) {
   const { book, ledger, state, today } = useFinance();
   const router = useRouter();
   const { openAdd } = useEventDialog();
-  const [range, setRange] = useState<RangeKey>("1Y");
+  const [range, setRange] = useState<RangeKey>(DEFAULT_PERIOD);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
 
   const { dates, points } = useMemo(() => {
@@ -55,15 +47,15 @@ export function InvestmentSection({ model }: { model: DashboardModel }) {
   );
 
   return (
-    <ChartCard title="Investments" action={<RangeTabs label="Investment range" value={range} options={RANGES} onChange={setRange} />}>
+    <ChartCard title="Investments" action={<RangeTabs label="Investment range" value={range} options={PERIODS} onChange={setRange} />}>
       <Headline
         value={formatHeadlineINR(value)}
         delta={invested > 0 ? `${formatSignedINR(gain, false)}${pctBps !== null ? ` (${pctBps >= 0 ? "+" : "−"}${formatBps(Math.abs(pctBps), 1)})` : ""}` : undefined}
         tone={gain === 0 ? "neutral" : gain > 0 ? "positive" : "negative"}
         caption={
           invested > 0
-            ? `You put in ${formatExactINR(invested)}. ${gain >= 0 ? "Your investments have grown by" : "Your investments are down"} ${formatExactINR(Math.abs(gain))}.`
-            : "Current value of everything you've invested."
+            ? `Put in ${formatExactINR(invested)} · ${gain >= 0 ? "up" : "down"} ${formatExactINR(Math.abs(gain))}`
+            : "Current value"
         }
       />
       {!hasInvestments ? (

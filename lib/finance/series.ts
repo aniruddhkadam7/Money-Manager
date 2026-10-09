@@ -17,6 +17,34 @@ const RANGE_DAYS: Record<Exclude<RangeKey, "ALL">, number> = {
   "3Y": 1095,
 };
 
+/**
+ * The one set of periods every dashboard card offers, so "6M" means the same thing everywhere.
+ * Month-by-month charts leave out 1M (it would be a single bar).
+ */
+export const PERIODS: { value: RangeKey; label: string; words: string }[] = [
+  { value: "1M", label: "1M", words: "in the last 30 days" },
+  { value: "3M", label: "3M", words: "in the last 3 months" },
+  { value: "6M", label: "6M", words: "in the last 6 months" },
+  { value: "1Y", label: "1Y", words: "in the last 12 months" },
+  { value: "ALL", label: "All", words: "since you started" },
+];
+export const MONTHLY_PERIODS = PERIODS.filter((p) => p.value !== "1M");
+export const DEFAULT_PERIOD: RangeKey = "6M";
+export const periodWords = (range: RangeKey) => PERIODS.find((p) => p.value === range)?.words ?? "";
+
+/** How many calendar months (ending with `endYm`) a period covers on a month-by-month chart. */
+export function monthsInPeriod(range: RangeKey, endYm: string, firstActivity: string | null): number {
+  if (range === "3M") return 3;
+  if (range === "6M") return 6;
+  if (range === "1Y") return 12;
+  if (range === "3Y") return 36;
+  if (range === "1M") return 1;
+  if (!firstActivity) return 1;
+  const [y0, m0] = firstActivity.slice(0, 7).split("-").map(Number);
+  const [y1, m1] = endYm.split("-").map(Number);
+  return Math.max(1, (y1 - y0) * 12 + (m1 - m0) + 1);
+}
+
 /** The earliest day anything actually happened (ignoring pre-set opening dates). Null if nothing yet. */
 export function firstActivityDate(ledger: Ledger): string | null {
   let first: string | null = null;

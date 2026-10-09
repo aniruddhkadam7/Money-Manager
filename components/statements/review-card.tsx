@@ -205,7 +205,7 @@ export function ReviewCard({ row, siblings, compact = false }: { row: StatementR
   const fieldsOk = picking && n ? (!n.person || form.person.trim()) && (!n.category || form.category) && (!n.account || form.account) && (!n.holding || form.holding.trim()) : false;
 
   return (
-    <div className={cn("rounded-2xl border bg-card p-4", row.status === "possible_duplicate" && "border-amber-300")} data-testid="review-card" data-row={row.id}>
+    <div className={cn("glass rounded-2xl border p-4", row.status === "possible_duplicate" && "border-amber-300")} data-testid="review-card" data-row={row.id}>
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
         <div className="min-w-0 flex-1">
           <div className="text-xs text-muted-foreground">
@@ -237,7 +237,7 @@ export function ReviewCard({ row, siblings, compact = false }: { row: StatementR
                     const lines = sameNameLines().length;
                     const past = pastEntries(ask.eventType, ask.category).length;
                     const bits = [lines ? `${lines} other waiting ${lines === 1 ? "line" : "lines"}` : "", past ? `${past} past ${past === 1 ? "entry" : "entries"}` : ""].filter(Boolean);
-                    return `“Yes” also updates ${bits.length ? bits.join(" and ") : "any future lines"}, and statements you import later will know it without asking.`;
+                    return `“Yes” also updates ${bits.length ? bits.join(" and ") : "future lines"}, and is remembered.`;
                   })()}
                 </span>
               </p>

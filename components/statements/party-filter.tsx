@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, X } from "lucide-react";
+import { Check, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -142,17 +142,34 @@ export function PartyRanking({
   const set = (patch: Partial<PartyFilters>) => onFilters({ ...filters, ...patch });
   const extraActive = filters.who !== "all" || filters.sort !== "count" || filters.oneOffs;
   const dirty = filtersActive(filters) || extraActive;
+  // Phones: only the search box shows; the rest folds behind a filter button whose badge counts what's set.
+  const [moreOpen, setMoreOpen] = useState(false);
+  const setCount = [filters.direction !== "all", filters.who !== "all", filters.sort !== "count", filters.oneOffs].filter(Boolean).length;
+  const folded = !moreOpen && "max-sm:hidden";
 
   return (
-    <section className="rounded-2xl border bg-card p-4" data-testid="party-ranking" aria-label="Who you transact with most">
+    <section className="glass rounded-2xl border p-4" data-testid="party-ranking" aria-label="Who you transact with most">
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3" data-testid="party-filters">
         <div>
           <h3 className="text-sm font-semibold">{filters.sort === "amount" ? "Biggest by amount" : "Who you transact with most"}</h3>
           <p className="text-xs text-muted-foreground" data-testid="filters-count">
-            Showing {shownLines} of {totalLines} lines{selected ? " · tap the name again to see everyone" : " · tap a name to sort out all its lines together"}
+            Showing {shownLines} of {totalLines} lines{selected ? " · tap again for everyone" : " · tap a name to handle all its lines"}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-muted/40 p-1.5" data-testid="more-filters">
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-muted/40 p-1.5 max-sm:w-full" data-testid="more-filters">
+          <button
+            type="button"
+            aria-label={setCount > 0 ? `Filters (${setCount} set)` : "Filters"}
+            aria-expanded={moreOpen}
+            onClick={() => setMoreOpen((o) => !o)}
+            className="relative order-1 grid size-9 shrink-0 place-items-center rounded-lg border bg-card text-muted-foreground hover:text-foreground sm:hidden"
+          >
+            <SlidersHorizontal className="size-4" />
+            {setCount > 0 && (
+              <span className="absolute -right-1.5 -top-1.5 grid size-4 place-items-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground">{setCount}</span>
+            )}
+          </button>
+          <div className={cn("order-2 flex flex-wrap items-center gap-2 max-sm:basis-full sm:contents", folded)}>
           <Segmented
             label="Money direction"
             value={filters.direction}
@@ -190,9 +207,16 @@ export function PartyRanking({
           >
             One-offs
           </button>
-          <Input value={filters.query} onChange={(e) => set({ query: e.target.value })} placeholder="Search a name" aria-label="Search a name" className="h-8 w-40 bg-card" />
+          </div>
+          <Input
+            value={filters.query}
+            onChange={(e) => set({ query: e.target.value })}
+            placeholder="Search a name"
+            aria-label="Search a name"
+            className="h-8 w-40 bg-card max-sm:order-first max-sm:h-9 max-sm:flex-1"
+          />
           {dirty && (
-            <button type="button" onClick={() => onFilters(DEFAULT_FILTERS)} className="text-xs font-medium text-primary hover:underline" data-testid="filters-reset">
+            <button type="button" onClick={() => onFilters(DEFAULT_FILTERS)} className="order-3 text-xs font-medium text-primary hover:underline max-sm:basis-full max-sm:text-left" data-testid="filters-reset">
               Reset
             </button>
           )}

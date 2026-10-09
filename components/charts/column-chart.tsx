@@ -3,15 +3,20 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { useWidth } from "./use-width";
 
-export interface Column {
-  key: string;
-  label: string;
+export interface Bar {
   value: number;
   color: string;
   /** Drawn softer, e.g. the month still in progress. */
   soft?: boolean;
   /** Text above the bar. */
   valueLabel: string;
+}
+
+export interface Column extends Bar {
+  key: string;
+  label: string;
+  /** Several bars side by side in this column (e.g. income and spending), instead of the single value. */
+  bars?: Bar[];
 }
 
 interface Props {
@@ -44,8 +49,15 @@ export function ColumnChart({ columns, tooltip, onSelect, selectLabel = "See det
   const innerW = Math.max(0, width - pad.left - pad.right);
   const innerH = height - pad.top - pad.bottom;
   const slot = n ? innerW / n : 0;
-  const barW = Math.min(64, slot * 0.56);
-  const max = Math.max(...columns.map((c) => c.value), 1);
+  const barsOf = (c: Column): Bar[] => c.bars ?? [c];
+  const perCol = Math.max(1, ...columns.map((c) => barsOf(c).length));
+  // A group of bars gets more of its slot than a single bar, with a small gap between the bars.
+  const groupW = perCol > 1 ? Math.min(30 * perCol, slot * 0.72) : Math.min(64, slot * 0.56);
+  const gap = perCol > 1 ? Math.min(4, groupW * 0.08) : 0;
+  const barW = (groupW - gap * (perCol - 1)) / perCol;
+  // Narrow side-by-side bars would have their amounts overlap: then the hover card carries them.
+  const showValues = perCol === 1 || barW >= 24;
+  const max = Math.max(...columns.flatMap((c) => barsOf(c).map((b) => b.value)), 1);
   const base = pad.top + innerH;
   const touch = pointerKind.current === "touch";
   const active = hover !== null && hover < n ? hover : null;
@@ -75,28 +87,39 @@ export function ColumnChart({ columns, tooltip, onSelect, selectLabel = "See det
           <div key={animateKey} className="absolute inset-0">
             <svg width={width} height={height} className="block overflow-visible" aria-hidden>
               {active !== null && (
-                <rect x={cx(active) - slot / 2 + 3} y={pad.top - 22} width={slot - 6} height={innerH + 22 + 6} rx={14} fill="#f1f5f9" />
+                <rect x={cx(active) - slot / 2 + 3} y={pad.top - 22} width={slot - 6} height={innerH + 22 + 6} rx={14} className="fill-slate-100" />
               )}
-              <line x1={pad.left} x2={width - pad.right} y1={base} y2={base} stroke="#e2e8f0" strokeWidth={1} />
+              <line x1={pad.left} x2={width - pad.right} y1={base} y2={base} className="stroke-slate-200" strokeWidth={1} />
               {columns.map((c, i) => {
-                const h = Math.max((c.value / max) * innerH, c.value > 0 ? 4 : 2);
                 const dim = active !== null && active !== i;
+                const bars = barsOf(c);
+                const left = cx(i) - (bars.length * barW + gap * (bars.length - 1)) / 2;
                 return (
                   <g key={c.key} style={{ transition: "opacity 160ms" }} opacity={dim ? 0.45 : 1}>
-                    <rect
-                      className="bar-grow"
-                      x={cx(i) - barW / 2}
-                      y={base - h}
-                      width={barW}
-                      height={h}
-                      rx={Math.min(10, barW / 2)}
-                      fill={c.color}
-                      fillOpacity={c.soft ? 0.5 : 1}
-                      style={{ animationDelay: `${i * 55}ms` }}
-                    />
-                    <text x={cx(i)} y={base - h - 8} textAnchor="middle" className="fill-slate-700 text-[12px] font-semibold tabular-nums">
-                      {c.valueLabel}
-                    </text>
+                    {bars.map((b, j) => {
+                      const h = Math.max((b.value / max) * innerH, b.value > 0 ? 4 : 2);
+                      const x = left + j * (barW + gap);
+                      return (
+                        <g key={j}>
+                          <rect
+                            className="bar-grow"
+                            x={x}
+                            y={base - h}
+                            width={barW}
+                            height={h}
+                            rx={Math.min(10, barW / 2)}
+                            fill={b.color}
+                            fillOpacity={b.soft ? 0.5 : 1}
+                            style={{ animationDelay: `${i * 55 + j * 30}ms` }}
+                          />
+                          {showValues && (
+                            <text x={x + barW / 2} y={base - h - 8} textAnchor="middle" className={`fill-slate-700 font-semibold tabular-nums ${bars.length > 1 ? "text-[10px]" : "text-[12px]"}`}>
+                              {b.valueLabel}
+                            </text>
+                          )}
+                        </g>
+                      );
+                    })}
                     <text x={cx(i)} y={height - 7} textAnchor="middle" className={`text-[12px] ${active === i ? "fill-slate-900 font-semibold" : "fill-slate-400"}`}>
                       {c.label}
                     </text>
@@ -146,7 +169,7 @@ export function ColumnChart({ columns, tooltip, onSelect, selectLabel = "See det
                   <button
                     type="button"
                     onClick={() => onSelect(active)}
-                    className="mt-1.5 w-full rounded-xl bg-slate-900/95 px-3 py-2 text-left text-[12px] font-medium text-white shadow-xl"
+                    className="mt-1.5 w-full rounded-xl palette-fixed bg-slate-900/95 px-3 py-2 text-left text-[12px] font-medium text-white shadow-xl"
                   >
                     {selectLabel} →
                   </button>

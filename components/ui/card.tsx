@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 function Card({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
-      className={cn("rounded-2xl border bg-card shadow-sm", className)}
+      className={cn("glass rounded-2xl border", className)}
       {...props}
     />
   );

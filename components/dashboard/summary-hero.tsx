@@ -7,13 +7,13 @@ import { activityHref, monthFilter } from "@/lib/charts/links";
 import type { DashboardModel } from "@/lib/finance/dashboard-model";
 import type { FinancialState } from "@/lib/finance/state";
 import type { Book } from "@/lib/finance/types";
-import { cardSpending } from "@/lib/finance/card-spend";
 import { monthEnd, monthStart } from "@/lib/domain/dates";
 import { cn } from "@/lib/utils";
 import { DeltaPill } from "../charts/primitives";
 import { ExplainSheet, HowIcon, useExplain } from "../explainer";
 import { useFinance } from "../finance-provider";
 import { NetWorthBreakdown, NetWorthBreakdownSheet } from "./net-worth-breakdown";
+import { NetWorthSparkline } from "./net-worth-sparkline";
 import { explainIncome, explainNetWorthChange, explainSpent } from "@/lib/finance/explain";
 import { formatDisplayDate, shiftMonth } from "@/lib/domain/dates";
 
@@ -58,8 +58,6 @@ function formatHeadlineINR(minor: number): string {
 /** The 10-second answer: how much am I worth, and how is this month going. */
 export function SummaryHero({ model, state, book }: { model: DashboardModel; state: FinancialState; book: Book }) {
   const { current } = model;
-  // How much of this month's spending went on credit cards (part of "Spent", not extra).
-  const cardSpent = cardSpending(book, monthStart(model.ym), monthEnd(model.ym)).spentMinor;
   const nw = state.netWorthMinor;
   const change = model.netWorthChangeMinor;
   const spendBps = model.spendingChangeBps;
@@ -85,9 +83,7 @@ export function SummaryHero({ model, state, book }: { model: DashboardModel; sta
   const catId = (label: string) => [...book.events].map((e) => ("categoryId" in e ? e.categoryId : "")).find((id) => id && name(id) === label);
 
   return (
-    <section className="relative overflow-hidden rounded-3xl border border-slate-300/60 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.07),0_12px_32px_-16px_rgba(15,23,42,0.22)] sm:p-6">
-      <div aria-hidden className="pointer-events-none absolute -right-28 -top-32 size-96 rounded-full bg-emerald-400/10 blur-3xl" />
-      <div aria-hidden className="pointer-events-none absolute -bottom-40 left-1/3 size-80 rounded-full bg-indigo-400/[0.07] blur-3xl" />
+    <section className="relative overflow-hidden rounded-3xl border glass p-5 sm:p-6">
 
       <div className="relative lg:flex lg:items-end lg:justify-between lg:gap-10">
         <div className="shrink-0">
@@ -109,6 +105,7 @@ export function SummaryHero({ model, state, book }: { model: DashboardModel; sta
             </button>
           )}
         </div>
+        <NetWorthSparkline firstActivity={model.firstActivity} />
         <div className="mt-3">
           <NetWorthBreakdown state={state} />
         </div>
@@ -145,7 +142,6 @@ export function SummaryHero({ model, state, book }: { model: DashboardModel; sta
             sub={
               <>
                 {spendBps !== null && <span className="block">{`${spendBps > 0 ? "▲" : spendBps < 0 ? "▼" : ""} ${formatBps(Math.abs(spendBps), 1)} vs last month`}</span>}
-                {cardSpent !== 0 && <span className="block text-slate-500">{formatHeadlineINR(cardSpent)} on credit cards</span>}
               </>
             }
             subTone={spendBps === null ? undefined : spendBps > 0 ? "negative" : spendBps < 0 ? "positive" : "neutral"}

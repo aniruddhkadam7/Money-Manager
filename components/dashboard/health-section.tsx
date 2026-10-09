@@ -30,15 +30,14 @@ const pct = (bps: number | null) => (bps === null ? "—" : `${bps < 0 ? "−" :
 
 /** A few honest ratios, no scores or grades. */
 export function HealthSection({ health }: { health: HealthMetrics }) {
-  const spendShare = health.savingsRateBps === null ? null : 10_000 - health.savingsRateBps;
   return (
     <ChartCard title="Financial health">
       <div className="grid gap-3.5">
-        <Meter label="Savings rate" hint="The share of this month's income you kept." display={pct(health.savingsRateBps)} bps={health.savingsRateBps} color="#059669" />
-        <Meter label="Monthly spending" hint={spendShare === null ? "No income recorded this month yet." : `${formatBps(Math.max(spendShare, 0))} of this month's income.`} display={formatExactINR(health.monthlySpendingMinor)} bps={spendShare} color="#f43f5e" />
-        <Meter label="Fixed commitments" hint={health.commitmentsShareBps === null ? "Repeating payments like rent and subscriptions, per month." : `${formatBps(health.commitmentsShareBps)} of income goes to repeating payments.`} display={formatExactINR(health.fixedCommitmentsMinor)} bps={health.commitmentsShareBps} color="#64748b" />
-        <Meter label="Investment rate" hint="The share of this month's income you invested." display={pct(health.investmentRateBps)} bps={health.investmentRateBps} color="#6366f1" />
-        <Meter label="Debt-to-asset ratio" hint="What you owe for every ₹100 you own. Lower is stronger." display={pct(health.debtToAssetBps)} bps={health.debtToAssetBps} color="#e11d48" />
+        <Meter label="Savings rate" hint="Of income, kept" display={pct(health.savingsRateBps)} bps={health.savingsRateBps} color="#059669" />
+        {/* The rupee amounts (spent, commitments per month) are on their own cards; here only the shares of income. */}
+        <Meter label="Fixed commitments" hint={`Repeating payments · ${formatExactINR(health.fixedCommitmentsMinor)}/month`} display={pct(health.commitmentsShareBps)} bps={health.commitmentsShareBps} color="#64748b" />
+        <Meter label="Investment rate" hint="Of income, invested" display={pct(health.investmentRateBps)} bps={health.investmentRateBps} color="#6366f1" />
+        <Meter label="Debt-to-asset ratio" hint="Owed per ₹100 owned · lower is better" display={pct(health.debtToAssetBps)} bps={health.debtToAssetBps} color="#e11d48" />
       </div>
     </ChartCard>
   );

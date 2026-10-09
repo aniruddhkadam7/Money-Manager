@@ -3,6 +3,7 @@ import { buildLedger } from "@/lib/finance/engine";
 import { STATEMENT_ACCOUNT_TYPES, type Book } from "@/lib/finance/types";
 import { classifyWithAi, type AiOptions, type AiOutcome } from "./ai";
 import { readCardBill } from "./card-bill";
+import { readCardNumber } from "./mask";
 import { settleCardPayments } from "./card-payments";
 import { detectDuplicatesWithinStatement } from "./dedupe";
 import { fileHash } from "./fingerprint";
@@ -130,9 +131,14 @@ export function readiness(record: ImportRecord, rows: StatementRow[]): Readiness
   return { ready, blockers, canImportReady: ready || (onlyDecisions && rows.some((r) => r.status === "auto" || r.status === "auto_flagged")) };
 }
 
+/** Lines that still have something to do before the statement is finished. */
+const WAITING: StatementRow["status"][] = ["review", "possible_duplicate", "auto", "auto_flagged", "failed"];
+
 /** The import's status follows from its rows and checks; IMPORTED and FAILED are final. */
 export function statusFor(record: ImportRecord, rows: StatementRow[]): ImportStatus {
   if (record.status === "IMPORTED" || record.status === "FAILED") return record.status;
+  // Reopened after its import for a skipped line, and that line was skipped again: nothing left to add.
+  if (record.importedAt && rows.every((r) => !WAITING.includes(r.status) && !(r.status === "matched_existing" && r.decision?.by === "user" && r.decision.at > record.importedAt!))) return "IMPORTED";
   return readiness(record, rows).ready ? "READY_TO_IMPORT" : "REVIEW_REQUIRED";
 }
 
@@ -358,6 +364,9 @@ export async function processStatement(input: ProcessInput, env: PipelineEnv): P
     );
   }
 
+  // A card statement is known by its card's last four digits, not an account number printed elsewhere on it.
+  if (cardStatement) parsed.accountMask = readCardNumber(pageText) ?? parsed.accountMask;
+
   // Left to the app, the statement itself says which account it is (see detectAccount).
   const accountId = auto ? detectAccount(book, input.store, parsed, cardStatement) : input.accountId;
   const cardBill = cardStatement || book.accounts.find((a) => a.id === accountId)?.type === "credit_card" ? readCardBill(pageText) : undefined;
@@ -560,7 +569,12 @@ export function resolveRow(store: ImportStoreData, rowId: string, decision: Deci
   const row = store.rows.find((r) => r.id === rowId);
   if (!row) return { store, error: "That line no longer exists." };
   const record = store.imports.find((i) => i.id === row.importId);
-  if (!record || record.status === "IMPORTED") return { store, error: "This statement has already been imported." };
+  if (!record) return { store, error: "This statement has already been imported." };
+  if (record.status === "IMPORTED") {
+    // A skipped line can still be brought back after the import; the statement reopens just for it.
+    if (decision.kind !== "reopen" || row.status !== "skipped") return { store, error: "This statement has already been imported." };
+    store = { ...store, imports: store.imports.map((i) => (i.id === record.id ? { ...i, status: "REVIEW_REQUIRED" as const } : i)) };
+  }
 
   let next: StatementRow = { ...row };
   let rules = store.rules;

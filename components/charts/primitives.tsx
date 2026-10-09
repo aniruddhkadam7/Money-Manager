@@ -19,7 +19,7 @@ export function ChartCard({
   headerClassName?: string;
 }) {
   return (
-    <section className={cn("rounded-3xl border border-slate-300/60 bg-white p-4 shadow-[0_1px_3px_rgba(15,23,42,0.07),0_12px_32px_-16px_rgba(15,23,42,0.22)] sm:p-5", className)}>
+    <section className={cn("rounded-3xl border glass p-4 sm:p-5", className)}>
       <div className={cn("mb-3 flex flex-wrap items-center justify-between gap-2", headerClassName)}>
         <h2 className="text-sm font-semibold tracking-tight text-slate-900">{title}</h2>
         {action}
@@ -92,7 +92,7 @@ export function RangeTabs<T extends string>({
           onClick={() => onChange(o.value)}
           className={cn(
             "rounded-full px-3 py-1.5 text-sm font-medium transition-all outline-none sm:px-2.5 sm:py-0.5 sm:text-xs focus-visible:ring-2 focus-visible:ring-ring",
-            o.value === value ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800",
+            o.value === value ? "bg-card text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800",
           )}
         >
           {o.label}

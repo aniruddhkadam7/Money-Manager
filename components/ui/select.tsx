@@ -41,7 +41,7 @@ function SelectContent({
         position={position}
         sideOffset={4}
         className={cn(
-          "relative z-[60] max-h-72 min-w-[8rem] overflow-hidden rounded-xl border bg-card shadow-lg data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
+          "relative z-[60] max-h-72 min-w-[8rem] overflow-hidden rounded-xl border glass-pop shadow-lg data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
           className,
         )}
         {...props}

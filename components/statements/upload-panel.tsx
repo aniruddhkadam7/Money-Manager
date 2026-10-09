@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState, type DragEvent } from "react";
-import Link from "next/link";
 import { CheckCircle2, FileText, Loader2, LockKeyhole, ShieldCheck, Sparkles, TriangleAlert, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -71,13 +70,7 @@ export function UploadPanel({ onDone }: { onDone: (importId: string) => void }) 
   const activeIndex = progress ? STAGES.findIndex((s) => s.stage === progress.stage) : -1;
 
   return (
-    <Card className="p-5 sm:p-6" data-testid="upload-panel">
-      <div className="flex items-center gap-2">
-        <ShieldCheck className="size-4 text-primary" />
-        <p className="text-sm text-muted-foreground">Your statement is read on this device and never uploaded. Only short, number-masked descriptions of unclear lines go to the AI, if you allow it.</p>
-      </div>
-
-      <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_20rem]">
+    <Card className="grid gap-3 p-3 sm:gap-4 sm:p-5" data-testid="upload-panel">
         <div>
           <div
             role="button"
@@ -91,36 +84,45 @@ export function UploadPanel({ onDone }: { onDone: (importId: string) => void }) 
             onDragLeave={() => setDragging(false)}
             onDrop={onDrop}
             aria-label="Choose a bank statement file"
-            className={`flex min-h-44 cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-4 py-8 text-center transition-colors ${dragging ? "border-primary bg-primary/5" : "border-input hover:bg-muted/50"} ${busy ? "pointer-events-none opacity-60" : ""}`}
+            className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 border-dashed px-4 py-3.5 transition-colors sm:min-h-28 sm:justify-center sm:py-6 ${dragging ? "border-primary bg-primary/5" : "border-input hover:bg-muted/50"} ${busy ? "pointer-events-none opacity-60" : ""}`}
           >
             {file ? (
               <>
-                <FileText className="size-8 text-primary" />
-                <div className="text-sm font-medium" data-testid="chosen-file">{file.name}</div>
-                <div className="text-xs text-muted-foreground">{(file.size / 1024).toFixed(0)} KB · click to choose a different file</div>
+                <FileText className="size-7 shrink-0 text-primary" />
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium" data-testid="chosen-file">{file.name}</div>
+                  <div className="text-xs text-muted-foreground">{(file.size / 1024).toFixed(0)} KB · tap to change</div>
+                </div>
               </>
             ) : (
               <>
-                <Upload className="size-8 text-muted-foreground" />
-                <div className="text-sm font-medium">Drop your bank statement here</div>
-                <div className="text-xs text-muted-foreground">PDF, Excel (.xlsx, .xls), CSV, or a clear photo or screenshot. Scanned pages are read too.</div>
+                <Upload className="size-7 shrink-0 text-muted-foreground" />
+                <div className="min-w-0">
+                  <div className="text-sm font-medium">
+                    <span className="sm:hidden">Choose your bank statement</span>
+                    <span className="max-sm:hidden">Drop your bank statement here, or click to choose</span>
+                  </div>
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    PDF, Excel, CSV or photo · <ShieldCheck className="size-3 shrink-0 text-primary" /> read on this device
+                  </div>
+                </div>
               </>
             )}
             <input ref={input} type="file" accept={ACCEPTED_EXTENSIONS} className="sr-only" data-testid="file-input" onChange={(e) => choose(e.target.files?.[0])} />
           </div>
 
           {needsPassword && (
-            <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3" data-testid="password-prompt">
+            <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3" data-testid="password-prompt">
               <div className="flex items-center gap-2 text-sm font-medium text-amber-900">
                 <LockKeyhole className="size-4" /> {result?.code === "password_incorrect" ? "That password didn't work" : "This file is password-protected"}
               </div>
-              <p className="mt-1 text-xs text-amber-900/80">Banks usually use your date of birth, customer ID or the last digits of your phone number. The password stays on this device.</p>
-              <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && start()} placeholder="PDF password" className="mt-2 bg-white" aria-label="PDF password" autoFocus />
+              <p className="mt-1 text-xs text-amber-900/80">Often your date of birth, customer ID or phone digits. It stays on this device.</p>
+              <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && start()} placeholder="PDF password" className="mt-2" aria-label="PDF password" autoFocus />
             </div>
           )}
 
           {result && !needsPassword && (
-            <div className="mt-4 flex gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm" role="alert" data-testid="upload-error" data-code={result.code}>
+            <div className="mt-3 flex gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm" role="alert" data-testid="upload-error" data-code={result.code}>
               <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
               <div>
                 <p>{result.message}</p>
@@ -134,63 +136,51 @@ export function UploadPanel({ onDone }: { onDone: (importId: string) => void }) 
           )}
         </div>
 
-        <div className="space-y-4">
-          <label className="block text-sm font-medium">
-            Which account is this statement for?
-            <Select value={accountId} onValueChange={setAccountId} disabled={busy}>
-              <SelectTrigger className="mt-1.5" aria-label="Statement account" data-testid="account-select">
-                <SelectValue placeholder="Choose an account" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={AUTO_ACCOUNT}>Detect from the statement</SelectItem>
-                {accounts.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <Select value={accountId} onValueChange={setAccountId} disabled={busy}>
+          <SelectTrigger className="min-w-0 flex-1 basis-56" aria-label="Statement account" data-testid="account-select">
+            <SelectValue placeholder="Choose an account" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={AUTO_ACCOUNT}>Account: detect from the statement</SelectItem>
+            {accounts.map((a) => (
+              <SelectItem key={a.id} value={a.id}>
+                {a.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
-          <div className="flex items-start justify-between gap-3 rounded-xl border p-3">
-            <div className="text-sm">
-              <div className="flex items-center gap-1.5 font-medium">
-                <Sparkles className="size-3.5 text-primary" /> Use AI for unclear lines
-              </div>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {statements.aiReady === null ? "Checking…" : aiAvailable ? "Rules run first. AI only sees lines the rules couldn't place." : "Not set up: add OPENAI_API_KEY on the server. Rules still work; unclear lines go to review."}
-              </p>
-            </div>
-            <Switch checked={useAi && aiAvailable} onCheckedChange={setUseAi} disabled={!aiAvailable || busy} aria-label="Use AI" />
-          </div>
-
-          <div>
-            <button className="text-xs font-medium text-muted-foreground underline-offset-2 hover:underline" onClick={() => setShowAdvanced((v) => !v)}>
-              {showAdvanced ? "Hide" : "Show"} confidence settings
-            </button>
-            {showAdvanced && (
-              <div className="mt-2 space-y-2 rounded-xl border p-3 text-xs" data-testid="thresholds">
-                <label className="flex items-center justify-between gap-3">
-                  Import without asking at or above
-                  <span className="flex items-center gap-1">
-                    <Input type="number" min={50} max={100} value={Math.round(t.autoThreshold * 100)} aria-label="Automatic threshold" className="h-8 w-16" onChange={(e) => statements.updateSettings({ autoThreshold: clamp(Number(e.target.value) / 100, Math.min(1, t.reviewThreshold + 0.01), 1) })} />%
-                  </span>
-                </label>
-                <label className="flex items-center justify-between gap-3">
-                  Import but flag at or above
-                  <span className="flex items-center gap-1">
-                    <Input type="number" min={0} max={99} value={Math.round(t.reviewThreshold * 100)} aria-label="Review threshold" className="h-8 w-16" onChange={(e) => statements.updateSettings({ reviewThreshold: clamp(Number(e.target.value) / 100, 0, t.autoThreshold - 0.01) })} />%
-                  </span>
-                </label>
-                <p className="text-muted-foreground">Below the second number, a line always waits for you.</p>
-              </div>
-            )}
-          </div>
-        </div>
+        <label
+          className="flex items-center gap-2 text-sm font-medium"
+          title={aiAvailable ? "Only for lines the rules can't place. AI sees only masked descriptions." : undefined}
+        >
+          <Sparkles className="size-3.5 text-primary" /> AI for unclear lines
+          <Switch checked={useAi && aiAvailable} onCheckedChange={setUseAi} disabled={!aiAvailable || busy} aria-label="Use AI" />
+        </label>
+        {statements.aiReady === false && <p className="w-full text-xs text-muted-foreground">AI isn&apos;t set up (needs OPENAI_API_KEY), so unclear lines go to review.</p>}
       </div>
 
+      {showAdvanced && (
+        <div className="space-y-2 rounded-xl border p-3 text-xs" data-testid="thresholds">
+          <label className="flex items-center justify-between gap-3">
+            Import without asking at or above
+            <span className="flex items-center gap-1">
+              <Input type="number" min={50} max={100} value={Math.round(t.autoThreshold * 100)} aria-label="Automatic threshold" className="h-8 w-16" onChange={(e) => statements.updateSettings({ autoThreshold: clamp(Number(e.target.value) / 100, Math.min(1, t.reviewThreshold + 0.01), 1) })} />%
+            </span>
+          </label>
+          <label className="flex items-center justify-between gap-3">
+            Import but flag at or above
+            <span className="flex items-center gap-1">
+              <Input type="number" min={0} max={99} value={Math.round(t.reviewThreshold * 100)} aria-label="Review threshold" className="h-8 w-16" onChange={(e) => statements.updateSettings({ reviewThreshold: clamp(Number(e.target.value) / 100, 0, t.autoThreshold - 0.01) })} />%
+            </span>
+          </label>
+          <p className="text-muted-foreground">Below this, lines wait for you.</p>
+        </div>
+      )}
+
       {progress && (
-        <div className="mt-5" role="status" aria-live="polite" data-testid="progress">
+        <div role="status" aria-live="polite" data-testid="progress">
           <div className="h-2 overflow-hidden rounded-full bg-muted">
             <div className="h-full rounded-full bg-primary transition-all duration-300" style={{ width: `${Math.max(4, Math.round(progress.fraction * 100))}%` }} />
           </div>
@@ -208,11 +198,10 @@ export function UploadPanel({ onDone }: { onDone: (importId: string) => void }) 
         </div>
       )}
 
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-muted-foreground">
-          Nothing is added to your records until you review it and press Import.{" "}
-          <Link href="/activity" className="underline">View current entries</Link>
-        </p>
+      <div className="flex items-center justify-between gap-3">
+        <button className="text-xs font-medium text-muted-foreground underline-offset-2 hover:underline" onClick={() => setShowAdvanced((v) => !v)}>
+          {showAdvanced ? "Hide" : "Confidence"} settings
+        </button>
         <Button onClick={start} disabled={!file || !accountId || busy || (needsPassword && !password)} data-testid="start-import">
           {busy ? <Loader2 className="animate-spin" /> : <Upload />} {busy ? "Working…" : needsPassword ? "Unlock and read" : "Read statement"}
         </Button>

@@ -217,7 +217,7 @@ function ConfirmDelete({ eventId, onClose }: { eventId: string; onClose: () => v
       <DialogHeader>
         <DialogTitle>Delete this entry?</DialogTitle>
         <DialogDescription>
-          {describer.title(event)} · {formatDisplayDate(event.date)}. Everything it changed is reversed automatically, and you can undo it right after.
+          {describer.title(event)} · {formatDisplayDate(event.date)}. Its effects are reversed; you can undo right after.
         </DialogDescription>
       </DialogHeader>
       <EffectsPanel eventId={eventId} />

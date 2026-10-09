@@ -6,7 +6,6 @@ import { formatExactINR } from "@/lib/charts/format";
 import { activityHref } from "@/lib/charts/links";
 import { daysBetween, formatDayMonth } from "@/lib/domain/dates";
 import type { DashboardModel } from "@/lib/finance/dashboard-model";
-import type { FinancialState } from "@/lib/finance/state";
 import { cn } from "@/lib/utils";
 import { BrandLogo } from "../brand-logo";
 import { CategoryIcon } from "../category-icon";
@@ -20,16 +19,20 @@ function when(days: number): string {
   return `In ${days} days`;
 }
 
-/** What do I already owe, regularly, and what is coming up? */
-export function UpcomingSection({ model, state }: { model: DashboardModel; state: FinancialState }) {
+/**
+ * What do I already owe, regularly, and what is coming up? Subscriptions have their own card and people you
+ * owe are in "Who you owe", so the list here is the rest (rent, EMIs, bills).
+ */
+export function UpcomingSection({ model }: { model: DashboardModel }) {
   const { getCategory, today } = useFinance();
-  const owedByMe = state.people.filter((p) => p.iOwe.outstandingMinor > 0);
+  const subscriptionKeys = new Set(model.subscriptions.map((c) => c.key));
+  const upcoming = model.upcoming.filter((c) => !subscriptionKeys.has(c.key));
 
   return (
     <ChartCard title="Commitments & upcoming">
-      {model.recurring.length === 0 && owedByMe.length === 0 ? (
+      {model.recurring.length === 0 ? (
         <EmptyChart height={200}>
-          Repeating payments like rent or subscriptions show up here once the same expense has been recorded three months in a row.
+          Payments that repeat 3 months in a row show up here.
         </EmptyChart>
       ) : (
         <>
@@ -43,9 +46,9 @@ export function UpcomingSection({ model, state }: { model: DashboardModel; state
             </p>
           </div>
 
-          {model.upcoming.length > 0 ? (
+          {upcoming.length > 0 ? (
             <ul className="grid">
-              {model.upcoming.slice(0, 5).map((c) => {
+              {upcoming.slice(0, 5).map((c) => {
                 const days = daysBetween(today, c.nextDate);
                 return (
                   <li key={c.key}>
@@ -68,20 +71,10 @@ export function UpcomingSection({ model, state }: { model: DashboardModel; state
               })}
             </ul>
           ) : model.recurring.length > 0 ? (
-            <p className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-500">Nothing is expected in the next 30 days.</p>
+            <p className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-500">
+              {model.upcoming.length > 0 ? "Only subscriptions are due in the next 30 days. They're listed in Subscriptions." : "Nothing is expected in the next 30 days."}
+            </p>
           ) : null}
-
-          {owedByMe.length > 0 && (
-            <div className="mt-3 border-t border-slate-100 pt-3">
-              <p className="mb-1 text-[11px] font-medium uppercase tracking-[0.08em] text-slate-400">You owe</p>
-              {owedByMe.map((p) => (
-                <Link key={p.person.id} href={activityHref({ person: p.person.id })} className="flex items-center justify-between rounded-xl py-1.5 text-sm hover:text-emerald-700">
-                  <span className="text-slate-700">{p.person.name}</span>
-                  <span className="font-semibold tabular-nums text-slate-900">{formatExactINR(p.iOwe.outstandingMinor)}</span>
-                </Link>
-              ))}
-            </div>
-          )}
         </>
       )}
     </ChartCard>

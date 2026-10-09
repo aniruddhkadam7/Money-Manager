@@ -154,7 +154,7 @@ export function ManageLists() {
         <SamePeopleBanner className="mx-4 sm:mx-5" />
         {people.length === 0 ? (
           <CardContent className="py-6 text-sm text-muted-foreground">
-            People appear here when you lend, borrow or split a bill.
+            Added when you lend, borrow or split a bill.
           </CardContent>
         ) : (
           <ul className="divide-y py-2">
@@ -216,7 +216,7 @@ export function ManageLists() {
           })}
           {custom.length === 0 && (
             <li className="px-5 py-4 text-sm text-muted-foreground">
-              Categories you create while adding an entry show up here, where you can rename or remove them.
+              Categories you add show up here.
             </li>
           )}
         </ul>

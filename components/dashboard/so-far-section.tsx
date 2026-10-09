@@ -5,24 +5,14 @@ import Link from "next/link";
 import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { formatExactINR } from "@/lib/charts/format";
 import { activityHref } from "@/lib/charts/links";
-import { addDays, currentMonthKey, formatDisplayDate, monthEnd, monthStart, shiftMonth, todayISO } from "@/lib/domain/dates";
+import { formatDisplayDate, todayISO } from "@/lib/domain/dates";
+import { DEFAULT_PERIOD, PERIODS, rangeStart, type RangeKey } from "@/lib/finance/series";
 import { HowYouPaid } from "./how-you-paid";
 import { MONEY_BACK_CATEGORY_IDS } from "@/lib/finance/state";
 import { cn } from "@/lib/utils";
 import { CategoryIcon } from "../category-icon";
+import { RangeTabs } from "../charts/primitives";
 import { useFinance } from "../finance-provider";
-
-type Span = "1d" | "7d" | "30d" | "month" | "lastMonth" | "3m" | "year" | "all";
-const SPANS: { id: Span; label: string; hint: string }[] = [
-  { id: "1d", label: "Today", hint: "Just today" },
-  { id: "7d", label: "7 days", hint: "The last 7 days, including today" },
-  { id: "30d", label: "1 month", hint: "The last 30 days, including today" },
-  { id: "month", label: "This month", hint: "From the 1st of this month" },
-  { id: "lastMonth", label: "Last month", hint: "The whole of last calendar month" },
-  { id: "3m", label: "3 months", hint: "This month and the two before it" },
-  { id: "year", label: "This year", hint: "From 1 January" },
-  { id: "all", label: "All time", hint: "Everything you've recorded" },
-];
 
 const rupees = (minor: number) => {
   const sign = minor < 0 ? "−" : "";
@@ -35,18 +25,12 @@ const rupees = (minor: number) => {
  */
 export function SoFarSection() {
   const { book, report, getCategory } = useFinance();
-  const [span, setSpan] = useState<Span>("all");
+  // The same periods as every other card on the dashboard.
+  const [span, setSpan] = useState<RangeKey>(DEFAULT_PERIOD);
 
   const { from, to } = useMemo(() => {
     const today = todayISO();
-    const ym = currentMonthKey();
-    if (span === "1d") return { from: today, to: today };
-    if (span === "7d") return { from: addDays(today, -6), to: today };
-    if (span === "30d") return { from: addDays(today, -29), to: today };
-    if (span === "month") return { from: monthStart(ym), to: today };
-    if (span === "lastMonth") return { from: monthStart(shiftMonth(ym, -1)), to: monthEnd(shiftMonth(ym, -1)) };
-    if (span === "3m") return { from: monthStart(shiftMonth(ym, -2)), to: today };
-    if (span === "year") return { from: `${today.slice(0, 4)}-01-01`, to: today };
+    if (span !== "ALL") return { from: rangeStart(span, today, null), to: today };
     const first = book.events.reduce((m, e) => (e.date < m ? e.date : m), today);
     return { from: first, to: today };
   }, [span, book.events]);
@@ -79,7 +63,7 @@ export function SoFarSection() {
   const gotBack = r.cashFlow.lending?.inflowMinor ?? 0;
 
   return (
-    <section className="rounded-3xl border border-slate-300/60 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.07),0_12px_32px_-16px_rgba(15,23,42,0.22)] sm:p-6" data-testid="so-far">
+    <section className="rounded-3xl border glass p-5 sm:p-6" data-testid="so-far">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold">Earned & spent</h2>
@@ -88,27 +72,14 @@ export function SoFarSection() {
               <>
                 Your records run from <strong className="font-medium text-foreground">{formatDisplayDate(coverage.first)}</strong> to{" "}
                 <strong className="font-medium text-foreground">{formatDisplayDate(coverage.last)}</strong> · {coverage.count.toLocaleString("en-IN")} entries
-                {span !== "all" && <> · showing {formatDisplayDate(from)} – {formatDisplayDate(to)}</>}
+                {span !== "ALL" && <> · showing {formatDisplayDate(from)} – {formatDisplayDate(to)}</>}
               </>
             ) : (
               "No entries yet"
             )}
           </p>
         </div>
-        <div role="group" aria-label="Period" className="flex max-w-full overflow-x-auto rounded-lg bg-muted p-0.5 [scrollbar-width:none] sm:inline-flex sm:flex-wrap [&::-webkit-scrollbar]:hidden">
-          {SPANS.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              aria-pressed={span === s.id}
-              title={s.hint}
-              onClick={() => setSpan(s.id)}
-              className={cn("shrink-0 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium sm:py-1 sm:text-xs", span === s.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
-            >
-              {s.label}
-            </button>
-          ))}
-        </div>
+        <RangeTabs label="Period" value={span} options={PERIODS} onChange={setSpan} />
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -124,7 +95,7 @@ export function SoFarSection() {
         <Big label="Lent out / got back" value={lentOut} sub={`got back ${rupees(gotBack)}`} href={activityHref({ group: "people", from, to })} />
       </div>
       <p className="mt-2 text-xs text-muted-foreground">
-        All money that came into your bank & cash: {formatExactINR(cameIn)} · went out: {formatExactINR(wentOut)}. Earned and spent leave out transfers between your own accounts, loans and repayments. Refunds, cashback and reimbursements are money back, so they lower spending instead of counting as earned.
+        Bank & cash: in {formatExactINR(cameIn)} · out {formatExactINR(wentOut)}
       </p>
 
       <HowYouPaid from={from} to={to} />
@@ -225,7 +196,7 @@ function Breakdown({
   const t = TONES[tone];
 
   return (
-    <div className="overflow-hidden rounded-2xl border bg-card shadow-sm">
+    <div className="glass overflow-hidden rounded-2xl border">
       <div className={cn("flex items-center gap-3 border-b px-4 py-3", t.head)}>
         <span className={cn("grid size-8 shrink-0 place-items-center rounded-lg", t.badge)}>
           <t.Icon className="size-4" />

@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Pencil, Plus } from "lucide-react";
+import { CheckCircle2, Pencil, Plus, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { activityHref } from "@/lib/charts/links";
+import { bankBrandFor } from "@/lib/finance/bank-logos";
 import { formatRupees } from "@/lib/finance/describe";
 import { formatDisplayDate } from "@/lib/domain/dates";
 import type { Account, AccountType } from "@/lib/finance/types";
@@ -13,6 +14,8 @@ import { cn } from "@/lib/utils";
 import { useEventDialog } from "../events/event-dialog";
 import { useQuickRepaymentReceived } from "../events/quick-repay";
 import { useFinance } from "../finance-provider";
+import { AccountLogo, useBankHints } from "../account-logo";
+import { PageTitle } from "../page-title";
 import { PictureIcon } from "../picture-icon";
 import { statementMatches, useStatementChecks, type StatementCheck } from "../statements/use-statement-checks";
 import { ACCOUNT_TYPE_INFO, AccountDialog } from "./account-dialog";
@@ -27,6 +30,7 @@ const SECTIONS: { id: string; title: string; types: AccountType[] }[] = [
 export function MoneyView() {
   const { status, state, missingStandardAccounts, restoreStandardAccounts } = useFinance();
   const statements = useStatementChecks();
+  const bankOf = useBankHints();
   const { openAdd } = useEventDialog();
   const theyPaidMe = useQuickRepaymentReceived();
   const [dialog, setDialog] = useState<{ open: boolean; editing: Account | null }>({ open: false, editing: null });
@@ -45,20 +49,22 @@ export function MoneyView() {
 
   return (
     <div className="mx-auto grid w-full max-w-[1400px] grid-cols-1 gap-4 sm:gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">Money</h1>
-          <p className="text-sm text-muted-foreground">Cash, UPI and cards are ready to use. Tap the pencil to set what each one holds today.</p>
-        </div>
-        {missingStandardAccounts.length > 0 && (
-          <Button variant="outline" size="sm" onClick={restoreStandardAccounts}>
-            Restore {missingStandardAccounts.map((a) => a.name).join(", ")}
-          </Button>
-        )}
-      </div>
+      <PageTitle
+        actions={
+          missingStandardAccounts.length > 0 && (
+            <Button variant="outline" size="sm" onClick={restoreStandardAccounts}>
+              Restore {missingStandardAccounts.map((a) => a.name).join(", ")}
+            </Button>
+          )
+        }
+      >
+        Money
+      </PageTitle>
 
       {SECTIONS.map((section) => {
         const rows = state.accounts.filter((a) => section.types.includes(a.account.type));
+        // With a bank logo in the list, every row's picture sits in the logo's width so the names line up.
+        const wide = rows.some((a) => bankBrandFor(a.account.name, bankOf(a.account.id)));
         return (
           <Card key={section.title} id={section.id} className="scroll-mt-24">
             <CardHeader>
@@ -77,6 +83,8 @@ export function MoneyView() {
                   <AccountRow
                     key={account.id}
                     account={account}
+                    bankHint={bankOf(account.id)}
+                    wide={wide}
                     detail={ACCOUNT_TYPE_INFO[account.type].label}
                     value={formatRupees(balanceMinor)}
                     caption={account.type === "credit_card" || account.type === "loan" ? "owed" : undefined}
@@ -99,7 +107,7 @@ export function MoneyView() {
         </CardHeader>
         {state.investments.holdings.length === 0 ? (
           <CardContent className="py-6 text-sm text-muted-foreground">
-            Nothing invested yet. Use “Invest” when you put money into a fund, stock or gold.
+            Nothing invested yet. Use “Invest” to add one.
           </CardContent>
         ) : (
           <>
@@ -224,6 +232,8 @@ export function MoneyView() {
 
 function AccountRow({
   account,
+  bankHint,
+  wide,
   detail,
   value,
   caption,
@@ -231,34 +241,28 @@ function AccountRow({
   onEdit,
 }: {
   account: Account;
+  bankHint?: string;
+  wide: boolean;
   detail: string;
   value: string;
   caption?: string;
   statement?: StatementCheck;
   onEdit: () => void;
 }) {
-  const info = ACCOUNT_TYPE_INFO[account.type];
   const diff = statement ? statement.appMinor - statement.closingMinor : 0;
   const off = statement ? !statementMatches(statement) : false;
   return (
-    <li className="flex items-center gap-3 px-4 py-3 sm:px-5">
-      <PictureIcon name={info.picture} tile />
+    <li className="px-4 py-3 sm:px-5">
+      <div className="flex items-center gap-3">
+      <span className={cn("flex shrink-0", wide && "w-16")}>
+        <AccountLogo account={account} bankHint={bankHint} tile />
+      </span>
       <div className="min-w-0 flex-1">
         <p className="truncate font-medium">{account.name}</p>
         <p className="truncate text-sm text-muted-foreground">{detail}</p>
-        {statement && (
-          <p className="mt-0.5 text-xs text-muted-foreground" data-testid="statement-balance">
-            Bank statement: <span className="font-medium text-foreground">{formatRupees(statement.closingMinor)}</span> on {formatDisplayDate(statement.date)}
-            {off ? (
-              <Link
-                href={activityHref({ account: account.id, to: statement.date })}
-                className="mt-0.5 block font-medium text-amber-700 hover:underline"
-              >
-                The app shows {formatRupees(Math.abs(diff))} {diff > 0 ? "more" : "less"} on that day: an entry doesn&apos;t match the bank. Check entries →
-              </Link>
-            ) : (
-              <span className="text-emerald-700"> · matches</span>
-            )}
+        {statement && !off && (
+          <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-emerald-700" data-testid="statement-balance">
+            <CheckCircle2 className="size-3.5 shrink-0" /> Matches bank on {formatDisplayDate(statement.date)}
           </p>
         )}
       </div>
@@ -272,6 +276,22 @@ function AccountRow({
       <Button variant="ghost" size="icon" aria-label={`Edit ${account.name}`} title="Edit" onClick={onEdit}>
         <Pencil />
       </Button>
+      </div>
+      {statement && off && (
+        // Full width under the row, so it stays short instead of squeezing beside the balance.
+        <Link
+          href={activityHref({ account: account.id, to: statement.date })}
+          className="mt-2 flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-200/70 hover:bg-amber-100/70"
+          data-testid="statement-balance"
+        >
+          <TriangleAlert className="size-4 shrink-0 text-amber-600" />
+          <span className="min-w-0 flex-1">
+            <span className="font-semibold">{formatRupees(Math.abs(diff))} {diff > 0 ? "more" : "less"} than your bank</span>
+            <span className="text-amber-800/80"> · bank says {formatRupees(statement.closingMinor)} on {formatDisplayDate(statement.date)}</span>
+          </span>
+          <span className="shrink-0 font-semibold">Check →</span>
+        </Link>
+      )}
     </li>
   );
 }

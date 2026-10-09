@@ -94,8 +94,8 @@ function AccountForm({ editing, onDone }: { editing: Account | null; onDone: () 
         <DialogTitle>{editing ? `Edit ${editing.name}` : "Add a loan"}</DialogTitle>
         <DialogDescription>
           {editing
-            ? "Change the name, or set what it held when you started tracking."
-            : "Record a loan you're repaying, such as a home or car loan. Pay it down with a Transfer."}
+            ? "Rename it, or set its starting balance."
+            : "A home or car loan you're repaying. Pay it with a Transfer."}
         </DialogDescription>
       </DialogHeader>
 

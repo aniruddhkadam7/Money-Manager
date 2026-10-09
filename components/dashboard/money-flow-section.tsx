@@ -26,9 +26,9 @@ export function MoneyFlowSection({ model }: { model: DashboardModel }) {
   const caption =
     flow.incomeMinor <= 0
       ? flow.spentMinor > 0
-        ? `No income recorded in ${formatMonthLong(month.ym)}, but ${formatExactINR(flow.spentMinor)} was spent.`
+        ? `No income in ${formatMonthLong(month.ym)} · spent ${formatExactINR(flow.spentMinor)}`
         : `Nothing recorded in ${formatMonthLong(month.ym)}.`
-      : `Of ${formatExactINR(flow.incomeMinor)} earned, ${pct(flow.spentMinor, flow.incomeMinor)} was spent, ${pct(flow.investedMinor, flow.incomeMinor)} invested and ${pct(flow.savedMinor, flow.incomeMinor)} saved.`;
+      : `${formatExactINR(flow.incomeMinor)} earned: ${pct(flow.spentMinor, flow.incomeMinor)} spent · ${pct(flow.investedMinor, flow.incomeMinor)} invested · ${pct(flow.savedMinor, flow.incomeMinor)} saved`;
 
   return (
     <ChartCard
@@ -40,7 +40,7 @@ export function MoneyFlowSection({ model }: { model: DashboardModel }) {
             aria-label="Previous month"
             disabled={back >= model.months.length - 1}
             onClick={() => { setBack(back + 1); setSelected(null); }}
-            className="grid size-7 place-items-center rounded-full text-slate-500 transition hover:bg-white hover:text-slate-900 disabled:opacity-30"
+            className="grid size-7 place-items-center rounded-full text-slate-500 transition hover:bg-card hover:text-slate-900 disabled:opacity-30"
           >
             <ChevronLeft className="size-4" />
           </button>
@@ -50,7 +50,7 @@ export function MoneyFlowSection({ model }: { model: DashboardModel }) {
             aria-label="Next month"
             disabled={back === 0}
             onClick={() => { setBack(back - 1); setSelected(null); }}
-            className="grid size-7 place-items-center rounded-full text-slate-500 transition hover:bg-white hover:text-slate-900 disabled:opacity-30"
+            className="grid size-7 place-items-center rounded-full text-slate-500 transition hover:bg-card hover:text-slate-900 disabled:opacity-30"
           >
             <ChevronRight className="size-4" />
           </button>
@@ -75,7 +75,7 @@ function FlowDetails({ id, month, flow }: { id: FlowId | null; month: MonthlyPoi
   const { from, to } = monthFilter(month.ym);
 
   if (!id) {
-    return <p className="mt-4 text-center text-xs text-slate-400">Tap any slice or row to see what&apos;s inside it.</p>;
+    return null;
   }
 
   const Row = ({ href, left, right, icon }: { href?: string; left: string; right: string; icon?: React.ReactNode }) => {
@@ -87,7 +87,7 @@ function FlowDetails({ id, month, flow }: { id: FlowId | null; month: MonthlyPoi
       </>
     );
     return href ? (
-      <Link href={href} className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-white">{body}</Link>
+      <Link href={href} className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-card">{body}</Link>
     ) : (
       <div className="flex items-center gap-3 px-2 py-2">{body}</div>
     );
@@ -122,14 +122,14 @@ function FlowDetails({ id, month, flow }: { id: FlowId | null; month: MonthlyPoi
     title = `Saved · ${formatExactINR(flow.savedMinor)}`;
     content = (
       <p className="px-2 py-2 text-sm text-slate-600">
-        This is what was left after spending and investing: {pct(flow.savedMinor, flow.incomeMinor)} of your income.
+        Left after spending and investing: {pct(flow.savedMinor, flow.incomeMinor)} of income.
       </p>
     );
   } else {
     title = `From earlier savings · ${formatExactINR(flow.fromSavingsMinor)}`;
     content = (
       <p className="px-2 py-2 text-sm text-slate-600">
-        You spent and invested {formatExactINR(flow.fromSavingsMinor)} more than you earned this month, so it came out of money you already had.
+        Spent and invested {formatExactINR(flow.fromSavingsMinor)} more than you earned, from earlier savings.
       </p>
     );
   }

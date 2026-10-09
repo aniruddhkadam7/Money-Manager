@@ -81,10 +81,10 @@ export function NetWorthSection({ model }: { model: DashboardModel }) {
         tone={change === 0 ? "neutral" : up ? "positive" : "negative"}
         caption={
           hovering
-            ? `On ${formatLongDayMonth(shown.date)}${shown.date.slice(0, 4) !== today.slice(0, 4) ? ` ${shown.date.slice(0, 4)}` : ""}, compared with the start of this range.`
+            ? `On ${formatLongDayMonth(shown.date)}${shown.date.slice(0, 4) !== today.slice(0, 4) ? ` ${shown.date.slice(0, 4)}` : ""}`
             : change === 0
-              ? `Your net worth hasn't changed ${SPAN_WORDS[range]}.`
-              : `Your wealth is ${up ? "growing" : "shrinking"}: ${up ? "up" : "down"} ${formatExactINR(Math.abs(change))} ${SPAN_WORDS[range]}.`
+              ? `No change ${SPAN_WORDS[range]}`
+              : `${up ? "Up" : "Down"} ${formatExactINR(Math.abs(change))} ${SPAN_WORDS[range]}`
         }
       />
       {!hasData ? (

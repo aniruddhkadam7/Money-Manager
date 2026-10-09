@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { activityHref } from "@/lib/charts/links";
 import { formatBps, formatExactINR, formatHeadlineINR } from "@/lib/charts/format";
-import { formatDayMonth, monthEnd, monthStart, shiftMonth } from "@/lib/domain/dates";
+import { formatDayMonth } from "@/lib/domain/dates";
+import { DEFAULT_PERIOD, firstActivityDate, PERIODS, periodWords, rangeStart, type RangeKey } from "@/lib/finance/series";
 import { incomeSources } from "@/lib/finance/sources";
 import type { FinancialState, PersonSummary } from "@/lib/finance/state";
 import { brandFor } from "@/lib/finance/brands";
@@ -94,19 +95,16 @@ function More({ count, href }: { count: number; href: string }) {
   ) : null;
 }
 
-type Span = "month" | "6M" | "12M";
 
 /** Who pays me? */
 function IncomeSourcesCard() {
   const { book, ledger, today, getCategory } = useFinance();
-  const [span, setSpan] = useState<Span>("6M");
+  const [span, setSpan] = useState<RangeKey>(DEFAULT_PERIOD);
 
-  const range = useMemo(() => {
-    const ym = today.slice(0, 7);
-    if (span === "month") return { from: monthStart(ym), to: monthEnd(ym), label: "this month" };
-    const months = span === "6M" ? 5 : 11;
-    return { from: monthStart(shiftMonth(ym, -months)), to: monthEnd(ym), label: span === "6M" ? "the last 6 months" : "the last 12 months" };
-  }, [today, span]);
+  const range = useMemo(
+    () => ({ from: rangeStart(span, today, firstActivityDate(ledger)), to: today, label: periodWords(span) }),
+    [today, span, ledger],
+  );
 
   const sources = useMemo(
     () => incomeSources(book, ledger, range.from, range.to, (id) => getCategory(id).name),
@@ -122,7 +120,7 @@ function IncomeSourcesCard() {
         <RangeTabs
           label="Income sources period"
           value={span}
-          options={[{ value: "month", label: "Month" }, { value: "6M", label: "6M" }, { value: "12M", label: "12M" }]}
+          options={PERIODS}
           onChange={setSpan}
         />
       }
@@ -132,7 +130,7 @@ function IncomeSourcesCard() {
       ) : (
         <>
           <p className="mb-2 text-xs text-slate-500">
-            <span className="text-base font-semibold tabular-nums text-slate-900">{formatHeadlineINR(total)}</span> earned in {range.label}
+            <span className="text-base font-semibold tabular-nums text-slate-900">{formatHeadlineINR(total)}</span> earned {range.label}
           </p>
           <ul key={span} className="grid grid-cols-1 gap-0.5">
             {shown.map((s) => (

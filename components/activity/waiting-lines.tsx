@@ -50,7 +50,7 @@ export function WaitingLines({ query }: { query: string }) {
       <ul className="mt-2 grid gap-1">
         {hits.slice(0, 12).map((r) => (
           <li key={r.id}>
-            <Link href={`/import?import=${r.importId}`} className="flex flex-wrap items-baseline gap-x-2 rounded-lg bg-white/70 px-3 py-1.5 hover:bg-white">
+            <Link href={`/import?import=${r.importId}`} className="flex flex-wrap items-baseline gap-x-2 rounded-lg bg-card px-3 py-1.5 hover:bg-card/90">
               <span className="tabular-nums text-amber-900/70">{formatDisplayDate(r.transactionDate)}</span>
               <span className="min-w-0 flex-1 truncate font-medium">{r.normalized.counterparty || r.rawDescription}</span>
               <span className={r.direction === "credit" ? "font-semibold tabular-nums text-emerald-700" : "font-semibold tabular-nums"}>

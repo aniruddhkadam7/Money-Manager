@@ -6,7 +6,7 @@ export function TooltipCard({ children, className }: { children: ReactNode; clas
   return (
     <div
       className={cn(
-        "min-w-44 max-w-64 rounded-2xl border border-white/10 bg-slate-900/95 p-3.5 text-white shadow-2xl backdrop-blur-md",
+        "min-w-44 max-w-64 rounded-2xl palette-fixed border border-white/10 bg-slate-900/95 p-3.5 text-white shadow-2xl backdrop-blur-md",
         className,
       )}
     >

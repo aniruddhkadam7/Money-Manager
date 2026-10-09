@@ -4,19 +4,9 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { activityHref, monthFilter } from "@/lib/charts/links";
 import { formatBps, formatCompactINR, formatExactINR, formatHeadlineINR } from "@/lib/charts/format";
-import {
-  addDays,
-  formatDayMonth,
-  formatDisplayDate,
-  formatMonthLong,
-  formatMonthShort,
-  formatWeekdayShort,
-  monthEnd,
-  monthStart,
-} from "@/lib/domain/dates";
+import { formatMonthLong, formatMonthShort, monthEnd, monthStart } from "@/lib/domain/dates";
 import type { DashboardModel } from "@/lib/finance/dashboard-model";
-import { periodReport } from "@/lib/finance/state";
-import { changeBps } from "@/lib/finance/series";
+import { changeBps, DEFAULT_PERIOD, MONTHLY_PERIODS, monthlySummaries, monthsInPeriod, type MonthlyPoint, type RangeKey } from "@/lib/finance/series";
 import { ColumnChart, type Column } from "../charts/column-chart";
 import { LineChart, type ChartSeries } from "../charts/line-chart";
 import { ChartCard, EmptyChart, Headline, RangeTabs } from "../charts/primitives";
@@ -24,13 +14,20 @@ import { TooltipCard, TooltipHint, TooltipRow, TooltipTitle } from "../charts/to
 import { useFinance } from "../finance-provider";
 import { GAIN, LOSS } from "./net-worth-section";
 
-type Span = "6M" | "12M";
+/** The months a month-by-month chart shows for a period; "All" can reach back further than the model's 12. */
+function usePeriodMonths(model: DashboardModel, range: RangeKey): MonthlyPoint[] {
+  const { book, ledger, today } = useFinance();
+  return useMemo(() => {
+    const n = monthsInPeriod(range, model.ym, model.firstActivity);
+    return n <= model.months.length ? model.months.slice(-n) : monthlySummaries(book, ledger, model.ym, n, today);
+  }, [range, model, book, ledger, today]);
+}
 
 /** Is more money coming in than going out? */
 export function IncomeExpenseSection({ model }: { model: DashboardModel }) {
   const router = useRouter();
-  const [span, setSpan] = useState<Span>("6M");
-  const months = useMemo(() => model.months.slice(span === "6M" ? -6 : -12), [model.months, span]);
+  const [span, setSpan] = useState<RangeKey>(DEFAULT_PERIOD);
+  const months = usePeriodMonths(model, span);
   const xs = useMemo(() => months.map((_, i) => i), [months]);
   const series = useMemo<ChartSeries[]>(
     () => [
@@ -52,7 +49,7 @@ export function IncomeExpenseSection({ model }: { model: DashboardModel }) {
         <RangeTabs
           label="Income and expenses range"
           value={span}
-          options={[{ value: "6M", label: "6M" }, { value: "12M", label: "12M" }]}
+          options={MONTHLY_PERIODS}
           onChange={setSpan}
         />
       }
@@ -63,8 +60,8 @@ export function IncomeExpenseSection({ model }: { model: DashboardModel }) {
         tone={active.length === 0 ? "neutral" : saved >= 0 ? "positive" : "negative"}
         caption={
           active.length === 0
-            ? "Record income and spending to see how they compare."
-            : `You earned more than you spent in ${positive} of the last ${active.length} ${active.length === 1 ? "month" : "months"}.`
+            ? "No income or spending yet."
+            : `Earned more than spent in ${positive} of ${active.length} ${active.length === 1 ? "month" : "months"}`
         }
       />
       {active.length === 0 ? (
@@ -119,23 +116,6 @@ function Legend({ items }: { items: { label: string; color: string }[] }) {
   );
 }
 
-type SpendSpan = "1D" | "1W" | "1M" | "6M" | "1Y";
-
-const SPEND_OPTIONS: { value: SpendSpan; label: string }[] = [
-  { value: "1D", label: "1D" },
-  { value: "1W", label: "1W" },
-  { value: "1M", label: "1M" },
-  { value: "6M", label: "6M" },
-  { value: "1Y", label: "1Y" },
-];
-
-/** Short windows: bars of `bucketDays` each; the headline covers the last `headlineDays`. */
-const DAY_SPANS: Record<"1D" | "1W" | "1M", { bucketDays: number; count: number; headlineDays: number; noun: string }> = {
-  "1D": { bucketDays: 1, count: 7, headlineDays: 1, noun: "today" },
-  "1W": { bucketDays: 7, count: 4, headlineDays: 7, noun: "in the last 7 days" },
-  "1M": { bucketDays: 5, count: 6, headlineDays: 30, noun: "in the last 30 days" },
-};
-
 interface SpendBucket {
   key: string;
   label: string;
@@ -144,8 +124,8 @@ interface SpendBucket {
   from: string;
   to: string;
   expensesMinor: number;
+  incomeMinor: number;
   comparableMinor: number | null;
-  top?: { categoryId: string; amountMinor: number };
   compareLabel: string;
 }
 
@@ -154,103 +134,58 @@ const signed = (bps: number) => `${bps > 0 ? "+" : bps < 0 ? "−" : ""}${format
 /** Am I spending more than before? */
 export function SpendingSection({ model }: { model: DashboardModel }) {
   const router = useRouter();
-  const { getCategory, book, ledger, today } = useFinance();
-  const [span, setSpan] = useState<SpendSpan>("6M");
+  const [span, setSpan] = useState<RangeKey>(DEFAULT_PERIOD);
+  const months = usePeriodMonths(model, span);
   const current = model.current;
 
   const view = useMemo(() => {
-    const spent = (from: string, to: string) => periodReport(book, ledger, from, to);
-
-    if (span === "6M" || span === "1Y") {
-      const months = model.months.slice(span === "6M" ? -6 : -12);
-      const buckets: SpendBucket[] = months.map((m) => ({
-        key: m.ym,
-        label: formatMonthShort(m.ym),
-        title: formatMonthLong(m.ym),
-        sub: m.partial ? "Month in progress" : undefined,
-        from: monthStart(m.ym),
-        to: monthEnd(m.ym),
-        expensesMinor: m.expensesMinor,
-        comparableMinor: m.comparableExpensesMinor,
-        top: m.byCategory[0],
-        compareLabel: m.partial ? "vs same point last month" : "Change vs previous month",
-      }));
-      const bps = model.spendingChangeBps;
-      return {
-        buckets,
-        headline: current.expensesMinor,
-        bps,
-        caption:
-          bps === null
-            ? current.expensesMinor > 0
-              ? `Spent so far in ${formatMonthLong(current.ym)}.`
-              : "Nothing spent yet this month."
-            : `Spent so far this month: ${bps > 0 ? "more" : bps < 0 ? "less" : "the same"} than at this point last month.`,
-        empty: "Your monthly spending will appear here.",
-        aria: `Spending in the last ${months.length} months`,
-      };
-    }
-
-    const { bucketDays, count, headlineDays, noun } = DAY_SPANS[span];
-    const buckets: SpendBucket[] = Array.from({ length: count }, (_, i) => {
-      const to = addDays(today, -(count - 1 - i) * bucketDays);
-      const from = addDays(to, -(bucketDays - 1));
-      const r = spent(from, to);
-      const prev = spent(addDays(from, -bucketDays), addDays(from, -1));
-      const label =
-        bucketDays === 1 ? (to === today ? "Today" : formatWeekdayShort(to)) : formatDayMonth(from);
-      return {
-        key: from,
-        label,
-        title: bucketDays === 1 ? formatDisplayDate(to) : `${formatDayMonth(from)} – ${formatDayMonth(to)}`,
-        sub: to === today ? (bucketDays === 1 ? "Today" : "Includes today") : undefined,
-        from,
-        to,
-        expensesMinor: r.expensesMinor,
-        comparableMinor: prev.expensesMinor,
-        top: r.expensesByCategory[0],
-        compareLabel: bucketDays === 1 ? "vs previous day" : `vs previous ${bucketDays} days`,
-      };
-    });
-    const start = addDays(today, -(headlineDays - 1));
-    const total = spent(start, today).expensesMinor;
-    const before = spent(addDays(start, -headlineDays), addDays(start, -1)).expensesMinor;
-    const bps = changeBps(total, before);
-    const against = headlineDays === 1 ? "yesterday" : `the previous ${headlineDays} days`;
+    const buckets: SpendBucket[] = months.map((m) => ({
+      key: m.ym,
+      label: formatMonthShort(m.ym),
+      title: formatMonthLong(m.ym),
+      sub: m.partial ? "Month in progress" : undefined,
+      from: monthStart(m.ym),
+      to: monthEnd(m.ym),
+      expensesMinor: m.expensesMinor,
+      incomeMinor: m.incomeMinor,
+      comparableMinor: m.comparableExpensesMinor,
+      compareLabel: m.partial ? "Spent vs last month so far" : "Spent vs month before",
+    }));
+    const bps = model.spendingChangeBps;
     return {
       buckets,
-      headline: total,
+      headline: current.expensesMinor,
       bps,
       caption:
-        total === 0
-          ? `Nothing spent ${noun}.`
-          : bps === null
-            ? `Spent ${noun}.`
-            : `Spent ${noun}: ${bps > 0 ? "more" : bps < 0 ? "less" : "the same"} than ${against}.`,
-      empty: "Your spending will appear here.",
-      aria: `Spending ${noun}, by ${bucketDays === 1 ? "day" : `${bucketDays} days`}`,
+        bps === null
+          ? current.expensesMinor > 0
+            ? `So far in ${formatMonthLong(current.ym)}`
+            : "Nothing spent yet this month."
+          : `${bps > 0 ? "More" : bps < 0 ? "Less" : "Same"} than this point last month`,
+      empty: "Your monthly spending will appear here.",
+      aria: `Spending in the last ${months.length} months`,
     };
-  }, [span, model, current, book, ledger, today]);
+  }, [months, model, current]);
 
   const { buckets } = view;
-  const hasData = buckets.some((b) => b.expensesMinor > 0) || view.headline > 0;
+  const hasData = buckets.some((b) => b.expensesMinor > 0 || b.incomeMinor > 0) || view.headline > 0;
 
   const columns = useMemo<Column[]>(
     () =>
-      buckets.map((b, i) => ({
-        key: b.key,
-        label: b.label,
-        value: b.expensesMinor,
-        color: i === buckets.length - 1 ? LOSS : "#fda4af",
-        valueLabel: b.expensesMinor > 0 ? formatCompactINR(b.expensesMinor) : "",
-      })),
+      buckets.map((b, i) => {
+        // This month in full colour, earlier months lighter: what you earned beside what you spent.
+        const now = i === buckets.length - 1;
+        const spent = { value: b.expensesMinor, color: now ? LOSS : "#fda4af", valueLabel: b.expensesMinor > 0 ? formatCompactINR(b.expensesMinor) : "" };
+        const earned = { value: b.incomeMinor, color: now ? GAIN : "#6ee7b7", valueLabel: b.incomeMinor > 0 ? formatCompactINR(b.incomeMinor) : "" };
+        return { key: b.key, label: b.label, ...spent, bars: [earned, spent] };
+      }),
     [buckets],
   );
 
   return (
     <ChartCard
       title="Spending"
-      action={<RangeTabs label="Spending range" value={span} options={SPEND_OPTIONS} onChange={setSpan} />}
+      action={<RangeTabs label="Spending range" value={span} options={MONTHLY_PERIODS} onChange={setSpan} />}
     >
       <Headline
         value={formatHeadlineINR(view.headline)}
@@ -274,21 +209,25 @@ export function SpendingSection({ model }: { model: DashboardModel }) {
             return (
               <TooltipCard>
                 <TooltipTitle sub={b.sub}>{b.title}</TooltipTitle>
-                <p className="text-[11px] uppercase tracking-wide text-slate-400">Total spent</p>
-                <p className="mb-2 text-xl font-semibold tabular-nums">{formatExactINR(b.expensesMinor)}</p>
-                {b.top && <TooltipRow label="Largest category" value={`${getCategory(b.top.categoryId).name} · ${formatExactINR(b.top.amountMinor)}`} />}
+                <TooltipRow label="Earned" value={formatExactINR(b.incomeMinor)} color={GAIN} />
+                <TooltipRow label="Spent" value={formatExactINR(b.expensesMinor)} color={LOSS} />
+                <div className="my-1.5 border-t border-white/10" />
                 <TooltipRow
-                  label={b.compareLabel}
-                  value={change === null ? "—" : signed(change)}
-                  tone={change === null || change === 0 ? undefined : change > 0 ? "negative" : "positive"}
+                  label={b.incomeMinor >= b.expensesMinor ? "Saved" : "Overspent"}
+                  value={formatExactINR(Math.abs(b.incomeMinor - b.expensesMinor))}
+                  tone={b.incomeMinor >= b.expensesMinor ? "positive" : "negative"}
                   strong
                 />
+                {change !== null && (
+                  <TooltipRow label={b.compareLabel} value={signed(change)} tone={change > 0 ? "negative" : change < 0 ? "positive" : undefined} />
+                )}
                 <TooltipHint>Click to see transactions</TooltipHint>
               </TooltipCard>
             );
           }}
         />
       )}
+      {hasData && <Legend items={[{ label: "Earned", color: GAIN }, { label: "Spent", color: LOSS }]} />}
     </ChartCard>
   );
 }

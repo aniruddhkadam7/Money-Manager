@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableSelect, type SearchableOption } from "@/components/ui/searchable-select";
 import { accountIdsUsedBy, personIdsUsedBy } from "@/lib/finance/book-ops";
 import { formatRupees } from "@/lib/finance/describe";
 import { isMoneyBack } from "@/lib/finance/state";
@@ -19,6 +20,7 @@ import { useEventDialog } from "../events/event-dialog";
 import { EVENT_OPTIONS } from "../events/event-meta";
 import { EventRow, headline } from "../events/event-row";
 import { useQuickRepaymentReceived } from "../events/quick-repay";
+import { PageTitle } from "../page-title";
 import { PictureIcon } from "../picture-icon";
 import { useFinance } from "../finance-provider";
 import { DuplicatesBanner } from "./duplicates-banner";
@@ -48,16 +50,17 @@ const GROUPS: { id: string; label: string; types: EventType[] }[] = [
   { id: "transfers", label: "Transfers & payments", types: ["transfer"] },
 ];
 
-/** One-tap filters shown above the list; each sets the same "Show" value the menu does. */
-const QUICK: { label: string; value: string }[] = [
-  { label: "All", value: ALL },
-  { label: "Paid", value: "group:debit" },
-  { label: "Received", value: "group:credit" },
+/** The short "Show" menu: the everyday views. Specific entry types live in their own "Type" filter. */
+const SHOW: { label: string; value: string }[] = [
+  { label: "Everything", value: "all" },
+  { label: "Paid · money out", value: "group:debit" },
+  { label: "Received · money in", value: "group:credit" },
   { label: "Spending", value: "group:spending" },
   { label: "Income", value: "type:income" },
   { label: "Refunds & reimbursements", value: "group:moneyback" },
-  { label: "Transfers", value: "type:transfer" },
+  { label: "Lent & borrowed", value: "group:people" },
   { label: "Investments", value: "group:investments" },
+  { label: "Transfers", value: "type:transfer" },
 ];
 
 /** Income and money back are told apart: a refund or reimbursement is never shown as income. */
@@ -108,7 +111,13 @@ function ActivityContent() {
   const theyPaidMe = useQuickRepaymentReceived();
 
   const params = useSearchParams();
-  const [group, setGroup] = useState(initialShow(params.get("group"), params.get("type")));
+  // A link to one specific entry type (say "Lend") sets the Type filter; everything else sets Show.
+  const [initial] = useState(() => {
+    const show = initialShow(params.get("group"), params.get("type"));
+    return show.startsWith("type:") && !SHOW.some((o) => o.value === show) ? { show: ALL, type: show.slice(5) } : { show, type: ALL };
+  });
+  const [group, setGroup] = useState(initial.show);
+  const [entryType, setEntryType] = useState(initial.type);
   const [categoryId, setCategoryId] = useState(params.get("category") ?? ALL);
   const [accountId, setAccountId] = useState(params.get("account") ?? ALL);
   const [personId, setPersonId] = useState(params.get("person") ?? ALL);
@@ -120,8 +129,8 @@ function ActivityContent() {
   // Tapping an entry narrows the list to everything with the same shop, company or name.
   const [party, setParty] = useState<{ key: string; label: string } | null>(null);
   const [owed, setOwed] = useState<string | null>(params.get("owed"));
-  // Phones: the detailed filters fold away behind "Filters (n)", which counts the ones set (a dashboard link sets dates).
-  const detailFilters = [categoryId !== ALL, accountId !== ALL, personId !== ALL, from !== "", to !== ""].filter(Boolean).length;
+  // Phones: the detailed filters fold away behind the filter button, whose badge counts the ones set (a dashboard link sets dates).
+  const detailFilters = [entryType !== ALL, categoryId !== ALL, accountId !== ALL, personId !== ALL, from !== "", to !== ""].filter(Boolean).length;
   const [moreOpen, setMoreOpen] = useState(false);
 
   const owedPeople = useMemo(() => {
@@ -140,6 +149,7 @@ function ActivityContent() {
           (personId === ALL || personIdsUsedBy(e).includes(personId)) &&
           (!owedPeople || personIdsUsedBy(e).some((id) => owedPeople.has(id))) &&
           matchesShow(group, e, types) &&
+          (entryType === ALL || (e.type === entryType && !(entryType === "income" && isMoneyBack(e)))) &&
           (!party || partyNameOf(e, describer.title(e)) === party.key) &&
           (categoryId === ALL || categoryOf(e) === categoryId) &&
           (!from || e.date >= from) &&
@@ -152,16 +162,45 @@ function ActivityContent() {
         const byAmount = amountOf(b) - amountOf(a);
         return (sort === "highest" ? byAmount : -byAmount) || byDate;
       });
-  }, [book.events, group, categoryId, accountId, personId, from, to, query, describer, owedPeople, sort, party]);
+  }, [book.events, group, entryType, categoryId, accountId, personId, from, to, query, describer, owedPeople, sort, party]);
 
   const hasFilters =
-    party !== null || group !== ALL || categoryId !== ALL || accountId !== ALL || personId !== ALL || from !== "" || to !== "" || query !== "" || owed !== null;
+    party !== null || group !== ALL || entryType !== ALL || categoryId !== ALL || accountId !== ALL || personId !== ALL || from !== "" || to !== "" || query !== "" || owed !== null;
   const person = personId === ALL ? undefined : state.people.find((p) => p.person.id === personId);
+
+  // A dashboard link can open a view that isn't on the short menu (e.g. "Money I lent"); it's listed while it's on.
+  const extraShow = group !== ALL && !SHOW.some((o) => o.value === group) ? GROUPS.find((g) => `group:${g.id}` === group) : undefined;
+  const typeOptions: SearchableOption[] = [
+    { value: ALL, label: "All types" },
+    ...EVENT_OPTIONS.map((o) => ({ value: o.type, label: o.label, icon: <PictureIcon name={o.picture} /> })),
+  ];
+  const categoryOptions: SearchableOption[] = [
+    { value: ALL, label: "All categories" },
+    ...categories.map((c) => ({ value: c.id, label: c.name, icon: <CategoryIcon category={c} /> })),
+  ];
+  const accountOptions: SearchableOption[] = [{ value: ALL, label: "All accounts" }, ...book.accounts.map((a) => ({ value: a.id, label: a.name }))];
+  const personOptions: SearchableOption[] = [{ value: ALL, label: "Everyone" }, ...book.people.map((p) => ({ value: p.id, label: p.name }))];
+
+  const sortMenu = (
+    <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
+      <SelectTrigger className="text-sm sm:h-8 sm:w-44 sm:text-xs" aria-label="Sort entries">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {SORTS.map((o) => (
+          <SelectItem key={o.value} value={o.value}>
+            {o.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
 
   if (status === "loading") return <div className="h-64 animate-pulse rounded-2xl bg-muted" aria-busy />;
 
   const clear = () => {
     setGroup(ALL);
+    setEntryType(ALL);
     setCategoryId(ALL);
     setAccountId(ALL);
     setPersonId(ALL);
@@ -195,6 +234,7 @@ function ActivityContent() {
 
   return (
     <div className="mx-auto grid w-full max-w-[1400px] grid-cols-1 gap-4 sm:gap-6">
+      <PageTitle>Activity</PageTitle>
       <DuplicatesBanner />
 
       {party && partyTotals && (
@@ -280,151 +320,87 @@ function ActivityContent() {
       )}
 
       <Card>
-        <CardContent className="grid gap-4">
-          <div
-            className="-mx-5 flex gap-2 overflow-x-auto px-5 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 [&::-webkit-scrollbar]:hidden"
-            role="group"
-            aria-label="Quick filters"
-            data-testid="quick-filters"
-          >
-            {QUICK.map((q) => (
-              <button
-                key={q.value}
-                type="button"
-                aria-pressed={group === q.value}
-                onClick={() => setGroup(q.value)}
-                className={cn(
-                  "shrink-0 whitespace-nowrap rounded-full border px-3.5 py-2 text-sm font-medium transition-colors sm:py-1.5",
-                  group === q.value ? "border-primary bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
-                )}
-              >
-                {q.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex items-end gap-3">
-            <div className="grid flex-1 gap-1.5">
-              <Label htmlFor="search" className="max-sm:sr-only">
+        <CardContent className="grid gap-2 p-3 sm:gap-4 sm:p-5">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="relative flex-1">
+              <Label htmlFor="search" className="sr-only">
                 Search
               </Label>
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  id="search"
-                  type="search"
-                  autoComplete="off"
-                  className="pl-9"
-                  placeholder="Search by name, person, category or note"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                />
-              </div>
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                id="search"
+                type="search"
+                autoComplete="off"
+                className="pl-9 max-sm:h-10"
+                placeholder="Search name, person, category or note"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
             </div>
             <Button
               variant="outline"
-              className="h-11 sm:hidden"
+              size="icon"
+              className="relative size-10 shrink-0 sm:hidden"
+              aria-label={detailFilters > 0 ? `Filters (${detailFilters} set)` : "Filters"}
               aria-expanded={moreOpen}
               aria-controls="detail-filters"
               onClick={() => setMoreOpen((o) => !o)}
             >
-              <SlidersHorizontal /> {detailFilters > 0 ? `Filters (${detailFilters})` : "Filters"}
+              <SlidersHorizontal />
+              {detailFilters > 0 && (
+                <span className="absolute -right-1.5 -top-1.5 grid size-5 place-items-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground">
+                  {detailFilters}
+                </span>
+              )}
             </Button>
-            <Button variant="ghost" className={cn("max-sm:h-11 max-sm:px-2", !hasFilters && "max-sm:hidden")} disabled={!hasFilters} onClick={clear}>
+            <Button variant="ghost" className="max-sm:hidden" disabled={!hasFilters} onClick={clear}>
               Clear
             </Button>
           </div>
 
-          <div id="detail-filters" className={cn("grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-6", !moreOpen && "max-sm:hidden")}>
-            <div className="grid gap-1.5">
-              <Label htmlFor="filter-group">Show</Label>
+          <div id="detail-filters" className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-4 xl:grid-cols-7">
+            {/* Phones: "Show" is always there (it replaces the old chips); the rest fold behind the filter button. */}
+            <div className="grid gap-1.5 max-sm:col-span-2 max-sm:flex max-sm:items-center max-sm:gap-2">
+              <Label htmlFor="filter-group" className="max-sm:sr-only">
+                Show
+              </Label>
               <Select value={group} onValueChange={setGroup}>
-                <SelectTrigger id="filter-group">
+                <SelectTrigger id="filter-group" className="max-sm:flex-1">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="max-h-[32rem]">
-                  <SelectItem value={ALL}>Everything</SelectItem>
-                  <SelectSeparator />
-                  <SelectGroup>
-                    <SelectLabel>Type of entry</SelectLabel>
-                    {EVENT_OPTIONS.map((o) => (
-                      <SelectItem key={o.type} value={`type:${o.type}`}>
-                        <span className="flex items-center gap-2">
-                          <PictureIcon name={o.picture} />
-                          {o.label}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                  <SelectSeparator />
-                  <SelectGroup>
-                    <SelectLabel>Combined</SelectLabel>
-                    {GROUPS.filter((g) => g.types.length > 1).map((g) => (
-                      <SelectItem key={g.id} value={`group:${g.id}`}>
-                        {g.label}
-                      </SelectItem>
-                    ))}
-                    <SelectItem value={MONEY_BACK_GROUP}>Refunds & reimbursements</SelectItem>
-                  </SelectGroup>
+                <SelectContent>
+                  {SHOW.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                  {extraShow && <SelectItem value={group}>{extraShow.label}</SelectItem>}
                 </SelectContent>
               </Select>
+              {/* Phones: sorting sits beside Show instead of taking its own line under the card. */}
+              <div className="flex-1 sm:hidden">{sortMenu}</div>
             </div>
-            <div className="grid gap-1.5">
+            <div className={cn("grid gap-1.5", !moreOpen && "max-sm:hidden")}>
+              <Label htmlFor="filter-type">Type</Label>
+              <SearchableSelect id="filter-type" value={entryType} onValueChange={setEntryType} options={typeOptions} placeholder="Search types…" />
+            </div>
+            <div className={cn("grid gap-1.5", !moreOpen && "max-sm:hidden")}>
               <Label htmlFor="filter-category">Category</Label>
-              <Select value={categoryId} onValueChange={setCategoryId}>
-                <SelectTrigger id="filter-category">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>All categories</SelectItem>
-                  {categories.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      <span className="flex items-center gap-2">
-                        <CategoryIcon category={c} />
-                        {c.name}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect id="filter-category" value={categoryId} onValueChange={setCategoryId} options={categoryOptions} placeholder="Search categories…" />
             </div>
-            <div className="grid gap-1.5">
+            <div className={cn("grid gap-1.5", !moreOpen && "max-sm:hidden")}>
               <Label htmlFor="filter-account">Account</Label>
-              <Select value={accountId} onValueChange={setAccountId}>
-                <SelectTrigger id="filter-account">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>All accounts</SelectItem>
-                  {book.accounts.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {a.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect id="filter-account" value={accountId} onValueChange={setAccountId} options={accountOptions} placeholder="Search accounts…" />
             </div>
-            <div className="grid gap-1.5">
+            <div className={cn("grid gap-1.5", !moreOpen && "max-sm:hidden")}>
               <Label htmlFor="filter-person">Person</Label>
-              <Select value={personId} onValueChange={setPersonId}>
-                <SelectTrigger id="filter-person">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>Everyone</SelectItem>
-                  {book.people.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect id="filter-person" value={personId} onValueChange={setPersonId} options={personOptions} placeholder="Search people…" />
             </div>
-            <div className="grid gap-1.5">
+            <div className={cn("grid gap-1.5", !moreOpen && "max-sm:hidden")}>
               <Label htmlFor="filter-from">From</Label>
               <Input id="filter-from" type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
             </div>
-            <div className="grid gap-1.5">
+            <div className={cn("grid gap-1.5", !moreOpen && "max-sm:hidden")}>
               <Label htmlFor="filter-to">To</Label>
               <Input id="filter-to" type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
             </div>
@@ -434,23 +410,20 @@ function ActivityContent() {
 
       <WaitingLines query={query} />
 
-      <div className="-mb-2 flex flex-wrap items-center justify-between gap-2 px-1">
-        <p className="text-sm text-muted-foreground" aria-live="polite">
+      <div className="-my-2 flex flex-wrap items-center justify-between gap-2 px-1 sm:-mt-0">
+        <p className="text-xs text-muted-foreground sm:text-sm" aria-live="polite">
           {hasFilters ? `${filtered.length} of ${book.events.length} entries` : `${book.events.length} ${book.events.length === 1 ? "entry" : "entries"}`}
-          {book.events.length > 0 && " · tap an entry to see, fix or remove it"}
+          {book.events.length > 0 && <span className="max-sm:hidden"> · tap an entry to see, fix or remove it</span>}
+          {hasFilters && (
+            <>
+              {" · "}
+              <button type="button" onClick={clear} className="font-medium text-primary hover:underline sm:hidden">
+                Clear all
+              </button>
+            </>
+          )}
         </p>
-        <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
-          <SelectTrigger className="h-8 w-44 text-xs" aria-label="Sort entries">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {SORTS.map((o) => (
-              <SelectItem key={o.value} value={o.value}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="max-sm:hidden">{sortMenu}</div>
       </div>
 
       <Card>

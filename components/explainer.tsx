@@ -140,7 +140,7 @@ export function HowButton({ onClick, children = "How it adds up", className }: {
       type="button"
       onClick={onClick}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/70 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-white hover:text-slate-900",
+        "inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-card px-3 py-1 text-xs font-medium text-slate-600 hover:bg-muted hover:text-slate-900",
         className,
       )}
     >

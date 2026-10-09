@@ -158,7 +158,7 @@ export function LineChart({
                 const y = layout.y(t);
                 return (
                   <g key={t}>
-                    <line x1={pad.left} x2={pad.left + layout.innerW} y1={y} y2={y} stroke={t === 0 ? "#cbd5e1" : "#eef2f6"} strokeWidth={1} />
+                    <line x1={pad.left} x2={pad.left + layout.innerW} y1={y} y2={y} className={t === 0 ? "stroke-slate-300" : "stroke-slate-100"} strokeWidth={1} />
                     <text x={width - 2} y={y - 5} textAnchor="end" className="fill-slate-400 text-[11px] tabular-nums">
                       {formatY(t)}
                     </text>
@@ -234,7 +234,7 @@ export function LineChart({
                   x2={layout.px[active]}
                   y1={pad.top - 4}
                   y2={layout.baseY}
-                  stroke="#94a3b8"
+                  className="stroke-slate-400"
                   strokeWidth={1}
                   strokeDasharray="3 4"
                 />
@@ -267,7 +267,7 @@ export function LineChart({
                   <button
                     type="button"
                     onClick={() => onSelect(active)}
-                    className="mt-1.5 w-full rounded-xl bg-slate-900/95 px-3 py-2 text-left text-[12px] font-medium text-white shadow-xl"
+                    className="mt-1.5 w-full rounded-xl palette-fixed bg-slate-900/95 px-3 py-2 text-left text-[12px] font-medium text-white shadow-xl"
                   >
                     {selectLabel} →
                   </button>

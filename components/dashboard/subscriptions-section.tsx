@@ -34,7 +34,7 @@ export function SubscriptionsSection({ model }: { model: DashboardModel }) {
     <ChartCard title="Subscriptions">
       {subs.length === 0 ? (
         <EmptyChart height={200}>
-          Netflix, Spotify, phone plans, insurance and similar services appear here automatically once they&apos;ve been charged a couple of months in a row.
+          Subscriptions show up here once charged a couple of months in a row.
         </EmptyChart>
       ) : (
         <>
@@ -70,7 +70,6 @@ export function SubscriptionsSection({ model }: { model: DashboardModel }) {
               );
             })}
           </ul>
-          <p className="mt-2 text-xs text-slate-400">Missing one? Edit any of its payments and set the category to Subscriptions.</p>
           {subs.length > 6 && (
             <button type="button" onClick={() => setAll((v) => !v)} className="mt-1 text-xs font-medium text-emerald-700 hover:underline">
               {all ? "Show fewer" : `+${subs.length - 6} more`}

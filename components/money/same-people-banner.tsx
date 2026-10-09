@@ -37,15 +37,15 @@ export function SamePeopleBanner({ className }: { className?: string }) {
         <Users className="size-4 shrink-0" />
         {pairs.length === 1 ? "These look like the same person" : `${pairs.length} people appear under two names`}
       </p>
-      <p className="mt-0.5 text-amber-900/80">Banks sometimes cut names short. Until they're merged, what you owe or are owed is split between two names, so the totals are wrong.</p>
+      <p className="mt-0.5 text-amber-900/80">Banks cut names short. Until merged, totals are split across two names.</p>
       <ul className="mt-3 grid gap-2">
         {pairs.map(([keep, drop]) => (
-          <li key={drop.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white/70 px-3 py-2">
+          <li key={drop.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-card px-3 py-2">
             <span>
               <strong>{keep.name}</strong> <span className="text-amber-900/70">({balance(keep.id)})</span> and <strong>{drop.name}</strong>{" "}
               <span className="text-amber-900/70">({balance(drop.id)})</span>
             </span>
-            <Button size="sm" variant="outline" className="bg-white" onClick={() => merge(keep.id, drop.id, keep.name, drop.name)} data-testid="merge-people">
+            <Button size="sm" variant="outline" onClick={() => merge(keep.id, drop.id, keep.name, drop.name)} data-testid="merge-people">
               Merge into “{keep.name}”
             </Button>
           </li>

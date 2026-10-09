@@ -127,6 +127,42 @@ describe("statement import pipeline", () => {
     expect(done.rows.every((r) => r.status === "imported" && r.eventId)).toBe(true);
   });
 
+  it("a line skipped before the import can be brought back afterwards and added on its own", async () => {
+    const book = bookWithOpening();
+    const out = await run("hdfc_style.pdf", book);
+    const e = { book, now: "2026-10-05T10:06:00Z" };
+    let store = acceptAllFlagged(settle(out.store, out.rows, book), out.record.id, e).store;
+    const target = store.rows.find((r) => r.status === "auto")!;
+    store = resolveRow(store, target.id, { kind: "skip" }, e).store;
+    const first = buildCommit(book, store.imports[0], store.rows, plan);
+    if (!first.ok) throw new Error(first.failures.map((f) => f.message).join("\n"));
+    store = markImported(store, out.record.id, first.outcomes, "2026-10-05T10:07:00Z");
+    expect(store.imports[0].status).toBe("IMPORTED");
+
+    // Only skipped lines can be reopened after the import.
+    const importedRow = store.rows.find((r) => r.status === "imported")!;
+    expect(resolveRow(store, importedRow.id, { kind: "reopen" }, e).error).toBeTruthy();
+
+    // Brought back, then skipped again: the statement is finished again.
+    let back = resolveRow(store, target.id, { kind: "reopen" }, { book: first.book, now: "2026-10-06T09:00:00Z" });
+    expect(back.error).toBeUndefined();
+    expect(back.store.imports[0].status).toBe("REVIEW_REQUIRED");
+    expect(back.store.rows.find((r) => r.id === target.id)!.status).toBe("review");
+    const again = resolveRow(back.store, target.id, { kind: "skip" }, { book: first.book, now: "2026-10-06T09:01:00Z" });
+    expect(again.store.imports[0].status).toBe("IMPORTED");
+
+    // Brought back and confirmed: only that line is added.
+    back = resolveRow(store, target.id, { kind: "reopen" }, { book: first.book, now: "2026-10-06T09:00:00Z" });
+    const accepted = resolveRow(back.store, target.id, { kind: "accept", scope: "once" }, { book: first.book, now: "2026-10-06T09:02:00Z" }).store;
+    expect(readiness(accepted.imports[0], accepted.rows).canImportReady).toBe(true);
+    const second = buildCommit(first.book, accepted.imports[0], accepted.rows, plan);
+    if (!second.ok) throw new Error(second.failures.map((f) => f.message).join("\n"));
+    expect(second.outcomes.filter((o) => o.role === "created").map((o) => o.rowId)).toEqual([target.id]);
+    const done = markImported(accepted, out.record.id, second.outcomes, "2026-10-06T09:03:00Z");
+    expect(done.imports[0].status).toBe("IMPORTED");
+    expect(balanceOf(second.book).balanceMinor).toBe(expected.sept.closing);
+  });
+
   it("never processes the same file twice", async () => {
     const book = bookWithOpening();
     const out = await run("hdfc_style.pdf", book);

@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ArrowLeft, CheckCircle2, ChevronDown, FileText, Loader2, ScanText, ShieldAlert, ShieldCheck, Sparkles, Trash2, TriangleAlert } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronDown, FileText, Loader2, ScanText, ShieldAlert, ShieldCheck, Sparkles, Trash2, TriangleAlert, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -25,7 +25,7 @@ export const STATUS_STYLE: Record<string, string> = {
   PROCESSING: "bg-muted text-muted-foreground",
   REVIEW_REQUIRED: "bg-amber-100 text-amber-900",
   READY_TO_IMPORT: "bg-emerald-100 text-emerald-900",
-  IMPORTED: "bg-emerald-600 text-white",
+  IMPORTED: "palette-fixed bg-emerald-600 text-white",
   FAILED: "bg-red-100 text-red-900",
 };
 export const STATUS_TEXT: Record<string, string> = {
@@ -118,6 +118,13 @@ function RowLine({ row }: { row: StatementRow }) {
   const [open, setOpen] = useState(false);
   const c = row.classification;
   const event = row.eventId ? book.events.find((e) => e.id === row.eventId) : undefined;
+  const statements = useStatements();
+  const toast = useToast();
+  const bringBack = () => {
+    const r = statements.resolve(row.id, { kind: "reopen" });
+    toast.show({ message: r.ok ? "Moved to “Needs your decision” at the top: choose what it is, or skip it again." : r.message });
+    if (r.ok) window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   return (
     <div className="rounded-xl border bg-card" data-testid="row-line" data-status={row.status}>
@@ -161,6 +168,14 @@ function RowLine({ row }: { row: StatementRow }) {
             </div>
           )}
         </dl>
+      )}
+      {row.status === "skipped" && (
+        <div className="flex flex-wrap items-center gap-2 border-t px-3 py-2">
+          <span className="mr-auto text-xs text-muted-foreground">Not added to your records.</span>
+          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={bringBack} data-testid="bring-back">
+            <Undo2 /> Bring back
+          </Button>
+        </div>
       )}
     </div>
   );
@@ -266,18 +281,18 @@ export function ImportDetail({ importId, onBack }: { importId: string; onBack: (
   return (
     <div className="space-y-5" data-testid="import-detail" data-status={record.status}>
       <div>
-        <button onClick={onBack} className="mb-2 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+        <button onClick={onBack} className="mb-1 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="size-4" /> All imports
         </button>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h1 className="flex flex-wrap items-center gap-2 text-xl font-semibold">
+            <h1 className="flex flex-wrap items-center gap-2 text-lg font-semibold leading-tight tracking-tight">
               <span className="break-all">{record.filename}</span>
               <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-medium", STATUS_STYLE[record.status])} data-testid="import-status">
                 {STATUS_TEXT[record.status]}
               </span>
             </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="mt-0.5 text-sm text-muted-foreground">
               {account?.name ?? "Unknown account"}
               {record.bankHint ? ` · ${record.bankHint}` : ""}
               {record.accountMask ? ` · ••${record.accountMask}` : ""}
@@ -337,8 +352,7 @@ export function ImportDetail({ importId, onBack }: { importId: string; onBack: (
             <TriangleAlert className="size-4 shrink-0" /> This is a bank account statement, but it was imported into {account?.name}
           </p>
           <p className="mt-1 text-rose-900/80">
-            It shows your balance after every line, which only bank statements do. In a card account, your salary and other money in were recorded as
-            &ldquo;paid the credit card&rdquo; and your spending as card purchases. Undo this import, then import the file again and choose your bank account.
+            Money in was recorded as card payments and spending as card purchases. Undo it, then import again into your bank account.
           </p>
           <Button size="sm" variant="destructive" className="mt-3" disabled={undoing} onClick={() => { if (window.confirm(`Remove this import and the ${recordedCount} entries it added? You can then import the file again into your bank account.`)) void undoOrDiscard(); }} data-testid="undo-bank-in-card">
             Undo this import
@@ -352,7 +366,7 @@ export function ImportDetail({ importId, onBack }: { importId: string; onBack: (
             <TriangleAlert className="size-4 shrink-0" /> This is a credit card statement, but it was imported into {account?.name ?? "a bank account"}
           </p>
           <p className="mt-1 text-rose-900/80">
-            Its card purchases were recorded as money leaving your bank. Undo this import, then import the file again and choose your credit card.
+            Card purchases were recorded as money leaving your bank. Undo it, then import again into your credit card.
           </p>
           <Button
             size="sm"
@@ -399,7 +413,7 @@ export function ImportDetail({ importId, onBack }: { importId: string; onBack: (
             <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
               <input type="checkbox" checked={!!record.reconciliationOverride} onChange={(e) => statements.setReconciliationOverride(importId, e.target.checked)} data-testid="override" />
               <span>
-                <strong className="text-foreground">Import anyway</strong> — I've compared this with my statement and accept some lines may be missing or wrong.
+                <strong className="text-foreground">Import anyway</strong> — I've checked it; some lines may be missing or wrong.
               </span>
             </label>
           )}
@@ -423,9 +437,9 @@ export function ImportDetail({ importId, onBack }: { importId: string; onBack: (
             </p>
           )}
           {gap !== undefined && gap !== 0 && account && account.openingBalanceMinor + gap >= 0 && (
-            <div className="mt-2 rounded-lg bg-white/70 p-3 text-sm">
+            <div className="mt-2 rounded-lg bg-card p-3 text-sm">
               <p>
-                The {formatRupees(Math.abs(gap))} difference usually means {account.name} started with a different balance than you entered. You can correct its starting balance to match the bank.
+                The {formatRupees(Math.abs(gap))} gap usually means a different starting balance. Correct it to match the bank:
               </p>
               <Button
                 size="sm"
@@ -499,9 +513,9 @@ export function ImportDetail({ importId, onBack }: { importId: string; onBack: (
             <Sparkles /> Re-check lines
           </Button>
         )}
-        <span className="text-xs text-muted-foreground">Sort lines</span>
+        <span className="text-xs text-muted-foreground max-sm:hidden">Sort lines</span>
         <Select value={rowSort} onValueChange={(v) => setRowSort(v as RowSort)}>
-          <SelectTrigger className="h-8 w-44 bg-card text-xs" aria-label="Sort lines">
+          <SelectTrigger className="h-8 w-44 bg-card text-xs max-sm:w-36" aria-label="Sort lines">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -573,14 +587,7 @@ export function ImportDetail({ importId, onBack }: { importId: string; onBack: (
 
       <Section title="Skipped and duplicates" count={skipped.length} defaultOpen={false} testId="section-skipped">
         {skipped.map((r) => (
-          <div key={r.id} className="space-y-1">
-            <RowLine row={r} />
-            {!imported && (
-              <button className="ml-3 text-xs text-primary underline" onClick={() => statements.resolve(r.id, { kind: "reopen" })}>
-                Bring back for review
-              </button>
-            )}
-          </div>
+          <RowLine key={r.id} row={r} />
         ))}
       </Section>
 
@@ -590,7 +597,7 @@ export function ImportDetail({ importId, onBack }: { importId: string; onBack: (
       {!imported && record.status !== "FAILED" && (
         <div
           // Pinned to the bottom on wider screens; on phones the tab bar owns the bottom, so it sits at the end of the page.
-          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-card p-3 shadow-sm sm:sticky sm:bottom-3 sm:z-30 sm:bg-card/95 sm:shadow-lg sm:backdrop-blur"
+          className="flex flex-wrap items-center justify-between gap-3 glass rounded-2xl border p-3 sm:sticky sm:bottom-3 sm:z-30 sm:bg-card/95 sm:shadow-lg sm:backdrop-blur"
           data-testid="import-bar"
         >
           <div className="min-w-0 text-sm">

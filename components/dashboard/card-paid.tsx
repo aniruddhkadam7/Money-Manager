@@ -59,7 +59,7 @@ export function BillPaymentsFix({ cards }: { cards: AccountBalance[] }) {
       </ul>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         {cards.length > 1 && (
-          <select value={cardId} onChange={(e) => setCardId(e.target.value)} className="h-10 rounded-md border bg-white px-2 text-base sm:h-8 sm:text-xs" aria-label="Which card">
+          <select value={cardId} onChange={(e) => setCardId(e.target.value)} className="h-10 rounded-md border bg-card px-2 text-base sm:h-8 sm:text-xs" aria-label="Which card">
             {cards.map((c) => (
               <option key={c.account.id} value={c.account.id}>
                 {c.account.name}

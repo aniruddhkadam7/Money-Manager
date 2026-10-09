@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { FileUp, LayoutDashboard, Plus, ReceiptText, RefreshCw, Wallet } from "lucide-react";
 import { flush } from "@/lib/cloud/sync";
 import { Button } from "@/components/ui/button";
+import { LiquidButton, LiquidGlass } from "@/components/ui/liquid-glass-button";
 import { cn } from "@/lib/utils";
-import { CloudStatus } from "./cloud-status";
+import { BackButton } from "./back-button";
+import { ProfileMenu } from "./profile-menu";
 import { useEventDialog } from "./events/event-dialog";
 
 const NAV = [
@@ -17,8 +19,8 @@ const NAV = [
 ];
 
 /**
- * Tablet and up: one header with the pages, Import and Add.
- * Phones: a slim top bar, and a bottom tab bar (MobileNav) within thumb reach.
+ * Tablet and up: a floating liquid glass bar with the pages, Import and Add; the current page is a glass tab.
+ * Phones: a slim full-width top bar (no room to float), and a bottom tab bar (MobileNav) within thumb reach.
  */
 export function AppHeader() {
   const pathname = usePathname();
@@ -26,43 +28,53 @@ export function AppHeader() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 border-b bg-card pt-[env(safe-area-inset-top)] shadow-sm sm:bg-card/90 sm:backdrop-blur">
-        <div className="mx-auto flex max-w-[2000px] items-center justify-between gap-x-6 px-4 py-2 sm:py-2.5 sm:px-6 lg:px-8">
-          <Link href="/" className="flex items-center gap-2 font-semibold">
-            <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <Wallet className="size-4" />
-            </span>
-            Money Manager
-          </Link>
+      <header className="glass-bar sticky top-0 z-40 border-b pt-[env(safe-area-inset-top)] shadow-sm sm:border-0 sm:bg-transparent sm:px-4 sm:pt-3 sm:shadow-none sm:[-webkit-backdrop-filter:none] sm:[backdrop-filter:none] lg:px-6">
+        {/* The liquid layers distort what scrolls behind the bar, so the bar itself has no blur of its own (it would hide the effect). */}
+        <LiquidGlass
+          layersClassName="max-sm:hidden"
+          className="mx-auto flex max-w-[2000px] items-center justify-between gap-x-6 px-4 py-2 sm:rounded-full sm:bg-card/75 sm:py-1.5 sm:pl-3 sm:pr-2 sm:shadow-lg sm:shadow-slate-900/10"
+        >
+          <div className="flex min-w-0 items-center gap-1">
+            <Suspense fallback={null}>
+              <BackButton />
+            </Suspense>
+            <Link href="/" className="flex min-w-0 items-center gap-2 font-semibold">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground sm:rounded-full">
+                <Wallet className="size-4" />
+              </span>
+              <span className="truncate font-brand text-xl font-bold leading-none tracking-tight">Money Manager</span>
+            </Link>
+          </div>
 
-          <nav className="hidden flex-1 gap-1 sm:flex">
-            {NAV.map(({ href, label }) => (
-              <Link
-                key={href}
-                href={href}
-                className={cn(
-                  "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
-                  pathname === href ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {label}
-              </Link>
-            ))}
+          <nav className="hidden flex-1 items-center gap-1 sm:flex">
+            {NAV.map(({ href, label }) =>
+              pathname === href ? (
+                <LiquidButton key={href} asChild size="sm" className="rounded-full px-4 text-sm font-semibold text-foreground">
+                  <Link href={href} aria-current="page">
+                    {label}
+                  </Link>
+                </LiquidButton>
+              ) : (
+                <Link key={href} href={href} className="flex h-8 items-center rounded-full px-4 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+                  {label}
+                </Link>
+              ),
+            )}
           </nav>
 
           <div className="flex items-center gap-2">
-            <Button asChild variant="outline" className="hidden sm:inline-flex" data-testid="import-statement">
+            <LiquidButton asChild size="default" className="hidden rounded-full text-foreground sm:inline-flex" data-testid="import-statement">
               <Link href="/import">
                 <FileUp /> Import statement
               </Link>
-            </Button>
-            <Button className="hidden sm:inline-flex" onClick={() => openAdd()}>
+            </LiquidButton>
+            <LiquidButton size="default" className="hidden rounded-full font-semibold sm:inline-flex" onClick={() => openAdd()}>
               <Plus /> Add
-            </Button>
+            </LiquidButton>
             <RefreshButton />
-            <CloudStatus />
+            <ProfileMenu />
           </div>
-        </div>
+        </LiquidGlass>
       </header>
       <MobileNav pathname={pathname} onAdd={() => openAdd()} />
     </>
@@ -79,41 +91,45 @@ const TABS = [
 function MobileNav({ pathname, onAdd }: { pathname: string; onAdd: () => void }) {
   const tab = ({ href, label, icon: Icon }: (typeof TABS)[number]) => {
     const active = pathname === href;
+    const body = (
+      <>
+        <Icon className="size-5" strokeWidth={active ? 2.4 : 2} />
+        {label}
+      </>
+    );
     return (
       <Link
         key={href}
         href={href}
         aria-current={active ? "page" : undefined}
         className={cn(
-          "flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-medium transition-colors active:bg-muted",
+          "flex min-w-0 flex-1 items-center justify-center text-[11px] font-medium transition-transform active:scale-95",
           active ? "text-primary" : "text-muted-foreground",
         )}
       >
-        <Icon className="size-5" strokeWidth={active ? 2.4 : 2} />
-        {label}
+        <span className={cn("flex flex-col items-center gap-0.5 px-2 py-1.5", active && "font-semibold")}>{body}</span>
       </Link>
     );
   };
 
   return (
-    <nav
-      aria-label="Main"
-      className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_rgba(15,23,42,0.06)] backdrop-blur sm:hidden"
-    >
-      <div className="flex h-16 items-stretch">
+    // A floating liquid glass pill (like the header from tablet width up). The bar itself has no blur: it would hide the glass distortion.
+    <nav aria-label="Main" className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] sm:hidden">
+      <LiquidGlass className="pointer-events-auto flex h-16 items-stretch rounded-full bg-card/75 px-1 shadow-lg shadow-slate-900/15">
         {TABS.slice(0, 2).map(tab)}
         <div className="flex flex-1 items-center justify-center">
-          <button
-            type="button"
+          {/* The same white liquid glass as the bar, centred in it; the green + marks the main action. */}
+          <LiquidButton
+            size="icon"
             onClick={onAdd}
             aria-label="Add an entry"
-            className="-mt-6 flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg ring-4 ring-card transition-transform active:scale-95"
+            className="z-20 size-12 rounded-full bg-card/85 text-primary shadow-lg shadow-slate-900/15 hover:scale-100 active:scale-95"
           >
-            <Plus className="size-7" />
-          </button>
+            <Plus className="size-7" strokeWidth={2.6} />
+          </LiquidButton>
         </div>
         {TABS.slice(2).map(tab)}
-      </div>
+      </LiquidGlass>
     </nav>
   );
 }

@@ -79,7 +79,7 @@ export function MoneyFlowChart({ flow, selected, onSelect, animateKey }: Props) 
     <div key={animateKey} className="chart-reveal flex flex-col items-center gap-6 sm:flex-row sm:justify-center sm:gap-12">
       <div className="relative shrink-0" style={{ width: SIZE, height: SIZE }}>
         <svg width={SIZE} height={SIZE} role="group" aria-label="Where this month's income went" className="-rotate-90">
-          <circle cx={SIZE / 2} cy={SIZE / 2} r={R} fill="none" stroke="#f1f5f9" strokeWidth={STROKE} />
+          <circle cx={SIZE / 2} cy={SIZE / 2} r={R} fill="none" className="stroke-slate-100" strokeWidth={STROKE} />
           {arcs.map((a) => (
             <circle
               key={a.id}
