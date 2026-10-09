@@ -59,26 +59,48 @@ export function CloudGate({ children }: { children: ReactNode }) {
   );
 }
 
+function friendlyAuthError(message: string): string {
+  if (/invalid login credentials/i.test(message)) return "Wrong username or password.";
+  if (/rate limit|too many/i.test(message)) return "Too many attempts. Wait a minute and try again.";
+  return message;
+}
+
+/**
+ * Accounts are created by the owner; people sign in with a username or their email. Supabase needs an
+ * email behind each account: a username maps to its account's real email when it has one, otherwise to
+ * an address on the app's own domain that never receives mail.
+ */
+export const LOGIN_DOMAIN = "users.whitedotai.in";
+const USERNAME_EMAILS: Record<string, string> = {
+  aniruddhkadam: "theaniruddhkadam@gmail.com",
+  aniruddkadam: "theaniruddhkadam@gmail.com",
+};
+export const loginEmail = (usernameOrEmail: string): string => {
+  const u = usernameOrEmail.trim().toLowerCase();
+  if (u.includes("@")) return u;
+  return USERNAME_EMAILS[u] ?? `${u}@${LOGIN_DOMAIN}`;
+};
+
 function SignIn() {
-  const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<{ error: boolean; text: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     const sb = supabase();
     if (!sb) return;
     setBusy(true);
-    setMessage(null);
-    const { data, error } =
-      mode === "sign-in"
-        ? await sb.auth.signInWithPassword({ email, password })
-        : await sb.auth.signUp({ email, password, options: { emailRedirectTo: window.location.origin } });
-    setBusy(false);
-    if (error) setMessage({ error: true, text: error.message });
-    else if (mode === "sign-up" && !data.session) setMessage({ error: false, text: "Account created. Open the link in the email Supabase sent you, then sign in." });
+    setError(null);
+    try {
+      const { error } = await sb.auth.signInWithPassword({ email: loginEmail(username), password });
+      if (error) setError(friendlyAuthError(error.message));
+    } catch {
+      setError("Couldn't reach the server. Check your connection and try again.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -93,36 +115,27 @@ function SignIn() {
           </div>
           <form onSubmit={submit} className="space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+              <Label htmlFor="username">Username or email</Label>
+              <Input
+                id="username"
+                autoComplete="username"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                required
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
-                minLength={8}
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
+              <Input id="password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
             </div>
-            {message && <p className={message.error ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>{message.text}</p>}
+            {error && <p className="text-sm text-destructive">{error}</p>}
             <Button type="submit" className="w-full" disabled={busy}>
-              {busy && <Loader2 className="animate-spin" />} {mode === "sign-in" ? "Sign in" : "Create account"}
+              {busy && <Loader2 className="animate-spin" />} Sign in
             </Button>
           </form>
-          <button
-            type="button"
-            className="w-full text-center text-sm text-muted-foreground hover:text-foreground"
-            onClick={() => {
-              setMode(mode === "sign-in" ? "sign-up" : "sign-in");
-              setMessage(null);
-            }}
-          >
-            {mode === "sign-in" ? "First time here? Create your account" : "Already have an account? Sign in"}
-          </button>
         </CardContent>
       </Card>
     </div>
