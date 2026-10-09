@@ -74,7 +74,7 @@ export function UpcomingSection({ model, state }: { model: DashboardModel; state
           {owedByMe.length > 0 && (
             <div className="mt-3 border-t border-slate-100 pt-3">
               <p className="mb-1 text-[11px] font-medium uppercase tracking-[0.08em] text-slate-400">You owe</p>
-              {owedByMe.slice(0, 3).map((p) => (
+              {owedByMe.map((p) => (
                 <Link key={p.person.id} href={activityHref({ person: p.person.id })} className="flex items-center justify-between rounded-xl py-1.5 text-sm hover:text-emerald-700">
                   <span className="text-slate-700">{p.person.name}</span>
                   <span className="font-semibold tabular-nums text-slate-900">{formatExactINR(p.iOwe.outstandingMinor)}</span>

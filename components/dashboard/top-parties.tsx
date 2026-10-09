@@ -164,7 +164,8 @@ function PeopleCard({ title, side, people }: { title: string; side: "borrowers" 
     }))
     .filter((r) => r.outstanding > 0)
     .sort((a, b) => b.outstanding - a.outstanding);
-  const shown = rows.slice(0, MAX_ROWS);
+  // Every open balance is listed: a debt shouldn't hide behind "+N more".
+  const shown = rows;
   const total = rows.reduce((t, r) => t + r.outstanding, 0);
 
   return (
@@ -202,7 +203,6 @@ function PeopleCard({ title, side, people }: { title: string; side: "borrowers" 
               />
             ))}
           </ul>
-          <More count={rows.length - shown.length} href={activityHref({ group: mine ? "lent" : "borrowed", owed: mine ? "me" : "you" })} />
         </>
       )}
     </ChartCard>
