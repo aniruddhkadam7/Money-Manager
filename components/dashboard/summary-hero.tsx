@@ -11,6 +11,7 @@ import { cardSpending } from "@/lib/finance/card-spend";
 import { monthEnd, monthStart } from "@/lib/domain/dates";
 import { cn } from "@/lib/utils";
 import { DeltaPill } from "../charts/primitives";
+import { NetWorthBreakdown } from "./net-worth-breakdown";
 
 function Metric({ label, value, sub, subTone, title, href }: { label: string; value: string; sub?: ReactNode; subTone?: "positive" | "negative" | "neutral"; title?: string; href: string }) {
   return (
@@ -77,6 +78,9 @@ export function SummaryHero({ model, state, book }: { model: DashboardModel; sta
               {change === 0 ? "No change" : formatSignedINR(change)} this month
             </DeltaPill>
           )}
+        </div>
+        <div className="mt-3">
+          <NetWorthBreakdown state={state} />
         </div>
         </div>
 
