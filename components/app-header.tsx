@@ -24,7 +24,7 @@ export function AppHeader() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 border-b bg-card/90 shadow-sm backdrop-blur pt-[env(safe-area-inset-top)]">
+      <header className="sticky top-0 z-40 border-b bg-card pt-[env(safe-area-inset-top)] shadow-sm sm:bg-card/90 sm:backdrop-blur">
         <div className="mx-auto flex max-w-[2000px] items-center justify-between gap-x-6 px-4 py-2 sm:py-2.5 sm:px-6 lg:px-8">
           <Link href="/" className="flex items-center gap-2 font-semibold">
             <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
