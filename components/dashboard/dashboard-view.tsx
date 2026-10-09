@@ -10,6 +10,7 @@ import { useEventDialog } from "../events/event-dialog";
 import { EventRow } from "../events/event-row";
 import { useFinance } from "../finance-provider";
 import { ChartCard } from "../charts/primitives";
+import { AccountsSection } from "./accounts-section";
 import { BalanceSheetSection } from "./balance-sheet-section";
 import { CardsSection } from "./cards-section";
 import { IncomeExpenseSection, SpendingSection } from "./cash-flow-sections";
@@ -78,6 +79,11 @@ export function DashboardView() {
       {/* 1. Where do I stand? */}
       <div className="col-span-full">
         <SummaryHero model={model} state={state} book={book} />
+      </div>
+
+      {/* Each bank account and card: logo, available balance / to pay, this month's spending */}
+      <div className="col-span-full">
+        <AccountsSection book={book} state={state} today={today} />
       </div>
 
       {/* So far: earned, spent, and where */}

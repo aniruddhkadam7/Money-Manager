@@ -10,7 +10,11 @@ const out = path.join(root, "public", "brands");
 mkdirSync(out, { recursive: true });
 
 const source = readFileSync(path.join(root, "lib", "finance", "brands.ts"), "utf-8");
-const brands = [...source.matchAll(/b\("([a-z0-9]+)",\s*"[^"]*",\s*"([^"]+)"/g)].map((m) => ({ slug: m[1], domain: m[2] }));
+const banks = readFileSync(path.join(root, "lib", "finance", "bank-logos.ts"), "utf-8");
+const brands = [
+  ...[...source.matchAll(/b\("([a-z0-9]+)",\s*"[^"]*",\s*"([^"]+)"/g)],
+  ...[...banks.matchAll(/k\("([a-z0-9-]+)",\s*"[^"]*",\s*"([^"]+)"/g)],
+].map((m) => ({ slug: m[1], domain: m[2] }));
 
 const fetchLogo = async (domain) => {
   const res = await fetch(`https://www.google.com/s2/favicons?domain=${domain}&sz=128`, { redirect: "follow" });
