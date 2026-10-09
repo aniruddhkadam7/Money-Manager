@@ -1,0 +1,8 @@
+# Never upload local secrets; Vercel has its own environment variables.
+.env*
+!.env.example
+.vercel
+.next
+node_modules
+tests
+eng.traineddata

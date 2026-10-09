@@ -105,6 +105,16 @@ describe("the classification route", () => {
     expect(received).toHaveLength(0);
   });
 
+  it("requires a sign-in once Supabase is set up, and on any Vercel deployment", async () => {
+    const supabaseEnv = { ...env, NEXT_PUBLIC_SUPABASE_URL: "https://x.supabase.co", NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon", ALLOWED_EMAIL: "me@example.com" };
+    for (const e of [supabaseEnv, { ...env, VERCEL: "1" }]) {
+      const res = await handleClassify(new Request("http://localhost/x", { method: "POST", body: "{}" }), e);
+      expect(res.status).toBe(401);
+      expect((await res.json()).error).toBe("unauthorized");
+    }
+    expect(received).toHaveLength(0);
+  });
+
   it("rejects malformed requests before spending anything", async () => {
     for (const body of ["not json", "{}", JSON.stringify({ items: [], expenseCategories: [], incomeCategories: [] })]) {
       const res = await handleClassify(new Request("http://localhost/x", { method: "POST", body }), withEnv());

@@ -6,7 +6,12 @@ import { AI_JSON_SCHEMA, aiResponseSchema, type AiRequest, type AiResponse } fro
  * and then validated again. Used for every line the built-in rules could not settle with certainty.
  */
 
-export const DEFAULT_MODEL = "gpt-4o-mini";
+export const DEFAULT_MODEL = "gpt-6-luna";
+
+/** Reasoning models (o-series, GPT-5 and later) reject any temperature other than the default. */
+export function supportsTemperature(model: string): boolean {
+  return !/^(o\d|gpt-[5-9])/.test(model);
+}
 
 const SYSTEM_PROMPT = `You classify lines from an Indian bank statement for a personal money manager.
 Each line has: id, direction (debit = money left the account, credit = money arrived), amount in rupees, payment mode, a counterparty guess, the bank narration (digits are masked as #), its date and weekday, how many lines in this statement share the same counterparty and direction ("occurrences"), whether those repeat about monthly ("monthly"), and "ruleHint" (what simple keyword rules made of it, which may be wrong).
@@ -73,7 +78,7 @@ export async function classifyBatch(request: AiRequest, { client, model, timeout
   const completion = await client.chat.completions.create(
     {
       model,
-      temperature: 0,
+      ...(supportsTemperature(model) ? { temperature: 0 } : {}),
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: user },

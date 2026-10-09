@@ -1,3 +1,4 @@
+import { authFetch } from "@/lib/cloud/client";
 import {
   MAX_ITEMS_PER_REQUEST,
   aiResponseSchema,
@@ -45,7 +46,7 @@ export interface AiOptions {
   allRows?: StatementRow[];
 }
 
-export async function aiAvailable(fetchImpl: typeof fetch = fetch, endpoint = "/api/statement/classify"): Promise<boolean> {
+export async function aiAvailable(fetchImpl: typeof fetch = authFetch, endpoint = "/api/statement/classify"): Promise<boolean> {
   try {
     const res = await fetchImpl(endpoint, { cache: "no-store" });
     if (!res.ok) return false;
@@ -149,7 +150,7 @@ export function sanitize(result: AiResult, row: StatementRow, opts: Pick<AiOptio
 }
 
 async function postBatch(items: AiItem[], opts: AiOptions): Promise<AiResult[]> {
-  const fetchImpl = opts.fetchImpl ?? fetch;
+  const fetchImpl = opts.fetchImpl ?? authFetch;
   const endpoint = opts.endpoint ?? "/api/statement/classify";
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {

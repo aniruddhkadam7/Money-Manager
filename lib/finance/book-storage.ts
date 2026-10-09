@@ -1,4 +1,5 @@
 import type { Book } from "./types";
+import { appStorage } from "@/lib/cloud/sync";
 
 /**
  * Where the Book lives. V0 keeps it in the browser; the engine is pure, so the
@@ -26,6 +27,6 @@ export class LocalStorageBookRepository implements BookRepository {
   }
 
   async save(book: Book): Promise<void> {
-    window.localStorage.setItem(BOOK_KEY, JSON.stringify(book));
+    appStorage.setItem(BOOK_KEY, JSON.stringify(book));
   }
 }

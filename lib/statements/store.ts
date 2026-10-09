@@ -1,4 +1,5 @@
 import { DEFAULT_SETTINGS, emptyImportStore, type ImportStoreData } from "./types";
+import { appStorage } from "@/lib/cloud/sync";
 
 /** Where imports, their lines, learned rules and settings live. V0: this browser. */
 export interface ImportRepository {
@@ -27,6 +28,6 @@ export class LocalStorageImportRepository implements ImportRepository {
   }
 
   async save(data: ImportStoreData): Promise<void> {
-    window.localStorage.setItem(KEY, JSON.stringify(data));
+    appStorage.setItem(KEY, JSON.stringify(data));
   }
 }

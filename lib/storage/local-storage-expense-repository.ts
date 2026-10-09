@@ -1,3 +1,4 @@
+import { appStorage } from "@/lib/cloud/sync";
 import {
   DEFAULT_CATEGORIES,
   colorForCustomCategory,
@@ -22,7 +23,7 @@ function read<T>(key: string, fallback: T): T {
 }
 
 function write(key: string, value: unknown): void {
-  window.localStorage.setItem(key, JSON.stringify(value));
+  appStorage.setItem(key, JSON.stringify(value));
 }
 
 function newId(): string {

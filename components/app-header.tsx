@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { FileUp, Plus, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { CloudStatus } from "./cloud-status";
 import { useEventDialog } from "./events/event-dialog";
 
 const NAV = [
@@ -37,6 +38,7 @@ export function AppHeader() {
           <Button onClick={() => openAdd()}>
             <Plus /> Add
           </Button>
+          <CloudStatus />
         </div>
 
         <nav className="order-last flex w-full gap-1 sm:order-2 sm:w-auto sm:flex-1">

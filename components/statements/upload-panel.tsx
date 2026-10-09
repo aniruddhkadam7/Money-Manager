@@ -13,6 +13,7 @@ import { looksLikeCardStatement, type Progress, type Stage } from "@/lib/stateme
 import { useFinance } from "../finance-provider";
 import { ACCEPTED_EXTENSIONS } from "@/lib/statements/tabular";
 import { useStatements, type UploadResult } from "./statements-provider";
+import { appStorage } from "@/lib/cloud/sync";
 
 const STAGES: { stage: Stage; label: string }[] = [
   { stage: "reading", label: "Reading the file" },
@@ -70,7 +71,7 @@ export function UploadPanel({ onDone }: { onDone: (importId: string) => void }) 
   const start = async () => {
     if (!file || !accountId || busy) return;
     try {
-      window.localStorage.setItem(LAST_ACCOUNT_KEY, accountId);
+      appStorage.setItem(LAST_ACCOUNT_KEY, accountId);
     } catch {
       // not important
     }

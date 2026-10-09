@@ -38,7 +38,7 @@ export function ResetApp() {
         <CardContent className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="font-semibold">Start over</h2>
-            <p className="text-sm text-muted-foreground">Remove all entries, accounts, people, categories, imported statements and learned rules from this browser.</p>
+            <p className="text-sm text-muted-foreground">Remove all entries, accounts, people, categories, imported statements and learned rules.</p>
           </div>
           <Button variant="outline" className="border-red-300 text-destructive hover:bg-red-50 hover:text-destructive" onClick={() => { setTyped(""); setOpen(true); }}>
             <RotateCcw /> Reset app
@@ -51,7 +51,7 @@ export function ResetApp() {
           <DialogHeader>
             <DialogTitle>Reset the whole app?</DialogTitle>
             <DialogDescription>
-              Everything you've recorded or imported is deleted from this browser and can't be brought back. Download a backup first if you might want it later.
+              Everything you've recorded or imported is deleted and can't be brought back. Download a backup first if you might want it later.
             </DialogDescription>
           </DialogHeader>
 
