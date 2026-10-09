@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { aiAvailable } from "@/lib/statements/ai";
 import { browserOcr, browserOcrImage, loadPdfjs } from "@/lib/statements/browser";
 import {
-  acceptAllFlagged, discardImport, failedImport, markFailures, markImported, forgetImport, processStatement, readiness, reclassifyWaiting, resolveRow, setOverride,
+  AUTO_ACCOUNT, acceptAllFlagged, discardImport, failedImport, markFailures, markImported, forgetImport, processStatement, readiness, reclassifyWaiting, resolveRow, setOverride,
   type Decision, type Progress, type Readiness,
 } from "@/lib/statements/pipeline";
 import { buildCommit, type CommitFailure } from "@/lib/statements/plan";
@@ -211,7 +211,13 @@ export function StatementsProvider({ children, repository = repo }: { children: 
             if (err.code === "duplicate_file" && err.importId) await saveStatementFile(err.importId, data);
             // Needs the person (password) or is a repeat: nothing to record. Anything else is kept in history as FAILED.
             if (err.code !== "password_required" && err.code !== "password_incorrect" && err.code !== "duplicate_file") {
-              await persist(failedImport(storeRef.current, { id: crypto.randomUUID(), filename: file.name, data, accountId, error: err.message, now: nowISO() }));
+              // A statement that failed before its account was worked out is filed under the main bank account.
+              const book = finance.getBook();
+              const filedUnder =
+                accountId === AUTO_ACCOUNT
+                  ? (book.accounts.find((a) => a.id === "account-netbanking") ?? book.accounts.find((a) => a.type === "bank") ?? book.accounts[0])?.id ?? accountId
+                  : accountId;
+              await persist(failedImport(storeRef.current, { id: crypto.randomUUID(), filename: file.name, data, accountId: filedUnder, error: err.message, now: nowISO() }));
             }
             return { ok: false, code: err.code, message: err.message, importId: err.importId };
           }

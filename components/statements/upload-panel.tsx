@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type DragEvent } from "react";
+import { useRef, useState, type DragEvent } from "react";
 import Link from "next/link";
 import { CheckCircle2, FileText, Loader2, LockKeyhole, ShieldCheck, Sparkles, TriangleAlert, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,11 +9,10 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { STATEMENT_ACCOUNT_TYPES } from "@/lib/finance/types";
-import { looksLikeCardStatement, type Progress, type Stage } from "@/lib/statements/pipeline";
+import { AUTO_ACCOUNT, type Progress, type Stage } from "@/lib/statements/pipeline";
 import { useFinance } from "../finance-provider";
 import { ACCEPTED_EXTENSIONS } from "@/lib/statements/tabular";
 import { useStatements, type UploadResult } from "./statements-provider";
-import { appStorage } from "@/lib/cloud/sync";
 
 const STAGES: { stage: Stage; label: string }[] = [
   { stage: "reading", label: "Reading the file" },
@@ -25,15 +24,14 @@ const STAGES: { stage: Stage; label: string }[] = [
   { stage: "ai", label: "Asking AI about the unclear ones" },
 ];
 
-const LAST_ACCOUNT_KEY = "money-manager:v1:import-account";
-
 export function UploadPanel({ onDone }: { onDone: (importId: string) => void }) {
   const { book } = useFinance();
   const statements = useStatements();
   const input = useRef<HTMLInputElement>(null);
 
   const accounts = book.accounts.filter((a) => STATEMENT_ACCOUNT_TYPES.includes(a.type));
-  const [accountId, setAccountId] = useState("");
+  // The statement says which account it is; choosing one by hand is the exception.
+  const [accountId, setAccountId] = useState(AUTO_ACCOUNT);
   const [file, setFile] = useState<File | null>(null);
   const [password, setPassword] = useState("");
   const [useAi, setUseAi] = useState(true);
@@ -42,27 +40,12 @@ export function UploadPanel({ onDone }: { onDone: (importId: string) => void }) 
   const [result, setResult] = useState<Extract<UploadResult, { ok: false }> | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  useEffect(() => {
-    if (accountId || accounts.length === 0) return;
-    let remembered: string | null = null;
-    try {
-      remembered = window.localStorage.getItem(LAST_ACCOUNT_KEY);
-    } catch {
-      // storage unavailable: use the default
-    }
-    const pick = accounts.find((a) => a.id === remembered) ?? accounts.find((a) => a.id === "account-netbanking") ?? accounts.find((a) => a.type === "bank") ?? accounts[0];
-    setAccountId(pick.id);
-  }, [accounts, accountId]);
-
   const busy = progress !== null;
   const needsPassword = result?.code === "password_required" || result?.code === "password_incorrect";
   const aiAvailable = statements.aiReady === true;
 
   const choose = (f: File | null | undefined) => {
     if (!f) return;
-    // A file named after a masked card number is a card statement: point it at the card.
-    const card = accounts.find((a) => a.type === "credit_card");
-    if (card && looksLikeCardStatement(f.name)) setAccountId(card.id);
     setFile(f);
     setResult(null);
     setPassword("");
@@ -70,11 +53,6 @@ export function UploadPanel({ onDone }: { onDone: (importId: string) => void }) 
 
   const start = async () => {
     if (!file || !accountId || busy) return;
-    try {
-      appStorage.setItem(LAST_ACCOUNT_KEY, accountId);
-    } catch {
-      // not important
-    }
     setResult(null);
     setProgress({ stage: "reading", fraction: 0, label: "Reading the file" });
     const res = await statements.upload({ file, accountId, password: password || undefined, useAi: useAi && aiAvailable, onProgress: setProgress });
@@ -164,6 +142,7 @@ export function UploadPanel({ onDone }: { onDone: (importId: string) => void }) 
                 <SelectValue placeholder="Choose an account" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value={AUTO_ACCOUNT}>Detect from the statement</SelectItem>
                 {accounts.map((a) => (
                   <SelectItem key={a.id} value={a.id}>
                     {a.name}

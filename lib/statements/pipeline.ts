@@ -230,6 +230,40 @@ export { describeReason };
 
 const pageProgress = (done: number, total: number, from: number, to: number) => from + (to - from) * (total ? done / total : 1);
 
+/** The account choice that means "work it out from the statement". */
+export const AUTO_ACCOUNT = "auto";
+
+/**
+ * Which account a statement belongs to, from what it says: the account it went to last time for this
+ * bank and number; else one whose name carries the statement's last four digits or bank; else, by kind,
+ * the credit card for a card statement or the main bank account for anything else.
+ */
+export function detectAccount(
+  book: Book,
+  store: Pick<ImportStoreData, "accountByMask">,
+  parsed: { bankHint?: string; accountMask?: string; rows: { balanceMinor?: number }[] },
+  cardStatement: boolean,
+): string {
+  const isCard = cardStatement && !looksLikeBankStatement(parsed.rows, false);
+  const candidates = book.accounts.filter((a) => STATEMENT_ACCOUNT_TYPES.includes(a.type) && (a.type === "credit_card") === isCard);
+  const remembered = parsed.accountMask ? store.accountByMask[`${parsed.bankHint ?? ""}:${parsed.accountMask}`] : undefined;
+  const bankWord = parsed.bankHint?.split(" ")[0].toLowerCase();
+  const pick =
+    candidates.find((a) => a.id === remembered) ??
+    (parsed.accountMask ? candidates.find((a) => a.name.includes(parsed.accountMask!)) : undefined) ??
+    (bankWord ? candidates.find((a) => a.name.toLowerCase().includes(bankWord)) : undefined) ??
+    (isCard ? candidates[0] : candidates.find((a) => a.id === "account-netbanking") ?? candidates.find((a) => a.type === "bank") ?? candidates[0]);
+  if (!pick) {
+    throw new StatementError(
+      "unsupported_format",
+      isCard
+        ? "This is a credit card statement, but there's no credit card account yet. Restore the standard accounts on the Money page, then try again."
+        : "There's no bank account to put this statement in. Restore the standard accounts on the Money page, then try again.",
+    );
+  }
+  return pick.id;
+}
+
 function sanityCheckAccount(book: Book, accountId: string) {
   const a = book.accounts.find((x) => x.id === accountId);
   if (!a) throw new StatementError("unsupported_format", "Choose which account this statement belongs to.");
@@ -284,14 +318,15 @@ async function readPages(
 }
 
 export async function processStatement(input: ProcessInput, env: PipelineEnv): Promise<ProcessResult> {
-  const { data, filename, accountId, book, categories } = input;
+  const { data, filename, book, categories } = input;
+  const auto = input.accountId === AUTO_ACCOUNT;
   const settings = input.store.settings;
   const report = (stage: Stage, fraction: number, label?: string) => input.onProgress?.({ stage, fraction, label: label ?? STAGE_LABEL[stage] });
   const aborted = () => {
     if (input.signal?.aborted) throw new StatementError("invalid_pdf", "Cancelled.");
   };
 
-  sanityCheckAccount(book, accountId);
+  if (!auto) sanityCheckAccount(book, input.accountId);
 
   // 1. Never process the same file twice.
   const hash = fileHash(data);
@@ -310,7 +345,6 @@ export async function processStatement(input: ProcessInput, env: PipelineEnv): P
   const { pages, usedOcr } = await readPages(data, filename, input.password, env, report, aborted);
   const pageText = pages.flat().map((i) => i.str).join(" ");
   const cardStatement = looksLikeCardStatement(filename, pageText);
-  const cardBill = cardStatement || input.book.accounts.find((a) => a.id === input.accountId)?.type === "credit_card" ? readCardBill(pageText) : undefined;
 
   // 3. Find the transactions.
   report("parsing", 0.6);
@@ -324,10 +358,14 @@ export async function processStatement(input: ProcessInput, env: PipelineEnv): P
     );
   }
 
+  // Left to the app, the statement itself says which account it is (see detectAccount).
+  const accountId = auto ? detectAccount(book, input.store, parsed, cardStatement) : input.accountId;
+  const cardBill = cardStatement || book.accounts.find((a) => a.id === accountId)?.type === "credit_card" ? readCardBill(pageText) : undefined;
+
   // A bank statement prints the account's balance after every line; a card statement doesn't. Recording a
   // bank statement in a card account turns your salary into "paid the card" and your spending into card
   // purchases, so it is refused with the reason.
-  const target = input.book.accounts.find((a) => a.id === input.accountId);
+  const target = book.accounts.find((a) => a.id === accountId);
   if (target?.type === "credit_card" && looksLikeBankStatement(parsed.rows, cardStatement)) {
     throw new StatementError(
       "unsupported_format",
@@ -343,7 +381,7 @@ export async function processStatement(input: ProcessInput, env: PipelineEnv): P
 
   // Card statements print charges as plain amounts and mark only payments and refunds ("Cr", "Payment
   // received"…). For a credit card account, an unmarked amount is a purchase, not an unreadable line.
-  if (input.book.accounts.find((a) => a.id === input.accountId)?.type === "credit_card") readAsCardStatement(parsed);
+  if (target?.type === "credit_card") readAsCardStatement(parsed);
 
   report("checking", 0.68);
   const reconciliation = reconcile(parsed);

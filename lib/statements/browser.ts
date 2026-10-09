@@ -2,9 +2,13 @@ import type { ExtractedPdf, PdfjsLike } from "./pdf";
 import { createOcrWorker, recognizePage } from "./ocr";
 import type { TextItem } from "./types";
 
-/** Loads pdf.js in the browser. The worker file is copied to /public/pdfjs at install time. */
+/**
+ * Loads pdf.js in the browser. The worker file is copied to /public/pdfjs at install time.
+ * The legacy build carries fallbacks for browser features only months old (Map.getOrInsertComputed,
+ * Math.sumPrecise, Promise.try...); the modern build fails on phones without them, older iPhones above all.
+ */
 export async function loadPdfjs(): Promise<PdfjsLike> {
-  const pdfjs = await import("pdfjs-dist");
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   pdfjs.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.mjs";
   return pdfjs as unknown as PdfjsLike;
 }
