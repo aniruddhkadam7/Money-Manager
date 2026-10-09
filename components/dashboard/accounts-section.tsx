@@ -7,11 +7,14 @@ import { formatExactINR, formatHeadlineINR } from "@/lib/charts/format";
 import { activityHref } from "@/lib/charts/links";
 import { formatDisplayDate, monthEnd, monthStart } from "@/lib/domain/dates";
 import { accountActivity } from "@/lib/finance/account-activity";
+import { explainAccountBalance } from "@/lib/finance/explain";
 import { bankBrandFor, bankLogoSrc } from "@/lib/finance/bank-logos";
 import type { FinancialState } from "@/lib/finance/state";
 import type { Account, Book } from "@/lib/finance/types";
 import { cn } from "@/lib/utils";
 import { ACCOUNT_TYPE_INFO } from "../money/account-dialog";
+import { ExplainSheet, HowIcon, useExplain } from "../explainer";
+import { useFinance } from "../finance-provider";
 import { PictureIcon } from "../picture-icon";
 import { useStatements } from "../statements/statements-provider";
 import { statementMatches, useStatementChecks, type StatementCheck } from "../statements/use-statement-checks";
@@ -77,7 +80,10 @@ export function AccountsSection({ book, state, today }: { book: Book; state: Fin
               </span>
             </Link>
             <div className="flex items-baseline justify-between gap-2">
-              <span className="text-xs text-slate-500">{card ? "To pay" : "Available"}</span>
+              <span className="flex items-center gap-1 text-xs text-slate-500">
+                {card ? "To pay" : "Available"}
+                <AccountBalanceHow account={account} />
+              </span>
               <span className={cn("text-lg font-semibold tabular-nums", (card ? balanceMinor > 0 : balanceMinor < 0) ? "text-red-700" : "text-slate-900")}>
                 {formatExactINR(card ? Math.max(balanceMinor, 0) : balanceMinor)}
               </span>
@@ -118,5 +124,38 @@ function StatementLine({ accountId, check }: { accountId: string; check: Stateme
         {formatExactINR(Math.abs(diff))} {diff > 0 ? "more" : "less"} than statement ({formatDisplayDate(check.date)})
       </span>
     </Link>
+  );
+}
+
+/** ⓘ beside an account's balance: its starting balance, then everything in and out, ending in the balance. */
+function AccountBalanceHow({ account }: { account: Account }) {
+  const { book, ledger, today } = useFinance();
+  const how = useExplain();
+  const debt = account.type === "credit_card" || account.type === "loan";
+  const x = how.props.open ? explainAccountBalance(book, ledger, account.id, today) : null;
+  return (
+    <>
+      <HowIcon onClick={how.open} label={`${account.name} balance`} />
+      {x && (
+        <ExplainSheet
+          {...how.props}
+          signed
+          title={debt ? `What you owe on ${account.name}` : `${account.name}: how the balance adds up`}
+          description={
+            debt
+              ? "The starting amount you owed, plus purchases and charges, less payments and refunds."
+              : `The starting balance you set${x.openedOn && x.openedOn > "2000-01-01" ? ` (from ${formatDisplayDate(x.openedOn)})` : ""}, plus everything that came in, less everything that went out.`
+          }
+          sections={[{ title: debt ? "Since you started tracking" : "Money in and out", rows: x.lines.map((l) => ({ ...l, href: activityHref({ account: account.id }) })), empty: "No entries yet." }]}
+          steps={[
+            { label: debt ? "Owed at the start" : "Starting balance", amountMinor: x.startMinor },
+            ...x.lines.map((l) => ({ label: l.label, amountMinor: Math.abs(l.amountMinor), op: (l.amountMinor >= 0 ? "+" : "−") as "+" | "−" })),
+            debt && x.totalMinor < 0
+              ? { label: "Paid more than the purchases recorded", amountMinor: -x.totalMinor, op: "=" as const }
+              : { label: debt ? "To pay now" : "Balance now", amountMinor: x.totalMinor, op: "=" as const },
+          ]}
+        />
+      )}
+    </>
   );
 }

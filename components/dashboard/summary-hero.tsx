@@ -11,10 +11,20 @@ import { cardSpending } from "@/lib/finance/card-spend";
 import { monthEnd, monthStart } from "@/lib/domain/dates";
 import { cn } from "@/lib/utils";
 import { DeltaPill } from "../charts/primitives";
-import { NetWorthBreakdown } from "./net-worth-breakdown";
+import { ExplainSheet, HowIcon, useExplain } from "../explainer";
+import { useFinance } from "../finance-provider";
+import { NetWorthBreakdown, NetWorthBreakdownSheet } from "./net-worth-breakdown";
+import { explainIncome, explainNetWorthChange, explainSpent } from "@/lib/finance/explain";
+import { formatDisplayDate, shiftMonth } from "@/lib/domain/dates";
 
-function Metric({ label, value, sub, subTone, title, href }: { label: string; value: string; sub?: ReactNode; subTone?: "positive" | "negative" | "neutral"; title?: string; href: string }) {
+function Metric({ label, value, sub, subTone, title, href, onHow }: { label: string; value: string; sub?: ReactNode; subTone?: "positive" | "negative" | "neutral"; title?: string; href: string; onHow?: () => void }) {
   return (
+    <div className="relative min-w-0">
+    {onHow && (
+      <span className="absolute -top-1 right-0 z-10">
+        <HowIcon onClick={onHow} label={label} />
+      </span>
+    )}
     <Link
       href={href}
       aria-label={`${label}: ${value}. See details.`}
@@ -35,6 +45,7 @@ function Metric({ label, value, sub, subTone, title, href }: { label: string; va
         {sub}
       </p>
     </Link>
+    </div>
   );
 }
 
@@ -56,6 +67,22 @@ export function SummaryHero({ model, state, book }: { model: DashboardModel; sta
   const invBase = state.investments.costBasisMinor;
   const invPct = invBase > 0 ? Math.round((invGain / invBase) * 10_000) : null;
 
+  // "How it adds up" for each number, built from the same entries as the number.
+  const { ledger, getCategory, today } = useFinance();
+  const name = (id: string) => getCategory(id).name;
+  const from = monthStart(model.ym);
+  const to = monthEnd(model.ym);
+  const lastMonthEnd = monthEnd(shiftMonth(model.ym, -1));
+  const monthHref = (extra: Parameters<typeof activityHref>[0]) => activityHref({ ...monthFilter(model.ym), ...extra });
+  const howBalance = useExplain();
+  const howChange = useExplain();
+  const howSpent = useExplain();
+  const howIncome = useExplain();
+  const changeX = howChange.props.open ? explainNetWorthChange(book, ledger, lastMonthEnd, today, name) : null;
+  const spentX = howSpent.props.open ? explainSpent(book, ledger, from, to, name) : null;
+  const incomeX = howIncome.props.open ? explainIncome(book, ledger, from, to, name) : null;
+  const catId = (label: string) => [...book.events].map((e) => ("categoryId" in e ? e.categoryId : "")).find((id) => id && name(id) === label);
+
   return (
     <section className="relative overflow-hidden rounded-3xl border border-slate-300/60 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.07),0_12px_32px_-16px_rgba(15,23,42,0.22)] sm:p-6">
       <div aria-hidden className="pointer-events-none absolute -right-28 -top-32 size-96 rounded-full bg-emerald-400/10 blur-3xl" />
@@ -74,9 +101,11 @@ export function SummaryHero({ model, state, book }: { model: DashboardModel; sta
             {formatHeadlineINR(nw)}
           </Link>
           {change !== null && (
-            <DeltaPill tone={change > 0 ? "positive" : change < 0 ? "negative" : "neutral"}>
-              {change === 0 ? "No change" : formatSignedINR(change)} this month
-            </DeltaPill>
+            <button type="button" onClick={howChange.open} className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring" title="Why it changed this month" data-testid="net-worth-change">
+              <DeltaPill tone={change > 0 ? "positive" : change < 0 ? "negative" : "neutral"}>
+                {change === 0 ? "No change" : formatSignedINR(change)} this month
+              </DeltaPill>
+            </button>
           )}
         </div>
         <div className="mt-3">
@@ -85,11 +114,12 @@ export function SummaryHero({ model, state, book }: { model: DashboardModel; sta
         </div>
 
         <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-slate-100 pt-4 sm:grid-cols-3 lg:mt-0 lg:max-w-4xl lg:flex-1 lg:grid-cols-5 lg:border-t-0 lg:pt-0">
-          <Metric href="/money#accounts" label="Total assets" value={formatHeadlineINR(state.assets.totalMinor)} title={formatExactINR(state.assets.totalMinor)} sub={`Bank & cash ${formatHeadlineINR(state.cashMinor)}${state.assets.creditBalancesMinor > 0 ? ` · Card paid ahead ${formatHeadlineINR(state.assets.creditBalancesMinor)}` : ""}`} />
+          <Metric onHow={howBalance.open} href="/money#accounts" label="Total assets" value={formatHeadlineINR(state.assets.totalMinor)} title={formatExactINR(state.assets.totalMinor)} sub={`Bank & cash ${formatHeadlineINR(state.cashMinor)}${state.assets.creditBalancesMinor > 0 ? ` · Card paid ahead ${formatHeadlineINR(state.assets.creditBalancesMinor)}` : ""}`} />
           <Metric
             // Go where most of it is: people you owe, or cards and loans.
             href={state.liabilities.borrowedMinor >= state.liabilities.creditCardsMinor + state.liabilities.loansMinor ? "/money#owe" : "/money#cards-loans"}
             label="Liabilities"
+            onHow={howBalance.open}
             value={formatHeadlineINR(state.liabilities.totalMinor)}
             title={formatExactINR(state.liabilities.totalMinor)}
             sub={
@@ -108,6 +138,7 @@ export function SummaryHero({ model, state, book }: { model: DashboardModel; sta
           <Metric
             href={activityHref({ group: "spending", ...monthFilter(model.ym) })}
             label="Spent this month"
+            onHow={howSpent.open}
             value={formatHeadlineINR(current.expensesMinor)}
             title={formatExactINR(current.expensesMinor)}
             sub={
@@ -121,6 +152,7 @@ export function SummaryHero({ model, state, book }: { model: DashboardModel; sta
           <Metric
             href={activityHref({ group: "income", ...monthFilter(model.ym) })}
             label="Income this month"
+            onHow={howIncome.open}
             value={formatHeadlineINR(current.incomeMinor)}
             title={formatExactINR(current.incomeMinor)}
             sub={current.incomeMinor > 0 ? `Saved ${formatHeadlineINR(Math.max(current.savingsMinor, 0))}` : undefined}
@@ -135,6 +167,44 @@ export function SummaryHero({ model, state, book }: { model: DashboardModel; sta
           />
         </dl>
       </div>
+
+      <NetWorthBreakdownSheet state={state} {...howBalance.props} />
+      {changeX && (
+        <ExplainSheet
+          {...howChange.props}
+          signed
+          title="Why your net worth changed this month"
+          description={<>From the end of {formatDisplayDate(lastMonthEnd)} to today. Moving money between your own accounts, borrowing or lending, and paying bills don&apos;t change it: only income, spending, refunds, investment value and starting balances do.</>}
+          sections={changeX.groups.map((g) => ({ title: g.label, rows: g.lines.map((l) => ({ ...l, href: catId(l.label) ? monthHref({ category: catId(l.label) }) : undefined })) }))}
+          steps={[
+            { label: `Net worth on ${formatDisplayDate(lastMonthEnd)}`, amountMinor: nw - changeX.totalMinor },
+            ...changeX.groups.map((g) => ({ label: g.label, amountMinor: Math.abs(g.amountMinor), op: (g.amountMinor >= 0 ? "+" : "−") as "+" | "−" })),
+            { label: "Net worth today", amountMinor: nw, op: "=" as const },
+          ]}
+        />
+      )}
+      {spentX && (
+        <ExplainSheet
+          {...howSpent.props}
+          title="What you spent this month"
+          description="Purchases by category, with refunds taken off. Card bill payments aren't counted: the card's purchases already are. Tap a line to see its entries."
+          sections={[{ title: "By category", rows: spentX.lines.map((l) => ({ ...l, href: catId(l.label) ? monthHref({ category: catId(l.label) }) : undefined })), totalMinor: spentX.totalMinor, empty: "Nothing spent yet." }]}
+          steps={[{ label: "Spent this month", amountMinor: spentX.totalMinor, op: "=" }]}
+        />
+      )}
+      {incomeX && (
+        <ExplainSheet
+          {...howIncome.props}
+          title="Your income this month"
+          description="Money earned, by kind. Refunds and reimbursements aren't income: they reduce spending instead. Borrowed money isn't income either."
+          sections={[{ title: "Income", rows: incomeX.lines.map((l) => ({ ...l, href: catId(l.label) ? monthHref({ category: catId(l.label) }) : undefined })), totalMinor: incomeX.totalMinor, empty: "No income yet this month." }]}
+          steps={[
+            { label: "Income", amountMinor: incomeX.totalMinor },
+            { label: "Spent", amountMinor: incomeX.spentMinor, op: "−" },
+            { label: "Saved", amountMinor: incomeX.savedMinor, op: "=" },
+          ]}
+        />
+      )}
     </section>
   );
 }

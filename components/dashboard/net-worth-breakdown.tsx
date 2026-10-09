@@ -1,14 +1,9 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
-import Link from "next/link";
-import { ListTree } from "lucide-react";
-import { formatExactINR } from "@/lib/charts/format";
 import { activityHref } from "@/lib/charts/links";
 import { formatDisplayDate } from "@/lib/domain/dates";
 import type { FinancialState } from "@/lib/finance/state";
-import { cn } from "@/lib/utils";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../ui/dialog";
+import { ExplainSheet, HowButton, useExplain } from "../explainer";
 
 interface Line {
   key: string;
@@ -49,74 +44,37 @@ export function buildBreakdown(state: FinancialState): { own: Line[]; owe: Line[
   return { own, owe };
 }
 
-function Group({ title, lines, totalMinor, empty }: { title: string; lines: Line[]; totalMinor: number; empty: string }) {
+/** The itemised net worth in a "How it adds up" sheet. */
+export function NetWorthBreakdownSheet({ state, open, onOpenChange }: { state: FinancialState; open: boolean; onOpenChange: (open: boolean) => void }) {
+  const { own, owe } = buildBreakdown(state);
   return (
-    <div>
-      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</p>
-      {lines.length === 0 ? (
-        <p className="py-2 text-sm text-slate-500">{empty}</p>
-      ) : (
-        <ul className="divide-y divide-slate-100">
-          {lines.map((l) => (
-            <li key={l.key}>
-              <Link href={l.href} className="flex items-center justify-between gap-3 py-2 hover:bg-slate-50">
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-medium text-slate-900">{l.label}</span>
-                  {l.note && <span className="block text-xs text-slate-500">{l.note}</span>}
-                </span>
-                <span className={cn("shrink-0 text-sm font-semibold tabular-nums", l.amountMinor < 0 && "text-red-700")}>{formatExactINR(l.amountMinor)}</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className="mt-1 flex justify-between border-t border-slate-300 pt-2 text-sm font-semibold">
-        <span>Total {title.toLowerCase()}</span>
-        <span className="tabular-nums">{formatExactINR(totalMinor)}</span>
-      </div>
-    </div>
+    <ExplainSheet
+      open={open}
+      onOpenChange={onOpenChange}
+      title="How your net worth adds up"
+      description={<>Everything you own, less everything you owe, as of {formatDisplayDate(state.asOf)}. Tap a line to see its entries.</>}
+      sections={[
+        { title: "What you own", rows: own, totalMinor: state.assets.totalMinor, empty: "Nothing recorded yet." },
+        { title: "What you owe", rows: owe, totalMinor: state.liabilities.totalMinor, empty: "You don't owe anything." },
+      ]}
+      steps={[
+        { label: "What you own", amountMinor: state.assets.totalMinor },
+        { label: "What you owe", amountMinor: state.liabilities.totalMinor, op: "−" },
+        { label: "Net worth", amountMinor: state.netWorthMinor, op: "=" },
+      ]}
+    />
   );
 }
 
-/** "How it adds up": opens the itemised net worth. */
-export function NetWorthBreakdown({ state, children }: { state: FinancialState; children?: ReactNode }) {
-  const [open, setOpen] = useState(false);
-  const { own, owe } = buildBreakdown(state);
-  const nw = state.netWorthMinor;
+/** "How it adds up" under Net worth: opens the itemised net worth. */
+export function NetWorthBreakdown({ state }: { state: FinancialState }) {
+  const how = useExplain();
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/70 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-white hover:text-slate-900"
-        data-testid="net-worth-breakdown"
-      >
-        <ListTree className="size-3.5" /> {children ?? "How it adds up"}
-      </button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>How your net worth adds up</DialogTitle>
-            <DialogDescription>Everything you own, less everything you owe, as of {formatDisplayDate(state.asOf)}. Tap a line to see its entries.</DialogDescription>
-          </DialogHeader>
-          <Group title="What you own" lines={own} totalMinor={state.assets.totalMinor} empty="Nothing recorded yet." />
-          <Group title="What you owe" lines={owe} totalMinor={state.liabilities.totalMinor} empty="You don't owe anything." />
-          <div className="rounded-xl bg-slate-50 p-3 text-sm">
-            <div className="flex justify-between tabular-nums text-slate-600">
-              <span>What you own</span>
-              <span>{formatExactINR(state.assets.totalMinor)}</span>
-            </div>
-            <div className="flex justify-between tabular-nums text-slate-600">
-              <span>− What you owe</span>
-              <span>{formatExactINR(state.liabilities.totalMinor)}</span>
-            </div>
-            <div className={cn("mt-1 flex justify-between border-t border-slate-200 pt-1 text-base font-semibold tabular-nums", nw < 0 ? "text-rose-600" : "text-slate-900")}>
-              <span>= Net worth</span>
-              <span>{formatExactINR(nw)}</span>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <span data-testid="net-worth-breakdown" className="contents">
+        <HowButton onClick={how.open} />
+      </span>
+      <NetWorthBreakdownSheet state={state} {...how.props} />
     </>
   );
 }
