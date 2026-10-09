@@ -8,6 +8,7 @@ import { buildDashboardModel } from "@/lib/finance/dashboard-model";
 import { useEventDialog } from "../events/event-dialog";
 import { useFinance } from "../finance-provider";
 import { AccountsSection } from "./accounts-section";
+import { CalendarSection } from "./calendar-section";
 import { IncomeExpenseSection, SpendingSection } from "./cash-flow-sections";
 import { HealthSection } from "./health-section";
 import { InvestmentSection } from "./investment-section";
@@ -77,6 +78,11 @@ export function DashboardView() {
       {/* So far: earned, spent, and where */}
       <div className="col-span-full">
         <SoFarSection />
+      </div>
+
+      {/* This month day by day: tap a day to see its entries */}
+      <div className="col-span-full">
+        <CalendarSection />
       </div>
 
       <SamePeopleBanner className="col-span-full" />

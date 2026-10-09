@@ -14,6 +14,7 @@ import { formatRupees } from "@/lib/finance/describe";
 import { isMoneyBack } from "@/lib/finance/state";
 import type { EventType, FinancialEvent } from "@/lib/finance/types";
 import { cn } from "@/lib/utils";
+import { ActivityViewSwitch } from "../calendar/calendar-view";
 import { CategoryIcon } from "../category-icon";
 import { PartyLogo } from "../brand-logo";
 import { useEventDialog } from "../events/event-dialog";
@@ -234,7 +235,7 @@ function ActivityContent() {
 
   return (
     <div className="mx-auto grid w-full max-w-[1400px] grid-cols-1 gap-4 sm:gap-6">
-      <PageTitle>Activity</PageTitle>
+      <PageTitle actions={<ActivityViewSwitch current="list" />}>Activity</PageTitle>
       <DuplicatesBanner />
 
       {party && partyTotals && (

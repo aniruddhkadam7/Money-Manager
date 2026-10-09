@@ -19,6 +19,8 @@ import { EVENT_OPTIONS, eventOption, FORM_SPEC, type FieldKey } from "./event-me
 export interface FormPreset {
   person?: string;
   holdingId?: string;
+  /** A new entry's date (say, the day picked on the calendar) instead of today. */
+  date?: string;
 }
 
 interface Values {
@@ -131,7 +133,7 @@ export function EventForm({
       holdingName: "",
       holdingId: preset?.holdingId ?? investments[0]?.id ?? "",
       soldValue: "",
-      date: todayISO(),
+      date: preset?.date ?? todayISO(),
       shares: [{ person: "", amount: "" }],
       beforeTracking: false,
     };
@@ -331,7 +333,7 @@ export function EventForm({
                 id="amount"
                 inputMode="decimal"
                 autoComplete="off"
-                autoFocus={!editing && !preset}
+                autoFocus={!editing && !preset?.person && !preset?.holdingId}
                 placeholder="0"
                 className="pl-7 text-base font-medium tabular-nums"
                 value={values.amount}

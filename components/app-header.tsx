@@ -15,6 +15,7 @@ import { useEventDialog } from "./events/event-dialog";
 const NAV = [
   { href: "/", label: "Dashboard" },
   { href: "/activity", label: "Activity" },
+  { href: "/calendar", label: "Calendar" },
   { href: "/money", label: "Money" },
 ];
 
@@ -83,14 +84,15 @@ export function AppHeader() {
 
 const TABS = [
   { href: "/", label: "Home", icon: LayoutDashboard },
-  { href: "/activity", label: "Activity", icon: ReceiptText },
+  // The calendar is Activity's other view (List / Calendar), so the tab stays lit on it.
+  { href: "/activity", label: "Activity", icon: ReceiptText, also: "/calendar" },
   { href: "/money", label: "Money", icon: Wallet },
   { href: "/import", label: "Import", icon: FileUp },
 ];
 
 function MobileNav({ pathname, onAdd }: { pathname: string; onAdd: () => void }) {
-  const tab = ({ href, label, icon: Icon }: (typeof TABS)[number]) => {
-    const active = pathname === href;
+  const tab = ({ href, label, icon: Icon, also }: (typeof TABS)[number]) => {
+    const active = pathname === href || pathname === also;
     const body = (
       <>
         <Icon className="size-5" strokeWidth={active ? 2.4 : 2} />

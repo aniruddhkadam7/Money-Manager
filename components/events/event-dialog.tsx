@@ -39,7 +39,7 @@ export function useEventDialog(): EventDialogApi {
 
 type View =
   | { kind: "closed" }
-  | { kind: "pick" }
+  | { kind: "pick"; preset?: FormPreset }
   | { kind: "form"; type: EventType; editing?: FinancialEvent; template?: FinancialEvent; preset?: FormPreset; fromPicker: boolean }
   | { kind: "saved"; eventId: string }
   | { kind: "detail"; eventId: string }
@@ -74,7 +74,7 @@ export function EventDialogProvider({ children }: { children: ReactNode }) {
   const [view, setView] = useState<View>({ kind: "closed" });
 
   const openAdd = useCallback((type?: EventType, preset?: FormPreset) => {
-    setView(type ? { kind: "form", type, preset, fromPicker: false } : { kind: "pick" });
+    setView(type ? { kind: "form", type, preset, fromPicker: false } : { kind: "pick", preset });
   }, []);
   const openDetail = useCallback((eventId: string) => setView({ kind: "detail", eventId }), []);
   const openEdit = useCallback(
@@ -104,7 +104,7 @@ export function EventDialogProvider({ children }: { children: ReactNode }) {
       {children}
       <Dialog open={view.kind !== "closed"} onOpenChange={(open) => !open && close()}>
         <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
-          {view.kind === "pick" && <Picker onPick={(type) => setView({ kind: "form", type, fromPicker: true })} />}
+          {view.kind === "pick" && <Picker onPick={(type) => setView({ kind: "form", type, preset: view.preset, fromPicker: true })} />}
 
           {view.kind === "form" && (
             <EventForm
@@ -113,7 +113,7 @@ export function EventDialogProvider({ children }: { children: ReactNode }) {
               editing={view.editing}
               template={view.template}
               preset={view.preset}
-              onBack={view.fromPicker ? () => setView({ kind: "pick" }) : undefined}
+              onBack={view.fromPicker ? () => setView({ kind: "pick", preset: view.preset }) : undefined}
               onChangeType={view.editing ? (t) => setView({ ...view, type: t }) : undefined}
               onSaved={(eventId, wasEdit) => {
                 if (!wasEdit) return setView({ kind: "saved", eventId });
