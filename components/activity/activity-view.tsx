@@ -13,7 +13,7 @@ import { accountIdsUsedBy, personIdsUsedBy } from "@/lib/finance/book-ops";
 import { formatRupees } from "@/lib/finance/describe";
 import { isMoneyBack } from "@/lib/finance/state";
 import type { EventType, FinancialEvent } from "@/lib/finance/types";
-import { cn } from "@/lib/utils";
+import { cn, scrollPage } from "@/lib/utils";
 import { ActivityViewSwitch } from "../calendar/calendar-view";
 import { CategoryIcon } from "../category-icon";
 import { PartyLogo } from "../brand-logo";
@@ -218,7 +218,7 @@ function ActivityContent() {
     const people = personIdsUsedBy(e);
     if (people.length === 1) setPersonId(people[0]);
     else setParty({ key: partyNameOf(e, describer.title(e)), label: e.description || describer.title(e) });
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    scrollPage({ top: 0, behavior: "smooth" });
   };
 
   const partyTotals = party

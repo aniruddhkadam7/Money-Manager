@@ -10,7 +10,7 @@ import { formatDisplayDate, formatWeekdayDate } from "@/lib/domain/dates";
 import { formatRupees } from "@/lib/finance/describe";
 import { looksLikeCardStatement, needsDecision } from "@/lib/statements/pipeline";
 import type { StatementRow } from "@/lib/statements/types";
-import { cn } from "@/lib/utils";
+import { cn, scrollPage } from "@/lib/utils";
 import { useEventDialog } from "../events/event-dialog";
 import { useFinance } from "../finance-provider";
 import { useToast } from "../toast";
@@ -123,7 +123,7 @@ function RowLine({ row }: { row: StatementRow }) {
   const bringBack = () => {
     const r = statements.resolve(row.id, { kind: "reopen" });
     toast.show({ message: r.ok ? "Moved to “Needs your decision” at the top: choose what it is, or skip it again." : r.message });
-    if (r.ok) window.scrollTo({ top: 0, behavior: "smooth" });
+    if (r.ok) scrollPage({ top: 0, behavior: "smooth" });
   };
 
   return (
@@ -272,7 +272,7 @@ export function ImportDetail({ importId, onBack }: { importId: string; onBack: (
     setCommitting(false);
     if (res.ok) {
       setJustImported({ created: res.created, matched: res.matched });
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      scrollPage({ top: 0, behavior: "smooth" });
     }
     if (res.ok) toast.show({ message: `Imported ${res.created} ${res.created === 1 ? "entry" : "entries"}${res.matched ? `, linked ${res.matched} existing` : ""}` });
     else setCommitError(res);

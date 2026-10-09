@@ -64,13 +64,26 @@
 }
 
 /*
- * The page itself is the one scroller (no nested scroll areas), so the header stays sticky and Safari's toolbar can
- * still collapse. iOS rubber-bands that scroller past its ends, which drags the sticky header off the top and shows
- * bare background above it: overscroll-behavior stops that bounce without stopping normal scrolling.
+ * iOS rubber-bands the page past its ends, which drags the sticky header and the content off the screen and shows
+ * bare background. It ignores overscroll-behavior on the page itself but honours it on an inner scroller, so on touch
+ * screens the body is the one scroller (the header stays sticky inside it) and the page around it doesn't move.
+ * Code that scrolls the page goes through scrollPage() in lib/utils.ts.
  */
 html,
 body {
   overscroll-behavior: none;
+}
+@media (hover: none) and (pointer: coarse) {
+  html {
+    height: 100%;
+    overflow: hidden;
+  }
+  body {
+    height: 100dvh;
+    overflow-y: auto;
+    /* Next scrolls a new page into view on navigation: land it below the sticky header, not under it. */
+    scroll-padding-top: calc(4rem + env(safe-area-inset-top));
+  }
 }
 html {
   /* iOS otherwise enlarges text when the phone turns sideways. */

@@ -119,7 +119,8 @@ function MobileNav({ pathname, onAdd }: { pathname: string; onAdd: () => void })
   return (
     // A floating liquid glass pill (like the header from tablet width up). The bar itself has no blur: it would hide the glass distortion.
     <nav aria-label="Main" className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] sm:hidden">
-      <LiquidGlass className="pointer-events-auto flex h-16 items-stretch rounded-full bg-card/75 px-1 shadow-lg shadow-slate-900/15">
+      {/* touch-none: a drag on the bar would otherwise move the page around the scroller (taps still work). */}
+      <LiquidGlass className="pointer-events-auto flex h-16 touch-none items-stretch rounded-full bg-card/75 px-1 shadow-lg shadow-slate-900/15">
         {TABS.slice(0, 2).map(tab)}
         <div className="flex flex-1 items-center justify-center">
           {/* The same white liquid glass as the bar, centred in it; the green + marks the main action. */}
