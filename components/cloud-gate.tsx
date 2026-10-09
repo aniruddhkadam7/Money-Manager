@@ -56,7 +56,7 @@ export function CloudGate({ children }: { children: ReactNode }) {
   }
   if (gate.kind === "signed-out") return <SignIn />;
   return (
-    <div className="flex min-h-screen items-center justify-center gap-2 text-sm text-muted-foreground">
+    <div className="flex min-h-dvh items-center justify-center gap-2 text-sm text-muted-foreground">
       <Loader2 className="size-4 animate-spin" /> {gate.kind === "syncing" ? "Loading your data…" : "Checking sign-in…"}
     </div>
   );
@@ -125,7 +125,7 @@ function SignIn() {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-10">
+    <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-background px-4 py-10">
       <Particles className="absolute inset-0" quantity={120} ease={80} size={0.8} staticity={40} color="#059669" />
       <BlurFade className="relative w-full max-w-sm" duration={0.6}>
         <div

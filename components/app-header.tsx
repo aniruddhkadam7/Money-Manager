@@ -33,9 +33,9 @@ export function AppHeader() {
         {/* The liquid layers distort what scrolls behind the bar, so the bar itself has no blur of its own (it would hide the effect). */}
         <LiquidGlass
           layersClassName="max-sm:hidden"
-          className="mx-auto flex max-w-[2000px] items-center justify-between gap-x-6 px-4 py-2 sm:rounded-full sm:bg-card/75 sm:py-1.5 sm:pl-3 sm:pr-2 sm:shadow-lg sm:shadow-slate-900/10"
+          className="mx-auto flex max-w-[2000px] items-center justify-between gap-x-3 px-4 py-2 lg:gap-x-6 sm:rounded-full sm:bg-card/75 sm:py-1.5 sm:pl-3 sm:pr-2 sm:shadow-lg sm:shadow-slate-900/10"
         >
-          <div className="flex min-w-0 items-center gap-1">
+          <div className="flex min-w-0 items-center gap-1 sm:shrink-0">
             <Suspense fallback={null}>
               <BackButton />
             </Suspense>
@@ -43,20 +43,21 @@ export function AppHeader() {
               <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground sm:rounded-full">
                 <Wallet className="size-4" />
               </span>
-              <span className="truncate font-brand text-xl font-bold leading-none tracking-tight">Money Manager</span>
+              {/* Phones sideways and small tablets: the pages and buttons need the room, so the logo stands alone and the bar is tighter. */}
+              <span className="truncate font-brand text-xl font-bold leading-none tracking-tight sm:max-lg:sr-only">Money Manager</span>
             </Link>
           </div>
 
           <nav className="hidden flex-1 items-center gap-1 sm:flex">
             {NAV.map(({ href, label }) =>
               pathname === href ? (
-                <LiquidButton key={href} asChild size="sm" className="rounded-full px-4 text-sm font-semibold text-foreground">
+                <LiquidButton key={href} asChild size="sm" className="rounded-full px-2.5 text-sm font-semibold text-foreground lg:px-4">
                   <Link href={href} aria-current="page">
                     {label}
                   </Link>
                 </LiquidButton>
               ) : (
-                <Link key={href} href={href} className="flex h-8 items-center rounded-full px-4 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+                <Link key={href} href={href} className="flex h-8 items-center rounded-full px-2.5 text-sm font-medium text-muted-foreground transition-colors lg:px-4 hover:text-foreground">
                   {label}
                 </Link>
               ),
@@ -65,8 +66,8 @@ export function AppHeader() {
 
           <div className="flex items-center gap-2">
             <LiquidButton asChild size="default" className="hidden rounded-full text-foreground sm:inline-flex" data-testid="import-statement">
-              <Link href="/import">
-                <FileUp /> Import statement
+              <Link href="/import" title="Import statement">
+                <FileUp /> <span className="max-md:sr-only">Import</span> <span className="-ml-1 max-lg:hidden">statement</span>
               </Link>
             </LiquidButton>
             <LiquidButton size="default" className="hidden rounded-full font-semibold sm:inline-flex" onClick={() => openAdd()}>
@@ -105,7 +106,8 @@ function MobileNav({ pathname, onAdd }: { pathname: string; onAdd: () => void })
         href={href}
         aria-current={active ? "page" : undefined}
         className={cn(
-          "flex min-w-0 flex-1 items-center justify-center text-[11px] font-medium transition-transform active:scale-95",
+          // Positioned above the glass layers (they're positioned too, so they'd otherwise paint over the tabs, as Safari does).
+          "relative z-10 flex min-w-0 flex-1 items-center justify-center text-[11px] font-medium transition-transform active:scale-95",
           active ? "text-primary" : "text-muted-foreground",
         )}
       >
