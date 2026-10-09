@@ -1,18 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Pencil, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { activityHref } from "@/lib/charts/links";
 import { formatRupees } from "@/lib/finance/describe";
+import { formatDisplayDate } from "@/lib/domain/dates";
+import { deriveState } from "@/lib/finance/state";
 import type { Account, AccountType } from "@/lib/finance/types";
 import { cn } from "@/lib/utils";
 import { useEventDialog } from "../events/event-dialog";
 import { useQuickRepaymentReceived } from "../events/quick-repay";
 import { useFinance } from "../finance-provider";
 import { PictureIcon } from "../picture-icon";
+import { useStatements } from "../statements/statements-provider";
 import { ACCOUNT_TYPE_INFO, AccountDialog } from "./account-dialog";
 import { ManageLists } from "./manage-lists";
 import { ResetApp } from "./reset-app";
@@ -23,7 +26,25 @@ const SECTIONS: { id: string; title: string; types: AccountType[] }[] = [
 ];
 
 export function MoneyView() {
-  const { status, state, missingStandardAccounts, restoreStandardAccounts } = useFinance();
+  const { status, state, book, ledger, missingStandardAccounts, restoreStandardAccounts } = useFinance();
+  const { imports } = useStatements();
+
+  /**
+   * Each bank or cash account's latest statement: its closing balance, and what the app says the account
+   * held on that same day. A difference there means an entry up to that date doesn't match the bank.
+   */
+  const statements = useMemo(() => {
+    const out = new Map<string, StatementCheck>();
+    for (const i of imports) {
+      if (i.status === "FAILED" || i.closingBalanceMinor == null || !i.periodEnd) continue;
+      const prev = out.get(i.accountId);
+      if (!prev || i.periodEnd > prev.date) out.set(i.accountId, { date: i.periodEnd, closingMinor: i.closingBalanceMinor, appMinor: 0 });
+    }
+    for (const [accountId, check] of out) {
+      check.appMinor = deriveState(book, ledger, check.date).accounts.find((a) => a.account.id === accountId)?.balanceMinor ?? 0;
+    }
+    return out;
+  }, [imports, book, ledger]);
   const { openAdd } = useEventDialog();
   const theyPaidMe = useQuickRepaymentReceived();
   const [dialog, setDialog] = useState<{ open: boolean; editing: Account | null }>({ open: false, editing: null });
@@ -77,6 +98,7 @@ export function MoneyView() {
                     detail={ACCOUNT_TYPE_INFO[account.type].label}
                     value={formatRupees(balanceMinor)}
                     caption={account.type === "credit_card" || account.type === "loan" ? "owed" : undefined}
+                    statement={account.type === "bank" || account.type === "cash" ? statements.get(account.id) : undefined}
                     onEdit={() => setDialog({ open: true, editing: account })}
                   />
                 ))}
@@ -218,26 +240,54 @@ export function MoneyView() {
   );
 }
 
+interface StatementCheck {
+  /** Last day the statement covers (`YYYY-MM-DD`). */
+  date: string;
+  closingMinor: number;
+  /** The app's balance for the account at the end of that day. */
+  appMinor: number;
+}
+
 function AccountRow({
   account,
   detail,
   value,
   caption,
+  statement,
   onEdit,
 }: {
   account: Account;
   detail: string;
   value: string;
   caption?: string;
+  statement?: StatementCheck;
   onEdit: () => void;
 }) {
   const info = ACCOUNT_TYPE_INFO[account.type];
+  // Under a rupee apart counts as matching: statements round, and a paisa off isn't worth a warning.
+  const diff = statement ? statement.appMinor - statement.closingMinor : 0;
+  const off = Math.abs(diff) >= 100;
   return (
     <li className="flex items-center gap-3 px-4 py-3 sm:px-5">
       <PictureIcon name={info.picture} tile />
       <div className="min-w-0 flex-1">
         <p className="truncate font-medium">{account.name}</p>
         <p className="truncate text-sm text-muted-foreground">{detail}</p>
+        {statement && (
+          <p className="mt-0.5 text-xs text-muted-foreground" data-testid="statement-balance">
+            Bank statement: <span className="font-medium text-foreground">{formatRupees(statement.closingMinor)}</span> on {formatDisplayDate(statement.date)}
+            {off ? (
+              <Link
+                href={activityHref({ account: account.id, to: statement.date })}
+                className="mt-0.5 block font-medium text-amber-700 hover:underline"
+              >
+                The app shows {formatRupees(Math.abs(diff))} {diff > 0 ? "more" : "less"} on that day: an entry doesn&apos;t match the bank. Check entries →
+              </Link>
+            ) : (
+              <span className="text-emerald-700"> · matches</span>
+            )}
+          </p>
+        )}
       </div>
       <p className="shrink-0 text-right font-semibold tabular-nums">
         {value}

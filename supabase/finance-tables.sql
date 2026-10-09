@@ -211,9 +211,13 @@ begin
     delete from public.transactions where user_id = p_user;
     delete from public.accounts where user_id = p_user;
     delete from public.people where user_id = p_user;
+    if d is null then
+      -- The book is gone (reset, or the account was deleted): nothing of this user's is left to list.
+      delete from public.categories where user_id = p_user;
+      return;
+    end if;
     perform private.mirror_categories(p_user,
       (select k.value::jsonb from public.kv k where k.user_id = p_user and k.key = 'money-manager:v0:custom-categories'));
-    if d is null then return; end if;
 
     insert into public.accounts (user_id, id, name, type, opening_balance_paise, opened_on, created_at)
     select p_user, a ->> 'id', a ->> 'name', a ->> 'type', coalesce((a ->> 'openingBalanceMinor')::bigint, 0),
