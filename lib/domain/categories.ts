@@ -14,7 +14,7 @@ export const DEFAULT_CATEGORIES: Category[] = [
   { id: "emi", name: "EMI", color: "#0891b2", icon: "loan", isDefault: true },
   { id: "grocery", name: "Grocery", color: "#65a30d", icon: "food", isDefault: true },
   { id: "smoking", name: "Smoking", color: "#78716c", icon: "custom", isDefault: true },
-  { id: "alcohol", name: "Alcohol", color: "#b91c1c", icon: "custom", isDefault: true },
+  { id: "alcohol", name: "Alcohol", color: "#be123c", icon: "alcohol", isDefault: true },
   { id: "maintenance", name: "Maintenance", color: "#0f766e", icon: "rent", isDefault: true },
   { id: "jugaad", name: "Jugaad", color: "#a16207", icon: "custom", isDefault: true },
   { id: "other", name: "Other", color: "#94a3b8", icon: "other", isDefault: true },

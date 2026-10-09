@@ -51,8 +51,11 @@ export function EventRow({ event, onOpen }: { event: FinancialEvent; /** Tapping
   const refundedItem = refundFor ? book.events.find((e) => e.id === refundFor.expenseId) : undefined;
   const { openDetail, openEdit, openDuplicate, requestDelete } = useEventDialog();
   const picture = eventPicture(event, getCategory);
-  // Spending at a recognisable service shows its logo; anything else keeps its category picture.
-  const brand = event.type === "expense" && event.description ? brandFor(event.description) : null;
+  // Spending at (or money back from) a recognisable service shows its logo; anything else keeps its category
+  // picture. The bank's own narration is read too, so "PCI/6496/GITHUB* ..." is GitHub even if named oddly.
+  const withMerchant = event.type === "expense" || event.type === "income" || event.type === "reimbursable_expense" || event.type === "split_expense";
+  const narration = (event.sources ?? []).map((s) => s.narration ?? "").join(" ");
+  const brand = withMerchant ? (event.description ? brandFor(event.description) : null) ?? (narration ? brandFor(narration) : null) : null;
   const { amountMinor, tone } = headline(event);
   const issue = issuesByEvent.get(event.id)?.[0];
   const title = describer.title(event);

@@ -9,6 +9,8 @@ import type { Normalized } from "./types";
 const MODES = new Set([
   "UPI", "NEFT", "IMPS", "RTGS", "ACH", "NACH", "ECS", "ATM", "POS", "ECOM", "CHQ", "CHEQUE", "INT", "BIL", "BILLPAY",
   "MB", "IB", "DC", "NFS", "CASH", "FT", "TPT", "SI", "CLG", "MMT", "INF", "NWD", "AWB",
+  // Kotak card payments: PCD (debit card), PCI (card, international).
+  "PCD", "PCI",
 ]);
 
 /** Words that describe the payment, not who was paid. */

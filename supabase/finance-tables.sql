@@ -179,7 +179,7 @@ begin
     ('emi', 'EMI', 'expense', '#0891b2', 'loan'),
     ('grocery', 'Grocery', 'expense', '#65a30d', 'food'),
     ('smoking', 'Smoking', 'expense', '#78716c', 'custom'),
-    ('alcohol', 'Alcohol', 'expense', '#b91c1c', 'custom'),
+    ('alcohol', 'Alcohol', 'expense', '#be123c', 'alcohol'),
     ('maintenance', 'Maintenance', 'expense', '#0f766e', 'rent'),
     ('jugaad', 'Jugaad', 'expense', '#a16207', 'custom'),
     ('other', 'Other', 'expense', '#94a3b8', 'other'),

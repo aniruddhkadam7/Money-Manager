@@ -35,6 +35,7 @@ export const BRANDS: Brand[] = [
   b("chatgpt", "ChatGPT", "chatgpt.com", /openai|chatgpt/),
   b("claude", "Claude", "claude.ai", /anthropic|claude\.ai|\bclaude\b/),
   b("github", "GitHub", "github.com", /github/),
+  b("godaddy", "GoDaddy", "godaddy.com", /godaddy|go daddy/),
   b("linkedin", "LinkedIn", "linkedin.com", /linkedin/),
   b("audible", "Audible", "audible.in", /audible/),
   b("gaana", "Gaana", "gaana.com", /gaana/),

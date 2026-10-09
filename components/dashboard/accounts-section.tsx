@@ -13,6 +13,7 @@ import type { Account, Book } from "@/lib/finance/types";
 import { cn } from "@/lib/utils";
 import { ACCOUNT_TYPE_INFO } from "../money/account-dialog";
 import { PictureIcon } from "../picture-icon";
+import { useStatements } from "../statements/statements-provider";
 import { statementMatches, useStatementChecks, type StatementCheck } from "../statements/use-statement-checks";
 
 /** The bank's official logo when the account or its statement names a known bank, else the account-type picture. */
@@ -38,6 +39,9 @@ const short = (minor: number) => formatHeadlineINR(minor);
  */
 export function AccountsSection({ book, state, today }: { book: Book; state: FinancialState; today: string }) {
   const checks = useStatementChecks();
+  const { imports } = useStatements();
+  // The bank any of the account's statements names (card statements print no closing balance, so not only `checks`).
+  const bankOf = (id: string) => imports.find((i) => i.accountId === id && i.status !== "FAILED" && i.bankHint)?.bankHint;
   const from = monthStart(today.slice(0, 7));
   const to = monthEnd(today.slice(0, 7));
   const used = (id: string) =>
@@ -66,7 +70,7 @@ export function AccountsSection({ book, state, today }: { book: Book; state: Fin
         return (
           <div key={account.id} className="flex w-[72%] shrink-0 snap-start flex-col gap-1.5 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:w-auto" data-testid="account-tile">
             <Link href={activityHref({ account: account.id })} className="flex items-center gap-2 hover:underline">
-              <AccountLogo account={account} bankHint={check?.bankHint} />
+              <AccountLogo account={account} bankHint={bankOf(account.id)} />
               <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">
                 {account.name}
                 {check?.accountMask && <span className="font-normal text-slate-500"> ••{check.accountMask}</span>}
