@@ -62,6 +62,10 @@ export function CloudGate({ children }: { children: ReactNode }) {
 function friendlyAuthError(message: string): string {
   if (/invalid login credentials/i.test(message)) return "Wrong username or password.";
   if (/rate limit|too many/i.test(message)) return "Too many attempts. Wait a minute and try again.";
+  // Safari says "Load failed", Chrome "Failed to fetch": the server couldn't be reached at all.
+  if (/load failed|failed to fetch|network|fetch/i.test(message)) {
+    return "Couldn't connect to the server. Check your internet (try switching between Wi-Fi and mobile data) and try again.";
+  }
   return message;
 }
 
