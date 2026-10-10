@@ -242,7 +242,7 @@ export const AUTO_ACCOUNT = "auto";
 
 /**
  * Which account a statement belongs to, from what it says: the account it went to last time for this
- * bank and number; else one whose name carries the statement's last four digits or bank; else, by kind,
+ * bank and number (or this number under any bank name); else one whose name carries the statement's last four digits or bank; else, by kind,
  * the credit card for a card statement or the main bank account for anything else. An account named
  * after a different bank (or any bank, when the statement doesn't say which) is never a fallback:
  * better to ask than to file a Kotak statement under "HDFC Bank".
@@ -256,6 +256,10 @@ export function detectAccount(
   const isCard = cardStatement && !looksLikeBankStatement(parsed.rows, false);
   const candidates = book.accounts.filter((a) => STATEMENT_ACCOUNT_TYPES.includes(a.type) && (a.type === "credit_card") === isCard);
   const remembered = parsed.accountMask ? store.accountByMask[`${parsed.bankHint ?? ""}:${parsed.accountMask}`] : undefined;
+  // The same account number filed under another bank name (one read wrongly before) is still the same account.
+  const sameNumber = parsed.accountMask
+    ? Object.entries(store.accountByMask).filter(([key]) => key.endsWith(`:${parsed.accountMask}`)).map(([, id]) => id)
+    : [];
   const statementBank = bankBrandFor(parsed.bankHint)?.slug;
   const bankOf = (a: Book["accounts"][number]) => bankBrandFor(a.name)?.slug;
   const sameBank = (a: Book["accounts"][number]) => !!statementBank && bankOf(a) === statementBank;
@@ -263,6 +267,7 @@ export function detectAccount(
   const unnamed = candidates.filter((a) => !bankOf(a) || sameBank(a));
   const pick =
     candidates.find((a) => a.id === remembered) ??
+    candidates.find((a) => sameNumber.includes(a.id)) ??
     (parsed.accountMask ? candidates.find((a) => a.name.includes(parsed.accountMask!) && notAnotherBank(a)) : undefined) ??
     candidates.find(sameBank) ??
     (isCard ? unnamed[0] : unnamed.find((a) => a.id === "account-netbanking") ?? unnamed.find((a) => a.type === "bank") ?? unnamed[0]);

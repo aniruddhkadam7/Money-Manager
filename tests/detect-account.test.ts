@@ -78,3 +78,12 @@ describe("not guessing an account named after another bank", () => {
     expect(detectAccount(b, noMemory, { bankHint: "Kotak Mahindra Bank", rows: bankRows }, false)).toBe("account-netbanking");
   });
 });
+
+describe("an account number seen before", () => {
+  it("goes back to the account it went to last time, even if the bank was read differently then", () => {
+    // First read as HDFC (wrongly), so "Net banking" was renamed "HDFC Bank"; now the statement reads as Kotak.
+    const b: Book = { ...book(), accounts: book().accounts.map((a) => (a.id === "account-netbanking" ? { ...a, name: "HDFC Bank" } : a)) };
+    const store = { accountByMask: { "HDFC Bank:2018": "account-netbanking" } };
+    expect(detectAccount(b, store, { bankHint: "Kotak Mahindra Bank", accountMask: "2018", rows: bankRows }, false)).toBe("account-netbanking");
+  });
+});
