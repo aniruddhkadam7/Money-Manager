@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SearchableSelect, type SearchableOption } from "@/components/ui/searchable-select";
 import { accountIdsUsedBy, personIdsUsedBy } from "@/lib/finance/book-ops";
 import { formatRupees } from "@/lib/finance/describe";
+import { chronological } from "@/lib/finance/order";
 import { isMoneyBack } from "@/lib/finance/state";
 import type { EventType, FinancialEvent } from "@/lib/finance/types";
 import { cn, scrollPage } from "@/lib/utils";
@@ -143,6 +144,7 @@ function ActivityContent() {
   const filtered = useMemo(() => {
     const types = typesFor(group);
     const q = query.trim().toLowerCase();
+    const oldestFirst = chronological(book.events);
     return [...book.events]
       .filter(
         (e) =>
@@ -158,7 +160,7 @@ function ActivityContent() {
           (!to || e.date <= to),
       )
       .sort((a, b) => {
-        const byDate = b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt);
+        const byDate = oldestFirst(b, a);
         if (sort === "newest") return byDate;
         if (sort === "oldest") return -byDate;
         const byAmount = amountOf(b) - amountOf(a);

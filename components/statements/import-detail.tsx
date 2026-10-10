@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatDisplayDate, formatWeekdayDate } from "@/lib/domain/dates";
 import { formatRupees } from "@/lib/finance/describe";
+import { statementDirection } from "@/lib/finance/order";
 import { looksLikeCardStatement, needsDecision } from "@/lib/statements/pipeline";
 import type { StatementRow } from "@/lib/statements/types";
 import { cn, scrollPage } from "@/lib/utils";
@@ -50,10 +51,13 @@ const ROW_SORTS: { value: RowSort; label: string }[] = [
 const nameOf = (r: StatementRow) => (r.normalized.counterparty || r.rawDescription).toLowerCase();
 function sortRows(list: StatementRow[], sort: RowSort): StatementRow[] {
   const byIndex = (a: StatementRow, b: StatementRow) => a.index - b.index;
+  // Same day: the statement's own order, whichever way it runs.
+  const dir = statementDirection(list.map((r) => ({ date: r.transactionDate, line: r.index })));
+  const byTime = (a: StatementRow, b: StatementRow) => a.transactionDate.localeCompare(b.transactionDate) || (a.index - b.index) * dir;
   const cmp: Record<RowSort, (a: StatementRow, b: StatementRow) => number> = {
     statement: byIndex,
-    newest: (a, b) => b.transactionDate.localeCompare(a.transactionDate) || byIndex(a, b),
-    oldest: (a, b) => a.transactionDate.localeCompare(b.transactionDate) || byIndex(a, b),
+    newest: (a, b) => byTime(b, a),
+    oldest: byTime,
     highest: (a, b) => b.amountMinor - a.amountMinor || byIndex(a, b),
     lowest: (a, b) => a.amountMinor - b.amountMinor || byIndex(a, b),
     name: (a, b) => nameOf(a).localeCompare(nameOf(b)) || byIndex(a, b),

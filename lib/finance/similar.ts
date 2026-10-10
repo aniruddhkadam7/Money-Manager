@@ -1,3 +1,4 @@
+import { chronological } from "./order";
 import { merchantKey } from "./recurring";
 import type { Book, EventDraft, FinancialEvent } from "./types";
 
@@ -61,5 +62,6 @@ export function findSimilar(book: Book, edited: FinancialEvent): SimilarMatch[] 
     const draft = retype(e, edited);
     if (draft) out.push({ event: e, draft });
   }
-  return out.sort((a, b) => (a.event.date < b.event.date ? 1 : -1));
+  const oldestFirst = chronological(book.events);
+  return out.sort((a, b) => oldestFirst(b.event, a.event));
 }

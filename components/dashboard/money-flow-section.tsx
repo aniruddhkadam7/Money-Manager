@@ -7,6 +7,7 @@ import { activityHref, monthFilter } from "@/lib/charts/links";
 import { formatBps, formatExactINR, formatHeadlineINR } from "@/lib/charts/format";
 import { formatDisplayDate, formatMonthLong } from "@/lib/domain/dates";
 import type { DashboardModel } from "@/lib/finance/dashboard-model";
+import { chronological } from "@/lib/finance/order";
 import { moneyFlow, type MonthlyPoint } from "@/lib/finance/series";
 import { CategoryIcon } from "../category-icon";
 import { MoneyFlowChart, type FlowId } from "../charts/money-flow-chart";
@@ -112,9 +113,10 @@ function FlowDetails({ id, month, flow }: { id: FlowId | null; month: MonthlyPoi
   } else if (id === "invested") {
     title = `Invested · ${formatExactINR(flow.investedMinor)}`;
     seeAll = activityHref({ group: "investments", from, to });
+    const oldestFirst = chronological(book.events);
     content = book.events
       .filter((e) => e.type === "invest" && e.date >= from && e.date <= to)
-      .sort((a, b) => b.date.localeCompare(a.date))
+      .sort((a, b) => oldestFirst(b, a))
       .map((e) => (
         <Row key={e.id} left={`${describer.title(e)} · ${formatDisplayDate(e.date)}`} right={e.type === "invest" ? formatExactINR(e.amountMinor) : ""} />
       ));

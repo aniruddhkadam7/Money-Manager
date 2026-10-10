@@ -11,6 +11,7 @@ import { activityHref } from "@/lib/charts/links";
 import { daysBetween, formatDayMonth, formatMonthLong, formatWeekdayDate, monthEnd, monthKey, shiftMonth } from "@/lib/domain/dates";
 import { calendarMonth, expectedPayments, monthOutlook, type CalendarCardDue, type CalendarDay, type ExpectedPayment } from "@/lib/finance/calendar";
 import { cardDueDates } from "@/lib/finance/card-bill-status";
+import { chronological } from "@/lib/finance/order";
 import { detectRecurring, type Frequency } from "@/lib/finance/recurring";
 import { cn } from "@/lib/utils";
 import { BrandLogo } from "../brand-logo";
@@ -87,7 +88,11 @@ export function CalendarBoard({ initialMonth, embedded = false }: { initialMonth
     [weeks],
   );
   const dayEvents = useMemo(
-    () => (selected ? book.events.filter((e) => e.date === selected).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : []),
+    () => {
+      if (!selected) return [];
+      const oldestFirst = chronological(book.events);
+      return book.events.filter((e) => e.date === selected).sort((a, b) => oldestFirst(b, a));
+    },
     [book.events, selected],
   );
   const selectedDay = weeks.flat().find((d) => d.date === selected);
