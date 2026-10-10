@@ -1,5 +1,6 @@
 import type { ExtractedPdf, PdfjsLike } from "./pdf";
 import { createOcrWorker, recognizePage } from "./ocr";
+import { ensureStreamIteration } from "./stream-iteration";
 import type { TextItem } from "./types";
 
 /**
@@ -8,6 +9,7 @@ import type { TextItem } from "./types";
  * Math.sumPrecise, Promise.try...); the modern build fails on phones without them, older iPhones above all.
  */
 export async function loadPdfjs(): Promise<PdfjsLike> {
+  ensureStreamIteration();
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   pdfjs.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.mjs";
   return pdfjs as unknown as PdfjsLike;
