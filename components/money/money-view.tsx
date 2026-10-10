@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, Pencil, Plus, TriangleAlert } from "lucide-react";
+import { CheckCircle2, Pencil, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { activityHref } from "@/lib/charts/links";
@@ -249,7 +249,6 @@ function AccountRow({
   statement?: StatementCheck;
   onEdit: () => void;
 }) {
-  const diff = statement ? statement.appMinor - statement.closingMinor : 0;
   const off = statement ? !statementMatches(statement) : false;
   return (
     <li className="px-4 py-3 sm:px-5">
@@ -277,21 +276,6 @@ function AccountRow({
         <Pencil />
       </Button>
       </div>
-      {statement && off && (
-        // Full width under the row, so it stays short instead of squeezing beside the balance.
-        <Link
-          href={activityHref({ account: account.id, to: statement.date })}
-          className="mt-2 flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-200/70 hover:bg-amber-100/70"
-          data-testid="statement-balance"
-        >
-          <TriangleAlert className="size-4 shrink-0 text-amber-600" />
-          <span className="min-w-0 flex-1">
-            <span className="font-semibold">{formatRupees(Math.abs(diff))} {diff > 0 ? "more" : "less"} than your bank</span>
-            <span className="text-amber-800/80"> · bank says {formatRupees(statement.closingMinor)} on {formatDisplayDate(statement.date)}</span>
-          </span>
-          <span className="shrink-0 font-semibold">Check →</span>
-        </Link>
-      )}
     </li>
   );
 }

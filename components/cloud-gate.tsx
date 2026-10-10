@@ -3,7 +3,8 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { ArrowRight, Eye, EyeOff, Loader2, Wallet } from "lucide-react";
 import { useAnimate } from "motion/react";
-import type { Session } from "@supabase/supabase-js";
+import type { Session, User } from "@supabase/supabase-js";
+import { LockScreen } from "@/components/app-lock";
 import { BlurFade } from "@/components/ui/blur-fade";
 import { BorderBeam } from "@/components/ui/border-beam";
 import { Button } from "@/components/ui/button";
@@ -11,29 +12,36 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Particles } from "@/components/ui/particles";
 import { cloudConfigured, supabase } from "@/lib/cloud/client";
+import { RELOCK_AFTER_MS, lockSettings } from "@/lib/cloud/app-lock";
 import { startSync } from "@/lib/cloud/sync";
 
 type Gate = { kind: "checking" } | { kind: "signed-out" } | { kind: "syncing" } | { kind: "ready"; offline: boolean };
 
 /**
  * With Supabase set up, the app needs a sign-in, and the cloud copy of the data is pulled down before
- * any screen reads it. Without Supabase this renders its children straight away.
+ * any screen reads it. Without Supabase this renders its children straight away. With a passcode set,
+ * the app opens locked, and locks again after a while in the background (lib/cloud/app-lock.ts).
  */
 export function CloudGate({ children }: { children: ReactNode }) {
   const [gate, setGate] = useState<Gate>(cloudConfigured ? { kind: "checking" } : { kind: "ready", offline: false });
+  const [user, setUser] = useState<User | null>(null);
+  const [locked, setLocked] = useState(false);
 
   useEffect(() => {
     const sb = supabase();
     if (!sb) return;
     let started = false;
     const begin = (session: Session | null) => {
+      setUser(session?.user ?? null);
       if (!session) {
         started = false;
+        setLocked(false);
         setGate({ kind: "signed-out" });
         return;
       }
       if (started) return;
       started = true;
+      setLocked(!!lockSettings(session.user).passcode);
       setGate({ kind: "syncing" });
       startSync().then((ok) => setGate({ kind: "ready", offline: !ok }));
     };
@@ -42,6 +50,21 @@ export function CloudGate({ children }: { children: ReactNode }) {
     return () => data.subscription.unsubscribe();
   }, []);
 
+  // Locks again when the app comes back after RELOCK_AFTER_MS in the background.
+  const hasPasscode = !!lockSettings(user).passcode;
+  useEffect(() => {
+    if (!hasPasscode) return;
+    let hiddenAt = document.hidden ? Date.now() : 0;
+    const onChange = () => {
+      if (document.hidden) hiddenAt = Date.now();
+      else if (hiddenAt && Date.now() - hiddenAt >= RELOCK_AFTER_MS) setLocked(true);
+    };
+    document.addEventListener("visibilitychange", onChange);
+    return () => document.removeEventListener("visibilitychange", onChange);
+  }, [hasPasscode]);
+
+  // The data keeps loading behind the lock; nothing of it shows until it's unlocked.
+  if (locked && user && hasPasscode) return <LockScreen user={user} onUnlock={() => setLocked(false)} />;
   if (gate.kind === "ready") {
     return (
       <>

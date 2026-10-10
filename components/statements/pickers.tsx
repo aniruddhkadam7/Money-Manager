@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, Sele
 import type { AccountType } from "@/lib/finance/types";
 import type { StatementEventType } from "@/lib/statements/types";
 import { cn } from "@/lib/utils";
+import { BankMark } from "../account-logo";
 import { useFinance } from "../finance-provider";
 
 const NEW = "__new__";
@@ -138,7 +139,10 @@ export function CounterAccountSelect({
       <SelectContent>
         {accounts.map((a) => (
           <SelectItem key={a.id} value={a.id}>
-            {a.name}
+            <span className="flex items-center gap-2">
+              <BankMark name={a.name} />
+              {a.name}
+            </span>
           </SelectItem>
         ))}
         {kind !== "money" && <NewItem>New {noun.one}…</NewItem>}

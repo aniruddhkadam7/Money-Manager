@@ -1,4 +1,5 @@
 import { appStorage } from "@/lib/cloud/sync";
+import { newId } from "@/lib/domain/id";
 import {
   DEFAULT_CATEGORIES,
   colorForCustomCategory,
@@ -24,12 +25,6 @@ function read<T>(key: string, fallback: T): T {
 
 function write(key: string, value: unknown): void {
   appStorage.setItem(key, JSON.stringify(value));
-}
-
-function newId(): string {
-  return typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 /**

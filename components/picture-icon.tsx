@@ -18,6 +18,7 @@ import {
   HeartPulse,
   House,
   Landmark,
+  Laptop,
   Lightbulb,
   Percent,
   Plane,
@@ -84,6 +85,9 @@ const PICTURES = {
   cash: { Icon: Wallet, color: "#16a34a" },
   "credit-card": { Icon: CreditCard, color: "#4f46e5" },
   loan: { Icon: BadgePercent, color: "#dc2626" },
+  "debit-card": { Icon: CreditCard, color: "#0891b2" },
+  "net-banking": { Icon: Laptop, color: "#2563eb" },
+  wallet: { Icon: Wallet, color: "#7c3aed" },
 } satisfies Record<string, { Icon: LucideIcon; color: string }>;
 
 export type PictureName = keyof typeof PICTURES;

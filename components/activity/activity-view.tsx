@@ -23,6 +23,7 @@ import { EventRow, headline } from "../events/event-row";
 import { useQuickRepaymentReceived } from "../events/quick-repay";
 import { PageTitle } from "../page-title";
 import { PictureIcon } from "../picture-icon";
+import { BankMark } from "../account-logo";
 import { useFinance } from "../finance-provider";
 import { DuplicatesBanner } from "./duplicates-banner";
 import { WaitingLines } from "./waiting-lines";
@@ -179,7 +180,7 @@ function ActivityContent() {
     { value: ALL, label: "All categories" },
     ...categories.map((c) => ({ value: c.id, label: c.name, icon: <CategoryIcon category={c} /> })),
   ];
-  const accountOptions: SearchableOption[] = [{ value: ALL, label: "All accounts" }, ...book.accounts.map((a) => ({ value: a.id, label: a.name }))];
+  const accountOptions: SearchableOption[] = [{ value: ALL, label: "All accounts" }, ...book.accounts.map((a) => ({ value: a.id, label: a.name, icon: <BankMark name={a.name} /> }))];
   const personOptions: SearchableOption[] = [{ value: ALL, label: "Everyone" }, ...book.people.map((p) => ({ value: p.id, label: p.name }))];
 
   const sortMenu = (

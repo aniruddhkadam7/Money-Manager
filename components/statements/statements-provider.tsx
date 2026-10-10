@@ -16,6 +16,7 @@ import { deleteStatementFile, loadStatementFile, saveStatementFile } from "@/lib
 import { readCardBill, type CardBill } from "@/lib/statements/card-bill";
 import { readCardNumber } from "@/lib/statements/mask";
 import { extractPdfText } from "@/lib/statements/pdf";
+import { newId } from "@/lib/domain/id";
 
 type Status = "loading" | "ready" | "error";
 
@@ -206,7 +207,7 @@ export function StatementsProvider({ children, repository = repo }: { children: 
         try {
           const result = await processStatement(
             { data, filename: file.name, accountId, password, book: finance.getBook(), store: storeRef.current, categories: planCtx(), onProgress, useAi },
-            { pdfjs: await loadPdfjs(), ocr: browserOcr, ocrImage: browserOcrImage, now: nowISO, newId: () => crypto.randomUUID() },
+            { pdfjs: await loadPdfjs(), ocr: browserOcr, ocrImage: browserOcrImage, now: nowISO, newId },
           );
           if (!(await persist(result.store))) return { ok: false, code: "unknown", message: "The statement was read, but this browser couldn't store it." };
           await saveStatementFile(result.record.id, data);
@@ -223,11 +224,14 @@ export function StatementsProvider({ children, repository = repo }: { children: 
                 accountId === AUTO_ACCOUNT
                   ? (book.accounts.find((a) => a.id === "account-netbanking") ?? book.accounts.find((a) => a.type === "bank") ?? book.accounts[0])?.id ?? accountId
                   : accountId;
-              await persist(failedImport(storeRef.current, { id: crypto.randomUUID(), filename: file.name, data, accountId: filedUnder, error: err.message, now: nowISO() }));
+              await persist(failedImport(storeRef.current, { id: newId(), filename: file.name, data, accountId: filedUnder, error: err.message, now: nowISO() }));
             }
             return { ok: false, code: err.code, message: err.message, importId: err.importId };
           }
-          return { ok: false, code: "unknown", message: "Something went wrong while reading this statement." };
+          // Keep the browser's own reason: without it a phone-only failure can't be told apart from any other.
+          console.error("Statement upload failed", err);
+          const reason = err instanceof Error && err.message ? ` (${err.message})` : "";
+          return { ok: false, code: "unknown", message: `Something went wrong while reading this statement${reason}.` };
         }
       },
 

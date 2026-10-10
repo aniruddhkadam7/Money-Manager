@@ -1,3 +1,4 @@
+import { newId } from "@/lib/domain/id";
 import { buildLedger } from "./engine";
 import type { Account, AccountType, Book, EventDraft, EventIssue, EventSource, FinancialEvent, Person } from "./types";
 
@@ -16,7 +17,7 @@ export interface Clock {
 
 export const systemClock: Clock = {
   now: () => new Date().toISOString(),
-  newId: () => crypto.randomUUID(),
+  newId,
 };
 
 const keyOf = (i: EventIssue) => `${i.eventId}|${i.code}`;

@@ -11,6 +11,7 @@ import { findSimilar } from "@/lib/finance/similar";
 import type { EventType, FinancialEvent } from "@/lib/finance/types";
 import { useFinance } from "../finance-provider";
 import { PictureIcon } from "../picture-icon";
+import { EventLogo } from "./event-logo";
 import { useToast } from "../toast";
 import { EffectsPanel } from "./effects-panel";
 import { EventForm, type FormPreset } from "./event-form";
@@ -150,21 +151,20 @@ function Picker({ onPick }: { onPick: (type: EventType) => void }) {
     <>
       <DialogHeader>
         <DialogTitle>What happened?</DialogTitle>
-        <DialogDescription>Tell the app once. It updates everything else.</DialogDescription>
+        <DialogDescription className="sr-only">Pick the kind of entry</DialogDescription>
       </DialogHeader>
-      <div className="grid gap-2 sm:grid-cols-2">
+      {/* A tile grid with hairlines between cells; the hint is the tooltip. */}
+      <div className="grid grid-cols-3 gap-px overflow-hidden rounded-lg border bg-border">
         {EVENT_OPTIONS.map((o) => (
           <button
             key={o.type}
             type="button"
+            title={o.hint}
             onClick={() => onPick(o.type)}
-            className="flex items-start gap-3 rounded-xl border p-3 text-left transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+            className="flex min-h-20 flex-col items-center justify-center gap-1.5 bg-background px-1 py-3 text-center text-xs font-medium transition-colors hover:bg-muted focus-visible:relative focus-visible:ring-2 focus-visible:ring-ring sm:text-sm"
           >
-            <PictureIcon name={o.picture} className="mt-0.5 size-7" />
-            <span>
-              <span className="block text-sm font-medium">{o.label}</span>
-              <span className="block text-xs text-muted-foreground">{o.hint}</span>
-            </span>
+            <PictureIcon name={o.picture} className="size-7" />
+            <span className="line-clamp-2 break-words">{o.label}</span>
           </button>
         ))}
       </div>
@@ -287,7 +287,7 @@ function Detail({
     <>
       <DialogHeader>
         <div className="flex items-center gap-3">
-          <PictureIcon name={option.picture} className="size-8" />
+          <EventLogo event={event} className="size-10" />
           <div className="min-w-0">
             <DialogTitle className="truncate">{describer.title(event)}</DialogTitle>
             <DialogDescription>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Camera, Loader2, LogOut, Monitor, Moon, Pencil, Sun, Trash2 } from "lucide-react";
+import { Camera, Eye, EyeOff, KeyRound, Loader2, LockKeyhole, LogOut, Monitor, Moon, Pencil, Sun, Trash2 } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
@@ -9,11 +9,13 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cloudConfigured, supabase } from "@/lib/cloud/client";
-import { stopSync } from "@/lib/cloud/sync";
+import { changePassword, lockSettings, removePasscode, setPasscode, setUnlockWith, type UnlockMethod } from "@/lib/cloud/app-lock";
+import { signOut as signOutAndReload } from "@/lib/cloud/sign-out";
 import { formatDisplayDate } from "@/lib/domain/dates";
 import { loadPhoto, saveProfile, useProfile, type Profile } from "@/lib/profile";
 import { setTheme, useTheme, type ThemeChoice } from "@/lib/theme";
 import { cn } from "@/lib/utils";
+import { PasscodePad } from "./app-lock";
 import { LOGIN_DOMAIN, usernameFor } from "./cloud-gate";
 import { SYNC_LABEL, useSyncStatus } from "./cloud-status";
 import { PhotoCropper } from "./photo-cropper";
@@ -97,14 +99,14 @@ export function ProfileMenu() {
       </LiquidButton>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-lg">
-          <ProfileBody me={me} profile={profile} />
+          <ProfileBody me={me} profile={profile} user={user} />
         </DialogContent>
       </Dialog>
     </>
   );
 }
 
-function ProfileBody({ me, profile }: { me: Identity; profile: Profile }) {
+function ProfileBody({ me, profile, user }: { me: Identity; profile: Profile; user: User | null }) {
   const [editing, setEditing] = useState(false);
   return (
     <>
@@ -141,6 +143,7 @@ function ProfileBody({ me, profile }: { me: Identity; profile: Profile }) {
       )}
 
       <AppearanceSection />
+      {cloudConfigured && user && <SecuritySection user={user} />}
       {cloudConfigured && <SignInSection me={me} />}
     </>
   );
@@ -374,15 +377,7 @@ function SignInSection({ me }: { me: Identity }) {
 
   const signOut = async () => {
     setBusy(true);
-    try {
-      await stopSync();
-    } catch {
-      setBusy(false);
-      window.alert("Some changes haven't reached the cloud yet, so signing out now would lose them. Check your connection and try again.");
-      return;
-    }
-    await supabase()?.auth.signOut();
-    window.location.href = "/";
+    if (!(await signOutAndReload())) setBusy(false);
   };
 
   return (
@@ -400,5 +395,254 @@ function SignInSection({ me }: { me: Identity }) {
         {busy ? <Loader2 className="animate-spin" /> : <LogOut />} Sign out
       </Button>
     </Section>
+  );
+}
+
+const UNLOCK_METHODS: { value: UnlockMethod; label: string }[] = [
+  { value: "passcode", label: "Passcode" },
+  { value: "password", label: "Password" },
+];
+
+/**
+ * Password and passcode. With a passcode set the app opens locked, and either one unlocks it; the
+ * default picks which the lock screen asks for first. Saved to the account, so every device follows it.
+ */
+function SecuritySection({ user }: { user: User }) {
+  const settings = lockSettings(user);
+  const [editing, setEditing] = useState<"password" | "passcode" | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const run = async (action: () => Promise<void>, done?: string) => {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await action();
+      if (done) setNotice(done);
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong. Try again.");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+  const finish = (message: string) => {
+    setEditing(null);
+    setError(null);
+    setNotice(message);
+  };
+
+  if (editing === "password") {
+    return (
+      <Section title="Security">
+        <PasswordForm user={user} onCancel={() => setEditing(null)} onDone={() => finish("Password changed.")} />
+      </Section>
+    );
+  }
+  if (editing === "passcode") {
+    return (
+      <Section title="Security">
+        <PasscodeForm
+          onCancel={() => setEditing(null)}
+          onSave={async (code) => {
+            await setPasscode(settings, code);
+            finish(settings.passcode ? "Passcode changed." : "Passcode set. The app now opens locked.");
+          }}
+        />
+      </Section>
+    );
+  }
+
+  return (
+    <Section title="Security">
+      <div className="divide-y rounded-xl border text-sm">
+        <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+          <span className="flex items-center gap-2 text-muted-foreground">
+            <KeyRound className="size-4" /> Password
+          </span>
+          <Button variant="ghost" size="sm" onClick={() => setEditing("password")}>
+            Change
+          </Button>
+        </div>
+        <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+          <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
+            <LockKeyhole className="size-4 shrink-0" />
+            <span className="truncate">Passcode{settings.passcode ? ` · ${settings.passcode.length} digits` : " · Off"}</span>
+          </span>
+          <div className="flex shrink-0 gap-1">
+            {settings.passcode && (
+              <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => setConfirmRemove(true)} disabled={busy}>
+                Remove
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" onClick={() => setEditing("passcode")} disabled={busy}>
+              {settings.passcode ? "Change" : "Set up"}
+            </Button>
+          </div>
+        </div>
+        {settings.passcode && (
+          <div className="grid gap-2 px-4 py-3">
+            <span className="text-muted-foreground">Unlock with</span>
+            <div role="radiogroup" aria-label="Unlock with" className="grid grid-cols-2 gap-1 rounded-xl border bg-muted p-1">
+              {UNLOCK_METHODS.map(({ value, label }) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={settings.unlockWith === value}
+                  disabled={busy}
+                  onClick={() => settings.unlockWith !== value && run(() => setUnlockWith(settings, value))}
+                  className={cn(
+                    "rounded-lg py-2 text-sm font-medium transition-colors disabled:opacity-60",
+                    settings.unlockWith === value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">The lock screen asks for this first. You can always switch to the other one there.</p>
+          </div>
+        )}
+      </div>
+      {confirmRemove && (
+        <div className="grid gap-3 rounded-xl border p-4 text-sm">
+          <p>Remove the passcode? The app will no longer lock when you open it.</p>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setConfirmRemove(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={busy}
+              onClick={async () => (await run(removePasscode, "Passcode removed.")) && setConfirmRemove(false)}
+            >
+              {busy && <Loader2 className="animate-spin" />} Remove
+            </Button>
+          </div>
+        </div>
+      )}
+      {!settings.passcode && !notice && !error && (
+        <p className="text-xs text-muted-foreground">Set a passcode to lock the app when you open it. Your password unlocks it too.</p>
+      )}
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      {notice && <p className="text-sm text-emerald-600">{notice}</p>}
+    </Section>
+  );
+}
+
+function PasswordForm({ user, onCancel, onDone }: { user: User; onCancel: () => void; onDone: () => void }) {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [show, setShow] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (next !== confirm) return setError("The new passwords don't match.");
+    setBusy(true);
+    setError(null);
+    try {
+      await changePassword(user, current, next);
+      onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't change the password.");
+      setBusy(false);
+    }
+  };
+
+  const type = show ? "text" : "password";
+  return (
+    <form onSubmit={submit} className="grid gap-3 rounded-xl border p-4">
+      {/* Lets password managers file the new password under the right account. */}
+      <input type="text" name="username" autoComplete="username" value={user.email ?? ""} readOnly hidden />
+      <FormField label="Current password">
+        <Input id="pw-current" type={type} autoComplete="current-password" required value={current} onChange={(e) => setCurrent(e.target.value)} />
+      </FormField>
+      <FormField label="New password">
+        <Input id="pw-new" type={type} autoComplete="new-password" required minLength={8} value={next} onChange={(e) => setNext(e.target.value)} />
+      </FormField>
+      <FormField label="Confirm new password">
+        <Input id="pw-confirm" type={type} autoComplete="new-password" required value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+      </FormField>
+      <p className="text-xs text-muted-foreground">At least 8 characters. You stay signed in on this device.</p>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Button type="button" variant="ghost" size="sm" onClick={() => setShow((v) => !v)}>
+          {show ? <EyeOff /> : <Eye />} {show ? "Hide" : "Show"}
+        </Button>
+        <div className="flex gap-2">
+          <Button type="button" variant="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={busy}>
+            {busy && <Loader2 className="animate-spin" />} Change password
+          </Button>
+        </div>
+      </div>
+    </form>
+  );
+}
+
+/** Pick 4 or 6 digits, type the passcode, then type it again to confirm. */
+function PasscodeForm({ onCancel, onSave }: { onCancel: () => void; onSave: (code: string) => Promise<void> }) {
+  const [length, setLength] = useState<4 | 6>(4);
+  const [first, setFirst] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const complete = async (code: string) => {
+    if (first === null) {
+      setFirst(code);
+      setError(null);
+      return false;
+    }
+    if (code !== first) {
+      setFirst(null);
+      setError("The passcodes didn't match. Start again.");
+      return false;
+    }
+    try {
+      await onSave(code);
+      return true;
+    } catch (e) {
+      setFirst(null);
+      setError(e instanceof Error ? e.message : "Couldn't save the passcode.");
+      return false;
+    }
+  };
+
+  return (
+    <div className="grid justify-items-center gap-4 rounded-xl border p-4">
+      <p className="text-sm font-medium">{first === null ? "Enter a new passcode" : "Enter it again to confirm"}</p>
+      {first === null && (
+        <div role="radiogroup" aria-label="Passcode length" className="grid grid-cols-2 gap-1 rounded-xl border bg-muted p-1 text-sm">
+          {([4, 6] as const).map((n) => (
+            <button
+              key={n}
+              type="button"
+              role="radio"
+              aria-checked={length === n}
+              onClick={() => setLength(n)}
+              className={cn("rounded-lg px-4 py-1.5 font-medium transition-colors", length === n ? "bg-card shadow-sm" : "text-muted-foreground hover:text-foreground")}
+            >
+              {n} digits
+            </button>
+          ))}
+        </div>
+      )}
+      {/* A new key per step and length clears the dots between them. */}
+      <PasscodePad key={`${length}-${first === null ? 1 : 2}`} length={length} onComplete={complete} />
+      <p className="min-h-5 text-sm text-destructive">{error}</p>
+      <Button variant="ghost" onClick={onCancel}>
+        Cancel
+      </Button>
+    </div>
   );
 }

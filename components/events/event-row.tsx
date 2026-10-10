@@ -4,16 +4,12 @@ import { Copy, Info, Pencil, Trash2, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatDisplayDate } from "@/lib/domain/dates";
 import { formatRupees } from "@/lib/finance/describe";
-import { brandFor } from "@/lib/finance/brands";
 import { matchRefunds } from "@/lib/finance/state";
 import type { FinancialEvent } from "@/lib/finance/types";
 import { cn } from "@/lib/utils";
-import { BrandLogo } from "../brand-logo";
-import { CategoryIcon } from "../category-icon";
 import { useFinance } from "../finance-provider";
-import { PictureIcon } from "../picture-icon";
 import { useEventDialog } from "./event-dialog";
-import { eventPicture } from "./event-meta";
+import { EventLogo } from "./event-logo";
 
 /** Amount shown for a row, and whether money came in, went out, or just moved. */
 export function headline(e: FinancialEvent): { amountMinor: number; tone: "in" | "out" | "neutral" } {
@@ -45,17 +41,11 @@ export function headline(e: FinancialEvent): { amountMinor: number; tone: "in" |
  * from tablet width up; on phones they live in the row's details.
  */
 export function EventRow({ event, onOpen }: { event: FinancialEvent; /** Tapping the row does this instead of opening the details. */ onOpen?: () => void }) {
-  const { book, describer, getCategory, issuesByEvent } = useFinance();
+  const { book, describer, issuesByEvent } = useFinance();
   const refunded = event.type === "expense" ? [...matchRefunds(book).values()].filter((m) => m.expenseId === event.id).reduce((t, m) => t + m.amountMinor, 0) : 0;
   const refundFor = matchRefunds(book).get(event.id);
   const refundedItem = refundFor ? book.events.find((e) => e.id === refundFor.expenseId) : undefined;
   const { openDetail, openEdit, openDuplicate, requestDelete } = useEventDialog();
-  const picture = eventPicture(event, getCategory);
-  // Spending at (or money back from) a recognisable service shows its logo; anything else keeps its category
-  // picture. The bank's own narration is read too, so "PCI/6496/GITHUB* ..." is GitHub even if named oddly.
-  const withMerchant = event.type === "expense" || event.type === "income" || event.type === "reimbursable_expense" || event.type === "split_expense";
-  const narration = (event.sources ?? []).map((s) => s.narration ?? "").join(" ");
-  const brand = withMerchant ? (event.description ? brandFor(event.description) : null) ?? (narration ? brandFor(narration) : null) : null;
   const { amountMinor, tone } = headline(event);
   const issue = issuesByEvent.get(event.id)?.[0];
   const title = describer.title(event);
@@ -68,11 +58,7 @@ export function EventRow({ event, onOpen }: { event: FinancialEvent; /** Tapping
         aria-label={onOpen ? `${title}. See every entry with ${title}.` : `${title}. See what changed.`}
         className="flex min-w-0 flex-1 items-center gap-2.5 py-3 pl-3 pr-1 text-left outline-none focus-visible:bg-muted/60 sm:gap-3 sm:px-5"
       >
-        <BrandLogo
-          slug={brand?.slug}
-          name={brand?.name ?? title}
-          fallback={picture.category ? <CategoryIcon category={picture.category} tile /> : <PictureIcon name={picture.name} tile />}
-        />
+        <EventLogo event={event} tile />
 
         <div className="min-w-0 flex-1">
           <p className="break-words font-medium leading-snug">{title}</p>

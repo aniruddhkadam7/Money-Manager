@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { STATEMENT_ACCOUNT_TYPES } from "@/lib/finance/types";
 import { AUTO_ACCOUNT, type Progress, type Stage } from "@/lib/statements/pipeline";
+import { BankMark } from "../account-logo";
 import { useFinance } from "../finance-provider";
 import { ACCEPTED_EXTENSIONS } from "@/lib/statements/tabular";
 import { useStatements, type UploadResult } from "./statements-provider";
@@ -70,8 +71,8 @@ export function UploadPanel({ onDone }: { onDone: (importId: string) => void }) 
   const activeIndex = progress ? STAGES.findIndex((s) => s.stage === progress.stage) : -1;
 
   return (
-    <Card className="grid gap-3 p-3 sm:gap-4 sm:p-5" data-testid="upload-panel">
-        <div>
+    <Card className="grid min-w-0 grid-cols-1 gap-3 p-3 sm:gap-4 sm:p-5" data-testid="upload-panel">
+        <div className="min-w-0">
           <div
             role="button"
             tabIndex={0}
@@ -145,7 +146,10 @@ export function UploadPanel({ onDone }: { onDone: (importId: string) => void }) 
             <SelectItem value={AUTO_ACCOUNT}>Account: detect from the statement</SelectItem>
             {accounts.map((a) => (
               <SelectItem key={a.id} value={a.id}>
-                {a.name}
+                <span className="flex items-center gap-2">
+                  <BankMark name={a.name} />
+                  {a.name}
+                </span>
               </SelectItem>
             ))}
           </SelectContent>

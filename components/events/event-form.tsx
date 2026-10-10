@@ -1,19 +1,22 @@
 "use client";
 
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
-import { ArrowLeft, Plus, X } from "lucide-react";
+import { ArrowLeft, ChevronDown, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { todayISO } from "@/lib/domain/dates";
 import { minorToInputString, parseAmountToMinor } from "@/lib/domain/money";
 import { formatRupees } from "@/lib/finance/describe";
 import type { AccountType, EventDraft, EventType, FinancialEvent } from "@/lib/finance/types";
+import { accountPicture, BankMark } from "../account-logo";
 import { CategoryIcon } from "../category-icon";
+import { FileTypeIcon } from "../statements/file-type-icon";
 import { useFinance } from "../finance-provider";
-import { PictureIcon, type PictureName } from "../picture-icon";
+import { PictureIcon } from "../picture-icon";
 import { EVENT_OPTIONS, eventOption, FORM_SPEC, type FieldKey } from "./event-meta";
 
 export interface FormPreset {
@@ -39,15 +42,8 @@ interface Values {
   beforeTracking: boolean;
 }
 
-const ACCOUNT_PICTURE: Record<AccountType, PictureName> = {
-  bank: "bank",
-  cash: "cash",
-  credit_card: "credit-card",
-  loan: "loan",
-  investment: "invest",
-};
-
 type Errors = Partial<Record<FieldKey | "form", string>>;
+
 
 /** The main account an entry used (what "Paid from" / "Received in" showed). */
 function primaryAccountId(e: FinancialEvent): string | undefined {
@@ -98,6 +94,7 @@ export function EventForm({
   const [values, setValues] = useState<Values>(() => initialValues());
   const [errors, setErrors] = useState<Errors>({});
   const [saving, setSaving] = useState(false);
+  const [pickingCategory, setPickingCategory] = useState(false);
   const [addingCategory, setAddingCategory] = useState(false);
   const [newCategory, setNewCategory] = useState("");
 
@@ -211,6 +208,98 @@ export function EventForm({
     set("categoryId", created.id);
     setNewCategory("");
     setAddingCategory(false);
+    setPickingCategory(false);
+  }
+
+  function closeCategoryPicker() {
+    setPickingCategory(false);
+    setAddingCategory(false);
+    setNewCategory("");
+  }
+
+  /**
+   * The category grid: a panel pinned to the bottom of the sheet (where a keyboard would be), so it opens in
+   * view on a phone and covers the lower fields instead of pushing them off screen.
+   */
+  function categorySheet() {
+    if (!pickingCategory || !spec.fields.includes("category")) return null;
+    const canAdd = spec.categoryKind === "expense";
+    // Empty cells to fill out the last row, so the grid lines stay square.
+    const filler = (3 - ((categories.length + (canAdd ? 1 : 0)) % 3)) % 3;
+    return (
+      <div
+        data-testid="category-grid"
+        className="sticky -bottom-6 z-10 -mx-6 -mb-6 border-t bg-background shadow-[0_-8px_24px_rgba(0,0,0,0.12)] max-sm:-bottom-[calc(1.5rem+env(safe-area-inset-bottom))] max-sm:-mx-5 max-sm:-mb-[calc(1.5rem+env(safe-area-inset-bottom))] max-sm:pb-[env(safe-area-inset-bottom)]"
+      >
+        <div className="flex items-center justify-between bg-muted px-4 py-2">
+          <span className="text-sm font-medium text-muted-foreground">Category</span>
+          <button
+            type="button"
+            aria-label="Close categories"
+            onClick={closeCategoryPicker}
+            className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-background/60 hover:text-foreground"
+          >
+            <X className="size-5" />
+          </button>
+        </div>
+        <div className="max-h-[45dvh] overflow-y-auto overscroll-contain">
+          <div className="grid grid-cols-3 gap-px border-b bg-border">
+            {categories.map((c) => {
+              const selected = c.id === values.categoryId;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => {
+                    set("categoryId", c.id);
+                    closeCategoryPicker();
+                  }}
+                  className={`flex h-12 items-center justify-center gap-1.5 px-1 text-xs font-medium transition-colors sm:text-sm ${
+                    selected ? "bg-primary/10 text-primary" : "bg-background hover:bg-muted"
+                  }`}
+                >
+                  <CategoryIcon category={c} className="size-5 shrink-0" />
+                  <span className="truncate">{c.name}</span>
+                </button>
+              );
+            })}
+            {canAdd && (
+              <button
+                type="button"
+                onClick={() => setAddingCategory(true)}
+                className="flex h-12 items-center justify-center gap-1 bg-background px-1 text-xs font-medium text-primary hover:bg-muted sm:text-sm"
+              >
+                <Plus className="size-4" /> Add
+              </button>
+            )}
+            {Array.from({ length: filler }, (_, i) => (
+              <div key={`filler-${i}`} className="bg-background" />
+            ))}
+          </div>
+          {canAdd && addingCategory && (
+            <div className="flex gap-2 p-2">
+              <Input
+                autoFocus
+                placeholder="New category name"
+                maxLength={30}
+                value={newCategory}
+                onChange={(e) => setNewCategory(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void handleAddCategory();
+                  }
+                }}
+              />
+              <Button type="button" variant="outline" onClick={() => void handleAddCategory()}>
+                Add
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
   }
 
   function submit(ev: FormEvent) {
@@ -239,6 +328,7 @@ export function EventForm({
       }
     }
     setErrors(next);
+    if (next.category) setPickingCategory(true);
     if (Object.keys(next).length > 0 || (has("amount") && amountMinor === null)) return;
 
     setSaving(true);
@@ -362,55 +452,31 @@ export function EventForm({
           </Field>
         );
 
-      case "category":
+      case "category": {
+        const chosen = categories.find((c) => c.id === values.categoryId);
         return (
           <Field key={key} id="category" label="Category" error={errors.category}>
-            <Select value={values.categoryId} onValueChange={(v) => set("categoryId", v)}>
-              <SelectTrigger id="category" aria-invalid={!!errors.category}>
-                <SelectValue placeholder="Select" />
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    <span className="flex items-center gap-2">
-                      <CategoryIcon category={c} />
-                      {c.name}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {spec.categoryKind === "expense" &&
-              (addingCategory ? (
-                <div className="mt-1 flex gap-2">
-                  <Input
-                    autoFocus
-                    placeholder="New category name"
-                    maxLength={30}
-                    value={newCategory}
-                    onChange={(e) => setNewCategory(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        void handleAddCategory();
-                      }
-                    }}
-                  />
-                  <Button type="button" variant="outline" onClick={() => void handleAddCategory()}>
-                    Add
-                  </Button>
-                </div>
+            <button
+              type="button"
+              id="category"
+              aria-expanded={pickingCategory}
+              aria-invalid={!!errors.category}
+              onClick={() => (pickingCategory ? closeCategoryPicker() : setPickingCategory(true))}
+              className="flex h-9 w-full items-center gap-2 rounded-md border border-input bg-transparent px-3 text-left text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive"
+            >
+              {chosen ? (
+                <>
+                  <CategoryIcon category={chosen} />
+                  <span className="truncate">{chosen.name}</span>
+                </>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => setAddingCategory(true)}
-                  className="inline-flex items-center gap-1 justify-self-start pt-1 text-sm font-medium text-primary hover:underline"
-                >
-                  <Plus className="size-3.5" /> New category
-                </button>
-              ))}
+                <span className="text-muted-foreground">Select</span>
+              )}
+              <ChevronDown className="ml-auto size-4 shrink-0 opacity-50" />
+            </button>
           </Field>
         );
+      }
 
       case "account": {
         const accountField = (
@@ -425,26 +491,19 @@ export function EventForm({
           />
         );
         if (type !== "lend" && type !== "borrow") return accountField;
-        // A debt from before you started tracking: it counts in what you owe (or are owed), but no account moves.
+        // Not in statement: a debt from before you started tracking. It counts in what you owe (or are owed), but no account moves.
         return (
-          <div key={key} className="grid gap-3">
-            <label className="flex items-start gap-2 rounded-lg border bg-muted/40 p-3 text-sm">
-              <input
-                type="checkbox"
-                className="mt-0.5 size-4"
-                checked={values.beforeTracking}
-                onChange={(e) => set("beforeTracking", e.target.checked)}
-                data-testid="before-tracking"
-              />
-              <span>
-                <span className="font-medium">{type === "borrow" ? "I owed this before I started tracking" : "They owed me this before I started tracking"}</span>
-                <span className="block text-xs text-muted-foreground">
-                  No money {type === "borrow" ? "arrives in" : "leaves"} an account now: only {type === "borrow" ? "what you owe" : "what you're owed"} changes.
-                </span>
-              </span>
-            </label>
-            {!values.beforeTracking && accountField}
-          </div>
+          <AccountField
+            key={key}
+            id="account"
+            label={label("account", "Account")}
+            value={values.accountId}
+            onChange={(v) => set("accountId", v)}
+            accounts={mainAccounts}
+            error={errors.account}
+            toggle={{ label: "Not in statement", on: values.beforeTracking, onChange: (on) => set("beforeTracking", on) }}
+            note={values.beforeTracking ? `No account changes, only ${type === "borrow" ? "what you owe" : "what you're owed"}.` : undefined}
+          />
         );
       }
 
@@ -673,6 +732,7 @@ export function EventForm({
           {editing ? "Save changes" : "Save"}
         </Button>
       </DialogFooter>
+      {categorySheet()}
     </form>
   );
 }
@@ -705,6 +765,8 @@ function AccountField({
   onChange,
   accounts,
   error,
+  toggle,
+  note,
 }: {
   id: string;
   label: string;
@@ -712,25 +774,48 @@ function AccountField({
   onChange: (v: string) => void;
   accounts: { id: string; name: string; type: AccountType }[];
   error?: string;
+  /** A switch beside the label (say, "Not in statement"); while on, no account is chosen. */
+  toggle?: { label: string; on: boolean; onChange: (on: boolean) => void };
+  note?: string;
 }) {
+  const hidden = !!toggle?.on;
   return (
-    <Field id={id} label={label} error={error}>
-      {/* Ignore the empty value Radix's hidden native select can briefly report. */}
-      <Select value={value} onValueChange={(v) => (v ? onChange(v) : undefined)}>
-        <SelectTrigger id={id} aria-invalid={!!error}>
-          <SelectValue placeholder="Select" />
-        </SelectTrigger>
-        <SelectContent>
-          {accounts.map((a) => (
-            <SelectItem key={a.id} value={a.id}>
-              <span className="flex items-center gap-2">
-                <PictureIcon name={ACCOUNT_PICTURE[a.type]} />
-                {a.name}
-              </span>
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </Field>
+    <div className="grid content-start gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      {!hidden && (
+        // Ignore the empty value Radix's hidden native select can briefly report.
+        <Select value={value} onValueChange={(v) => (v ? onChange(v) : undefined)}>
+          <SelectTrigger id={id} aria-invalid={!!error}>
+            <SelectValue placeholder="Select" />
+          </SelectTrigger>
+          <SelectContent>
+            {accounts.map((a) => (
+              <SelectItem key={a.id} value={a.id}>
+                <span className="flex items-center gap-2">
+                  <BankMark name={a.name} fallback={<PictureIcon name={accountPicture(a)} />} />
+                  {a.name}
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+      {error && !hidden && <p className="text-xs text-destructive">{error}</p>}
+      {toggle && (
+        <label className="flex cursor-pointer items-center gap-3 rounded-lg border bg-muted/40 px-3 py-2.5">
+          <FileTypeIcon filename="statement.pdf" className="h-6 w-5" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-medium">{toggle.label}</span>
+            {note && <span className="block text-xs text-muted-foreground">{note}</span>}
+          </span>
+          <Switch
+            checked={toggle.on}
+            onCheckedChange={toggle.onChange}
+            aria-label={toggle.label}
+            className={toggle.on ? undefined : "bg-slate-300 dark:bg-slate-600"}
+          />
+        </label>
+      )}
+    </div>
   );
 }
