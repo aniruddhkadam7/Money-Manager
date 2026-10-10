@@ -67,10 +67,13 @@ function addMonths(isoDate: string, months: number): string {
   return toISODate(new Date(target.getFullYear(), target.getMonth(), Math.min(d, last)));
 }
 
-function nextAfter(last: string, frequency: Frequency): string {
-  if (frequency === "weekly") return addDays(last, 7);
-  return addMonths(last, frequency === "monthly" ? 1 : 12);
+/** The n-th payment after `last` on its rhythm (n = 1 is the next one), counted from `last` so month-end dates don't drift. */
+export function nthAfter(last: string, frequency: Frequency, n: number): string {
+  if (frequency === "weekly") return addDays(last, 7 * n);
+  return addMonths(last, (frequency === "monthly" ? 1 : 12) * n);
 }
+
+const nextAfter = (last: string, frequency: Frequency) => nthAfter(last, frequency, 1);
 
 function monthlyEquivalent(amountMinor: number, frequency: Frequency): number {
   if (frequency === "monthly") return amountMinor;

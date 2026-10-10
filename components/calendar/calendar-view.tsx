@@ -3,20 +3,34 @@
 import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, CreditCard, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { formatCompactINR, formatExactINR } from "@/lib/charts/format";
-import { formatMonthLong, formatWeekdayDate, monthKey, shiftMonth } from "@/lib/domain/dates";
-import { calendarMonth, type CalendarDay } from "@/lib/finance/calendar";
+import { activityHref } from "@/lib/charts/links";
+import { daysBetween, formatDayMonth, formatMonthLong, formatWeekdayDate, monthEnd, monthKey, shiftMonth } from "@/lib/domain/dates";
+import { calendarMonth, expectedPayments, monthOutlook, type CalendarCardDue, type CalendarDay, type ExpectedPayment } from "@/lib/finance/calendar";
+import { cardDueDates } from "@/lib/finance/card-bill-status";
+import { detectRecurring, type Frequency } from "@/lib/finance/recurring";
 import { cn } from "@/lib/utils";
+import { BrandLogo } from "../brand-logo";
+import { CategoryIcon } from "../category-icon";
 import { useEventDialog } from "../events/event-dialog";
 import { EventRow } from "../events/event-row";
 import { useFinance } from "../finance-provider";
 import { PageTitle } from "../page-title";
+import { PictureIcon } from "../picture-icon";
+import { useStatements } from "../statements/statements-provider";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const isMonth = (s: string | null): s is string => !!s && /^\d{4}-\d{2}$/.test(s);
+const RHYTHM: Record<Frequency, string> = { weekly: "every week", monthly: "every month", yearly: "every year" };
+
+const byDate = <T,>(items: T[], dateOf: (item: T) => string) => {
+  const map = new Map<string, T[]>();
+  for (const item of items) map.set(dateOf(item), [...(map.get(dateOf(item)) ?? []), item]);
+  return map;
+};
 
 /** Switches between the Activity list and this calendar; both pages show it in their title row. */
 export function ActivityViewSwitch({ current }: { current: "list" | "calendar" }) {
@@ -59,6 +73,7 @@ export function CalendarView() {
  */
 export function CalendarBoard({ initialMonth, embedded = false }: { initialMonth?: string; embedded?: boolean }) {
   const { status, book, ledger, today } = useFinance();
+  const statements = useStatements();
   const { openAdd } = useEventDialog();
   const [ym, setYm] = useState(() => initialMonth ?? monthKey(today));
   const [selected, setSelected] = useState(() => (initialMonth ? null : today));
@@ -76,6 +91,30 @@ export function CalendarBoard({ initialMonth, embedded = false }: { initialMonth
     [book.events, selected],
   );
   const selectedDay = weeks.flat().find((d) => d.date === selected);
+
+  // What's still to come: repeating payments on the days they're expected, and the due dates card statements print.
+  const charges = useMemo(() => detectRecurring(book, ledger, today), [book, ledger, today]);
+  const gridFrom = weeks[0][0].date;
+  const gridTo = weeks[weeks.length - 1][6].date;
+  const expected = useMemo(() => expectedPayments(charges, today, gridFrom, gridTo), [charges, today, gridFrom, gridTo]);
+  const dues = useMemo<CalendarCardDue[]>(
+    () =>
+      book.accounts
+        .filter((a) => a.type === "credit_card")
+        .flatMap((a) =>
+          cardDueDates(
+            book,
+            a.id,
+            statements.imports.filter((i) => i.accountId === a.id && i.status !== "FAILED").map((i) => i.cardBill ?? {}),
+          ).map((d) => ({ ...d, accountId: a.id, cardName: a.name })),
+        ),
+    [book, statements.imports],
+  );
+  const expectedByDay = useMemo(() => byDate(expected, (p) => p.date), [expected]);
+  const duesByDay = useMemo(() => byDate(dues, (d) => d.dueDate), [dues]);
+  const outlook = monthOutlook(ym, today, expected, dues);
+  const dayExpected = (selected && expectedByDay.get(selected)) || [];
+  const dayDues = (selected && duesByDay.get(selected)) || [];
 
   const goTo = (next: string) => {
     setYm(next);
@@ -140,6 +179,25 @@ export function CalendarBoard({ initialMonth, embedded = false }: { initialMonth
               <dd className="font-semibold tabular-nums">{formatExactINR(left)}</dd>
             </div>
           </dl>
+          {outlook && (outlook.expectedCount > 0 || outlook.cardBillCount > 0) && (
+            <p className="-mt-1 px-1 text-sm text-muted-foreground" data-testid="month-outlook">
+              {outlook.expectedCount > 0 && (
+                <>
+                  <span className="font-semibold tabular-nums text-foreground">{formatExactINR(outlook.expectedMinor)}</span>{" "}
+                  {ym > monthKey(today) ? `expected to go out in ${formatMonthLong(ym)}` : `still expected to go out by ${formatDayMonth(monthEnd(ym))}`} (
+                  {outlook.expectedCount} repeating {outlook.expectedCount === 1 ? "payment" : "payments"})
+                </>
+              )}
+              {outlook.expectedCount > 0 && outlook.cardBillCount > 0 && ", plus "}
+              {outlook.cardBillCount > 0 && (
+                <>
+                  <span className="font-semibold tabular-nums text-red-600">{formatExactINR(outlook.cardBillsMinor)}</span> left to pay on{" "}
+                  {outlook.cardBillCount === 1 ? "a card bill" : `${outlook.cardBillCount} card bills`} due this month
+                </>
+              )}
+              .
+            </p>
+          )}
 
           <div
             role="grid"
@@ -162,7 +220,15 @@ export function CalendarBoard({ initialMonth, embedded = false }: { initialMonth
             {weeks.map((week) => (
               <div key={week[0].date} role="row" className="grid grid-cols-7 gap-px">
                 {week.map((d) => (
-                  <DayCell key={d.date} day={d} today={d.date === today} selected={d.date === selected} onPick={() => pick(d)} />
+                  <DayCell
+                    key={d.date}
+                    day={d}
+                    expected={expectedByDay.get(d.date) ?? []}
+                    dues={duesByDay.get(d.date) ?? []}
+                    today={d.date === today}
+                    selected={d.date === selected}
+                    onPick={() => pick(d)}
+                  />
                 ))}
               </div>
             ))}
@@ -178,7 +244,7 @@ export function CalendarBoard({ initialMonth, embedded = false }: { initialMonth
                 <h2 className="font-semibold">{formatWeekdayDate(selected)}</h2>
                 <p className="text-sm text-muted-foreground">
                   {dayEvents.length === 0 ? (
-                    "Nothing recorded"
+                    dayExpected.length + dayDues.length > 0 ? "Nothing recorded yet" : "Nothing recorded"
                   ) : (
                     <>
                       {dayEvents.length} {dayEvents.length === 1 ? "entry" : "entries"}
@@ -193,12 +259,29 @@ export function CalendarBoard({ initialMonth, embedded = false }: { initialMonth
                 <Plus /> Add
               </Button>
             </div>
-            {dayEvents.length > 0 ? (
-              <ul className={cn("divide-y py-1", embedded && "max-h-[26rem] overflow-y-auto")}>
-                {dayEvents.map((e) => (
-                  <EventRow key={e.id} event={e} />
-                ))}
-              </ul>
+            {dayEvents.length + dayExpected.length + dayDues.length > 0 ? (
+              <div className={cn(embedded && "max-h-[26rem] overflow-y-auto")}>
+                {dayEvents.length > 0 && (
+                  <ul className="divide-y py-1">
+                    {dayEvents.map((e) => (
+                      <EventRow key={e.id} event={e} />
+                    ))}
+                  </ul>
+                )}
+                {dayExpected.length + dayDues.length > 0 && (
+                  <section aria-label="Expected" className={cn(dayEvents.length > 0 && "border-t")}>
+                    <h3 className="px-4 pt-3 text-xs font-medium uppercase tracking-wide text-muted-foreground sm:px-5">Expected</h3>
+                    <ul className="divide-y py-1">
+                      {dayDues.map((d) => (
+                        <CardDueRow key={`${d.accountId}-${d.statementDate}`} due={d} today={today} />
+                      ))}
+                      {dayExpected.map((p) => (
+                        <ExpectedRow key={p.charge.key} payment={p} />
+                      ))}
+                    </ul>
+                  </section>
+                )}
+              </div>
             ) : (
               <p className="px-5 py-10 text-center text-sm text-muted-foreground">Tap Add to record something on this day.</p>
             )}
@@ -211,15 +294,90 @@ export function CalendarBoard({ initialMonth, embedded = false }: { initialMonth
   );
 }
 
-function DayCell({ day, today, selected, onPick }: { day: CalendarDay; today: boolean; selected: boolean; onPick: () => void }) {
+/** A repeating payment that should come on this day: faded, since it hasn't happened yet. */
+function ExpectedRow({ payment }: { payment: ExpectedPayment }) {
+  const { getCategory } = useFinance();
+  const { charge: c, overdue } = payment;
+  return (
+    <li>
+      <Link
+        href={activityHref({ q: c.name, category: c.categoryId })}
+        aria-label={`${c.name}, expected: see every payment`}
+        className="flex items-center gap-3 px-3 py-3 outline-none transition-colors hover:bg-muted/50 focus-visible:bg-muted/60 sm:px-5"
+      >
+        <span className="opacity-60">
+          <BrandLogo slug={c.brand} name={c.name} fallback={<CategoryIcon category={getCategory(c.categoryId)} tile className="!size-9 !rounded-lg" />} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-muted-foreground">{c.name}</span>
+          <span className={cn("block text-xs", overdue ? "text-amber-700" : "text-muted-foreground")}>
+            {overdue ? "Expected, not recorded yet" : `Expected · ${RHYTHM[c.frequency]}`}
+          </span>
+        </span>
+        <span className="text-sm font-semibold tabular-nums text-muted-foreground">−{formatExactINR(c.amountMinor)}</span>
+      </Link>
+    </li>
+  );
+}
+
+/** A card bill's printed due date and how much of it is paid. */
+function CardDueRow({ due, today }: { due: CalendarCardDue; today: string }) {
+  const days = daysBetween(today, due.dueDate);
+  const unpaid = due.remainingMinor > 0;
+  const note = !unpaid
+    ? "Paid in full"
+    : due.latest
+      ? `${formatExactINR(due.remainingMinor)} left to pay${days < 0 ? ` · ${-days} ${days === -1 ? "day" : "days"} overdue` : days === 0 ? " · due today" : ""}`
+      : `${formatExactINR(due.remainingMinor)} unpaid, carried into the next bill`;
+  return (
+    <li>
+      <Link
+        href={activityHref({ account: due.accountId })}
+        aria-label={`${due.cardName} bill due: ${note}`}
+        className="flex items-center gap-3 px-3 py-3 outline-none transition-colors hover:bg-muted/50 focus-visible:bg-muted/60 sm:px-5"
+      >
+        <PictureIcon name="credit-card" className="size-9" />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium">{due.cardName} bill due</span>
+          <span className={cn("block text-xs font-medium", !unpaid ? "text-emerald-700" : due.latest ? "text-red-600" : "text-amber-700")}>{note}</span>
+        </span>
+        <span className="text-right">
+          <span className="block text-sm font-semibold tabular-nums">{formatExactINR(due.billMinor)}</span>
+          <span className="text-[11px] text-muted-foreground">bill</span>
+        </span>
+      </Link>
+    </li>
+  );
+}
+
+function DayCell({
+  day,
+  expected,
+  dues,
+  today,
+  selected,
+  onPick,
+}: {
+  day: CalendarDay;
+  expected: ExpectedPayment[];
+  dues: CalendarCardDue[];
+  today: boolean;
+  selected: boolean;
+  onPick: () => void;
+}) {
   const dayNumber = Number(day.date.slice(8));
   const weekday = new Date(`${day.date}T00:00:00`).getDay();
+  const expectedMinor = expected.reduce((t, p) => t + p.charge.amountMinor, 0);
+  const owedOnCards = dues.filter((d) => d.latest).reduce((t, d) => t + d.remainingMinor, 0);
+  const logo = expected.find((p) => p.charge.brand)?.charge;
   const label = [
     formatWeekdayDate(day.date),
     day.incomeMinor > 0 && `income ${formatExactINR(day.incomeMinor)}`,
     day.expensesMinor > 0 && `spent ${formatExactINR(day.expensesMinor)}`,
     day.expensesMinor < 0 && `${formatExactINR(-day.expensesMinor)} came back`,
     day.entryCount > 0 && `${day.entryCount} ${day.entryCount === 1 ? "entry" : "entries"}`,
+    expected.length > 0 && `expected ${formatExactINR(expectedMinor)} (${expected.map((p) => p.charge.name).join(", ")})`,
+    dues.length > 0 && (owedOnCards > 0 ? `card bill due, ${formatExactINR(owedOnCards)} left to pay` : "card bill due"),
   ]
     .filter(Boolean)
     .join(", ");
@@ -237,20 +395,28 @@ function DayCell({ day, today, selected, onPick }: { day: CalendarDay; today: bo
         selected && "z-10 bg-primary/5 ring-2 ring-inset ring-primary",
       )}
     >
-      <span
-        className={cn(
-          "grid size-6 place-items-center rounded-full text-xs font-medium tabular-nums sm:text-sm",
-          day.inMonth && weekday === 0 && "text-red-600",
-          day.inMonth && weekday === 6 && "text-sky-700",
-          today && "bg-primary font-semibold text-primary-foreground",
-        )}
-      >
-        {dayNumber}
+      <span className="flex items-start justify-between gap-0.5">
+        <span
+          className={cn(
+            "grid size-6 shrink-0 place-items-center rounded-full text-xs font-medium tabular-nums sm:text-sm",
+            day.inMonth && weekday === 0 && "text-red-600",
+            day.inMonth && weekday === 6 && "text-sky-700",
+            today && "bg-primary font-semibold text-primary-foreground",
+          )}
+        >
+          {dayNumber}
+        </span>
+        <span className={cn("flex items-center gap-0.5 pt-0.5", !day.inMonth && "opacity-60")} aria-hidden>
+          {logo && <BrandLogo slug={logo.brand} name={logo.name} fallback={null} className="hidden !size-5 !rounded-md opacity-60 sm:grid [&>img]:!size-4" />}
+          {dues.length > 0 &&
+            (owedOnCards > 0 ? <span className="size-2 rounded-full bg-red-600 ring-2 ring-card" /> : <CreditCard className="size-3 text-muted-foreground" />)}
+        </span>
       </span>
       <span className={cn("mt-auto grid min-w-0 text-right text-[10px] font-medium leading-tight tabular-nums sm:text-xs", !day.inMonth && "opacity-60")}>
         {day.incomeMinor > 0 && <span className="truncate text-emerald-700">+{formatCompactINR(day.incomeMinor)}</span>}
         {day.expensesMinor > 0 && <span className="truncate text-red-600">−{formatCompactINR(day.expensesMinor)}</span>}
         {day.expensesMinor < 0 && <span className="truncate text-emerald-700">↩{formatCompactINR(-day.expensesMinor)}</span>}
+        {expectedMinor > 0 && <span className="truncate italic text-muted-foreground/80">~{formatCompactINR(expectedMinor)}</span>}
         {day.entryCount > 0 && day.incomeMinor <= 0 && day.expensesMinor === 0 && (
           // Only transfers, loans or investments that day: counted as neither, but still worth a look.
           <span className="ml-auto size-1.5 rounded-full bg-muted-foreground/50" aria-hidden />

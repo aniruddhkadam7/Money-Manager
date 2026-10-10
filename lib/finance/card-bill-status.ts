@@ -23,6 +23,39 @@ export interface CardBillStatus {
 const paidBetween = (book: Book, cardId: string, after: string, until?: string) =>
   book.events.reduce((t, e) => (e.type === "transfer" && e.toAccountId === cardId && e.date > after && (!until || e.date <= until) ? t + e.amountMinor : t), 0);
 
+type StatementBill = { statementDate?: string; dueDate?: string; totalDueMinor?: number; minimumDueMinor?: number };
+
+/** The bills the statements printed, oldest first; the same statement uploaded twice counts once. */
+function printedBills(statements: StatementBill[]): CardStatementInfo[] {
+  const byDate = new Map<string, CardStatementInfo>();
+  for (const s of statements) {
+    if (!s.statementDate || s.totalDueMinor === undefined) continue;
+    byDate.set(s.statementDate, { statementDate: s.statementDate, dueDate: s.dueDate, billMinor: s.totalDueMinor, minimumDueMinor: s.minimumDueMinor });
+  }
+  return [...byDate.values()].sort((a, b) => a.statementDate.localeCompare(b.statementDate));
+}
+
+/** A bill's printed due date, and how much of that bill your entries show as paid. */
+export interface CardDue extends CardStatementInfo {
+  dueDate: string;
+  /** Paid towards the card after this statement (and before the next one, for older bills). */
+  paidMinor: number;
+  remainingMinor: number;
+  /** The newest bill: the only one still to pay. An older bill's unpaid part is carried into the next one. */
+  latest: boolean;
+}
+
+/** Every printed due date for a card, oldest first. Statements that don't print a due date are left out. */
+export function cardDueDates(book: Book, cardId: string, statements: StatementBill[]): CardDue[] {
+  const bills = printedBills(statements);
+  return bills.flatMap((b, i) => {
+    if (!b.dueDate) return [];
+    const next = bills[i + 1];
+    const paidMinor = paidBetween(book, cardId, b.statementDate, next?.statementDate);
+    return [{ ...b, dueDate: b.dueDate, paidMinor, remainingMinor: Math.max(0, b.billMinor - paidMinor), latest: !next }];
+  });
+}
+
 /**
  * Where a card's bill stands, using only what the statements print (total due, due date, statement date)
  * and the bill payments in your entries. Statements whose bill summary couldn't be read are left out:
@@ -31,12 +64,9 @@ const paidBetween = (book: Book, cardId: string, after: string, until?: string) 
 export function cardBillStatus(
   book: Book,
   cardId: string,
-  statements: { statementDate?: string; dueDate?: string; totalDueMinor?: number; minimumDueMinor?: number }[],
+  statements: StatementBill[],
 ): CardBillStatus | null {
-  const bills: CardStatementInfo[] = statements
-    .filter((s): s is typeof s & { statementDate: string; totalDueMinor: number } => !!s.statementDate && s.totalDueMinor !== undefined)
-    .map((s) => ({ statementDate: s.statementDate, dueDate: s.dueDate, billMinor: s.totalDueMinor, minimumDueMinor: s.minimumDueMinor }))
-    .sort((a, b) => a.statementDate.localeCompare(b.statementDate));
+  const bills = printedBills(statements);
   if (bills.length === 0) return null;
 
   const latest = bills[bills.length - 1];
