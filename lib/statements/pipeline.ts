@@ -1,4 +1,5 @@
 import type { Category } from "@/lib/domain/types";
+import { bankBrandFor } from "@/lib/finance/bank-logos";
 import { buildLedger } from "@/lib/finance/engine";
 import { STATEMENT_ACCOUNT_TYPES, type Book } from "@/lib/finance/types";
 import { classifyWithAi, type AiOptions, type AiOutcome } from "./ai";
@@ -242,7 +243,9 @@ export const AUTO_ACCOUNT = "auto";
 /**
  * Which account a statement belongs to, from what it says: the account it went to last time for this
  * bank and number; else one whose name carries the statement's last four digits or bank; else, by kind,
- * the credit card for a card statement or the main bank account for anything else.
+ * the credit card for a card statement or the main bank account for anything else. An account named
+ * after a different bank (or any bank, when the statement doesn't say which) is never a fallback:
+ * better to ask than to file a Kotak statement under "HDFC Bank".
  */
 export function detectAccount(
   book: Book,
@@ -253,13 +256,23 @@ export function detectAccount(
   const isCard = cardStatement && !looksLikeBankStatement(parsed.rows, false);
   const candidates = book.accounts.filter((a) => STATEMENT_ACCOUNT_TYPES.includes(a.type) && (a.type === "credit_card") === isCard);
   const remembered = parsed.accountMask ? store.accountByMask[`${parsed.bankHint ?? ""}:${parsed.accountMask}`] : undefined;
-  const bankWord = parsed.bankHint?.split(" ")[0].toLowerCase();
+  const statementBank = bankBrandFor(parsed.bankHint)?.slug;
+  const bankOf = (a: Book["accounts"][number]) => bankBrandFor(a.name)?.slug;
+  const sameBank = (a: Book["accounts"][number]) => !!statementBank && bankOf(a) === statementBank;
+  const notAnotherBank = (a: Book["accounts"][number]) => !bankOf(a) || !statementBank || sameBank(a);
+  const unnamed = candidates.filter((a) => !bankOf(a) || sameBank(a));
   const pick =
     candidates.find((a) => a.id === remembered) ??
-    (parsed.accountMask ? candidates.find((a) => a.name.includes(parsed.accountMask!)) : undefined) ??
-    (bankWord ? candidates.find((a) => a.name.toLowerCase().includes(bankWord)) : undefined) ??
-    (isCard ? candidates[0] : candidates.find((a) => a.id === "account-netbanking") ?? candidates.find((a) => a.type === "bank") ?? candidates[0]);
+    (parsed.accountMask ? candidates.find((a) => a.name.includes(parsed.accountMask!) && notAnotherBank(a)) : undefined) ??
+    candidates.find(sameBank) ??
+    (isCard ? unnamed[0] : unnamed.find((a) => a.id === "account-netbanking") ?? unnamed.find((a) => a.type === "bank") ?? unnamed[0]);
   if (!pick) {
+    if (candidates.length > 0) {
+      throw new StatementError(
+        "unsupported_format",
+        `${parsed.bankHint ? `This statement is from ${parsed.bankHint}` : "The statement doesn't say which bank it's from"}, and none of your ${isCard ? "cards" : "accounts"} match. Choose the account it belongs to, then try again.`,
+      );
+    }
     throw new StatementError(
       "unsupported_format",
       isCard

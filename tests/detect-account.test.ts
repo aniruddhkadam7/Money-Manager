@@ -62,3 +62,19 @@ describe("detecting a statement's account", () => {
     expect(record.accountId).toBe("account-netbanking");
   });
 });
+
+describe("not guessing an account named after another bank", () => {
+  const named = book([acct("acc-hdfc", "HDFC Bank", "bank")]).accounts.filter((a) => a.id === "acc-hdfc" || a.type === "credit_card");
+
+  it("never files another bank's statement, or one that names no bank, under an account named after a bank", () => {
+    const b: Book = { ...book(), accounts: named };
+    expect(() => detectAccount(b, noMemory, { bankHint: "Kotak Mahindra Bank", accountMask: "2018", rows: bankRows }, false)).toThrow(/Kotak Mahindra Bank.*Choose the account/);
+    expect(() => detectAccount(b, noMemory, { accountMask: "2018", rows: bankRows }, false)).toThrow(/doesn't say which bank/);
+    expect(detectAccount(b, noMemory, { bankHint: "HDFC Bank", rows: bankRows }, false)).toBe("acc-hdfc");
+  });
+
+  it("prefers a plain account over one named after a different bank", () => {
+    const b = book([acct("acc-hdfc", "HDFC Bank", "bank")]);
+    expect(detectAccount(b, noMemory, { bankHint: "Kotak Mahindra Bank", rows: bankRows }, false)).toBe("account-netbanking");
+  });
+});

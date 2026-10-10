@@ -115,3 +115,38 @@ describe("files that can't be read", () => {
     expect(extracted.charCount).toBeLessThan(10);
   });
 });
+
+describe("naming the statement's bank", () => {
+  // One text item per cell; each row is a line further down the page.
+  function page(rows: string[][]) {
+    const xs = [40, 120, 330, 410, 490];
+    return rows.flatMap((cells, r) => cells.map((str, c) => ({ str, x: xs[c], y: 800 - r * 20, width: str.length * 5, height: 10, page: 1 })));
+  }
+  const table = [
+    ["Date", "Narration", "Withdrawal", "Deposit", "Balance"],
+    ["09/10/2026", "UPI/ZOMATO/zomato@hdfcbank", "250.00", "", "9,750.00"],
+    ["10/10/2026", "SALARY", "", "1,000.00", "10,750.00"],
+  ];
+
+  it("takes the bank named at the top, not one that appears lower down or later in the list", async () => {
+    const { parseStatementItems } = await import("@/lib/statements/table-parser");
+    const parsed = parseStatementItems([page([
+      ["Kotak Mahindra Bank"],
+      ["Statement of account"],
+      ["IFSC: KKBK0001234   Nominee bank: HDFC"],
+      ...table,
+    ])], { ocr: false });
+    expect(parsed.bankHint).toBe("Kotak Mahindra Bank");
+  });
+
+  it("ignores banks named in payment lines and HDFC Life / ICICI Prudential", async () => {
+    const { parseStatementItems } = await import("@/lib/statements/table-parser");
+    const parsed = parseStatementItems([page([
+      ["Account statement"],
+      ["HDFC Life premium reminder"],
+      ["UPI ref to merchant@okhdfcbank"],
+      ...table,
+    ])], { ocr: false });
+    expect(parsed.bankHint).toBeUndefined();
+  });
+});
