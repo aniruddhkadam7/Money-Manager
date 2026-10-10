@@ -85,12 +85,12 @@ export function UploadPanel({ onDone }: { onDone: (importId: string) => void }) 
             onDragLeave={() => setDragging(false)}
             onDrop={onDrop}
             aria-label="Choose a bank statement file"
-            className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 border-dashed px-4 py-3.5 transition-colors sm:min-h-28 sm:justify-center sm:py-6 ${dragging ? "border-primary bg-primary/5" : "border-input hover:bg-muted/50"} ${busy ? "pointer-events-none opacity-60" : ""}`}
+            className={`flex min-w-0 cursor-pointer items-center gap-3 overflow-hidden rounded-xl border-2 border-dashed px-4 py-3.5 transition-colors sm:min-h-28 sm:justify-center sm:py-6 ${dragging ? "border-primary bg-primary/5" : "border-input hover:bg-muted/50"} ${busy ? "pointer-events-none opacity-60" : ""}`}
           >
             {file ? (
               <>
                 <FileText className="size-7 shrink-0 text-primary" />
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium" data-testid="chosen-file">{file.name}</div>
                   <div className="text-xs text-muted-foreground">{(file.size / 1024).toFixed(0)} KB · tap to change</div>
                 </div>
@@ -125,7 +125,7 @@ export function UploadPanel({ onDone }: { onDone: (importId: string) => void }) 
           {result && !needsPassword && (
             <div className="mt-3 flex gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm" role="alert" data-testid="upload-error" data-code={result.code}>
               <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
-              <div>
+              <div className="min-w-0 break-words">
                 <p>{result.message}</p>
                 {result.code === "duplicate_file" && result.importId && (
                   <button className="mt-1 font-medium text-primary underline" onClick={() => onDone(result.importId!)}>
