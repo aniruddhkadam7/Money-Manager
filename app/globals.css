@@ -84,6 +84,12 @@ body {
     /* Next scrolls a new page into view on navigation: land it below the sticky header, not under it. */
     scroll-padding-top: calc(4rem + env(safe-area-inset-top));
   }
+  /* An open dialog's scroll lock sets the body to overflow: hidden. Here the body is the page's scroller, and switching it
+     off and on makes iOS rebuild and repaint the whole page just as a sheet starts to move, so the slide stutters both ways.
+     The lock still stops the page moving behind a sheet: it blocks those touches itself. */
+  html body[data-scroll-locked] {
+    overflow-y: auto !important;
+  }
 }
 html {
   /* iOS otherwise enlarges text when the phone turns sideways. */
