@@ -9,6 +9,8 @@ const brand = Playfair_Display({ weight: ["700", "800"], subsets: ["latin"], var
 export const metadata: Metadata = {
   title: "Money Manager",
   description: "A simple personal expense tracker.",
+  // Opened from an iPhone home screen it runs full screen like an app; the status bar keeps the page's own colours.
+  appleWebApp: { capable: true, title: "Money", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {

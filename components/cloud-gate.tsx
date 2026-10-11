@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Particles } from "@/components/ui/particles";
 import { cloudConfigured, supabase } from "@/lib/cloud/client";
-import { RELOCK_AFTER_MS, lockSettings } from "@/lib/cloud/app-lock";
+import { RELOCK_AFTER_MS, forgetLeftUnlocked, leftUnlockedRecently, lockSettings, noteLeftUnlocked, resetFails } from "@/lib/cloud/app-lock";
 import { startSync } from "@/lib/cloud/sync";
 
 type Gate = { kind: "checking" } | { kind: "signed-out" } | { kind: "syncing" } | { kind: "ready"; offline: boolean };
@@ -41,7 +41,8 @@ export function CloudGate({ children }: { children: ReactNode }) {
       }
       if (started) return;
       started = true;
-      setLocked(!!lockSettings(session.user).passcode);
+      // A reload of an unlocked app (the refresh button) opens unlocked; a fresh open asks for the passcode.
+      setLocked(!!lockSettings(session.user).passcode && !leftUnlockedRecently());
       setGate({ kind: "syncing" });
       startSync().then((ok) => setGate({ kind: "ready", offline: !ok }));
     };
@@ -62,6 +63,18 @@ export function CloudGate({ children }: { children: ReactNode }) {
     document.addEventListener("visibilitychange", onChange);
     return () => document.removeEventListener("visibilitychange", onChange);
   }, [hasPasscode]);
+
+  // Leaving the app unlocked (a reload, or closing it) is noted, so a quick reload doesn't ask again;
+  // once it's locked, that note is dropped, so reloading the lock screen can't get past it.
+  useEffect(() => {
+    if (!hasPasscode) return;
+    if (locked) {
+      forgetLeftUnlocked();
+      return;
+    }
+    window.addEventListener("pagehide", noteLeftUnlocked);
+    return () => window.removeEventListener("pagehide", noteLeftUnlocked);
+  }, [hasPasscode, locked]);
 
   // The data keeps loading behind the lock; nothing of it shows until it's unlocked.
   if (locked && user && hasPasscode) return <LockScreen user={user} onUnlock={() => setLocked(false)} />;
@@ -138,8 +151,14 @@ function SignIn() {
     setBusy(true);
     setError(null);
     try {
+      // Signing in with the password unlocks too: no passcode straight after, and wrong passcode tries are cleared.
+      // (Noted first: the session can start before signing in returns.)
+      noteLeftUnlocked();
       const { error } = await sb.auth.signInWithPassword({ email: loginEmail(username), password });
-      if (error) fail(friendlyAuthError(error.message));
+      if (error) {
+        forgetLeftUnlocked();
+        fail(friendlyAuthError(error.message));
+      } else resetFails();
     } catch {
       fail("Couldn't reach the server. Check your connection and try again.");
     } finally {

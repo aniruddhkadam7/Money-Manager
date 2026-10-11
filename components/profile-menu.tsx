@@ -4,12 +4,13 @@ import { createContext, useContext, useEffect, useRef, useState, type FormEvent,
 import { Camera, ChevronLeft, ChevronRight, Cloud, Eye, EyeOff, KeyRound, Loader2, LockKeyhole, LogOut, Monitor, Moon, Pencil, RotateCcw, ShieldCheck, Sun, SunMoon, Tags, Trash2, UserRound } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cloudConfigured, supabase } from "@/lib/cloud/client";
-import { changePassword, lockSettings, removePasscode, setPasscode, setUnlockWith, type UnlockMethod } from "@/lib/cloud/app-lock";
+import { changePassword, lockSettings, removePasscode, setPasscode, setPasscodeOnly, setUnlockWith, type UnlockMethod } from "@/lib/cloud/app-lock";
 import { signOut as signOutAndReload } from "@/lib/cloud/sign-out";
 import { formatDisplayDate } from "@/lib/domain/dates";
 import { loadPhoto, saveProfile, useProfile, type Profile } from "@/lib/profile";
@@ -622,6 +623,22 @@ function SecuritySection({ user }: { user: User }) {
           </div>
         </div>
         {settings.passcode && (
+          <label className="flex items-center justify-between gap-3 px-4 py-2.5">
+            <span className="grid gap-0.5">
+              <span className="text-muted-foreground">Allow password on lock screen</span>
+              <span className="text-xs text-muted-foreground/80">
+                {settings.passcodeOnly ? "Off: only the passcode unlocks. Too many wrong tries means signing in again." : "On: the password unlocks too."}
+              </span>
+            </span>
+            <Switch
+              checked={!settings.passcodeOnly}
+              disabled={busy}
+              aria-label="Allow password on lock screen"
+              onCheckedChange={(on) => run(() => setPasscodeOnly(settings, !on), on ? "The password unlocks too." : "Only the passcode unlocks now.")}
+            />
+          </label>
+        )}
+        {settings.passcode && !settings.passcodeOnly && (
           <div className="grid gap-2 px-4 py-3">
             <span className="text-muted-foreground">Unlock with</span>
             <div role="radiogroup" aria-label="Unlock with" className="grid grid-cols-2 gap-1 rounded-xl border bg-muted p-1">

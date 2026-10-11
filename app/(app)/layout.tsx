@@ -7,7 +7,7 @@ export default function AppLayout({
   return (
     <AppProviders>
       <AppHeader />
-      <main className="mx-auto w-full max-w-[2000px] px-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-4 sm:px-6 sm:pb-12 sm:pt-5 lg:px-8">
+      <main className="mx-auto w-full max-w-[2000px] px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-4 sm:px-6 sm:pb-12 sm:pt-5 lg:px-8">
         {children}
       </main>
     </AppProviders>

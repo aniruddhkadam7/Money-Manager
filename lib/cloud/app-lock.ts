@@ -19,6 +19,8 @@ export interface PasscodeRecord {
 export interface LockSettings {
   passcode?: PasscodeRecord;
   unlockWith: UnlockMethod;
+  /** The lock screen takes the passcode only; after too many wrong tries, signing in again is the way back. */
+  passcodeOnly?: boolean;
 }
 
 /** The app locks again after being in the background this long. */
@@ -27,15 +29,53 @@ export const RELOCK_AFTER_MS = 2 * 60 * 1000;
 export const MAX_PASSCODE_TRIES = 5;
 
 const META_KEY = "app_lock";
+// This tab only (sessionStorage): when the app was last left while unlocked, by a reload or by closing it.
+const LEFT_KEY = "mm-lock:left-unlocked-at";
 // Not under the sync prefix: a count of wrong tries belongs to this device only.
 const FAILS_KEY = "mm-lock:fails";
 const ITERATIONS = 150_000;
+
+/**
+ * A reload (the refresh button, pulling down) is not leaving the app: opened again within RELOCK_AFTER_MS of
+ * being left unlocked, it stays unlocked, as it would after being in the background that long.
+ */
+export function noteLeftUnlocked(): void {
+  try {
+    sessionStorage.setItem(LEFT_KEY, String(Date.now()));
+  } catch {
+    // storage blocked: it simply locks on the next open
+  }
+}
+
+/** Forgets that the app was left unlocked, so the next open locks (it was locked when left). */
+export function forgetLeftUnlocked(): void {
+  try {
+    sessionStorage.removeItem(LEFT_KEY);
+  } catch {
+    // nothing stored to forget
+  }
+}
+
+/** Whether this open follows closely on leaving the app unlocked (see noteLeftUnlocked). */
+export function leftUnlockedRecently(): boolean {
+  try {
+    const at = Number(sessionStorage.getItem(LEFT_KEY));
+    return at > 0 && Date.now() - at < RELOCK_AFTER_MS;
+  } catch {
+    return false;
+  }
+}
 
 export function lockSettings(user: User | null | undefined): LockSettings {
   const raw = (user?.user_metadata as Record<string, unknown> | undefined)?.[META_KEY] as Partial<LockSettings> | null | undefined;
   const p = raw?.passcode;
   const passcode = p && typeof p.salt === "string" && typeof p.hash === "string" && (p.length === 4 || p.length === 6) ? p : undefined;
-  return { passcode, unlockWith: passcode && raw?.unlockWith !== "password" ? "passcode" : "password" };
+  const passcodeOnly = !!passcode && raw?.passcodeOnly === true;
+  return {
+    passcode,
+    unlockWith: passcode && (passcodeOnly || raw?.unlockWith !== "password") ? "passcode" : "password",
+    ...(passcodeOnly ? { passcodeOnly } : {}),
+  };
 }
 
 const toHex = (bytes: ArrayBuffer | Uint8Array) => Array.from(new Uint8Array(bytes), (b) => b.toString(16).padStart(2, "0")).join("");
@@ -62,14 +102,18 @@ export async function setPasscode(current: LockSettings, code: string): Promise<
   if (!/^(\d{4}|\d{6})$/.test(code)) throw new Error("The passcode must be 4 or 6 digits.");
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const passcode: PasscodeRecord = { salt: toHex(salt), hash: await derive(code, salt, ITERATIONS), length: code.length as 4 | 6, iterations: ITERATIONS };
-  // The first passcode becomes the default way in; changing it later keeps the person's choice.
-  await save({ passcode, unlockWith: current.passcode ? current.unlockWith : "passcode" });
+  // The first passcode becomes the default way in; changing it later keeps the person's choices.
+  await save({ passcode, unlockWith: current.passcode ? current.unlockWith : "passcode", ...(current.passcodeOnly ? { passcodeOnly: true } : {}) });
   resetFails();
 }
 
 export const removePasscode = (): Promise<void> => save({ unlockWith: "password" });
 
 export const setUnlockWith = (current: LockSettings, unlockWith: UnlockMethod): Promise<void> => save({ ...current, unlockWith });
+
+/** Passcode only on the lock screen (no password there), or both again. */
+export const setPasscodeOnly = (current: LockSettings, on: boolean): Promise<void> =>
+  save({ passcode: current.passcode, unlockWith: on ? "passcode" : current.unlockWith, ...(on ? { passcodeOnly: true } : {}) });
 
 /** Checks the password by signing in again as the same account; the session it returns replaces the old one. */
 export async function checkPassword(user: User, password: string): Promise<void> {
