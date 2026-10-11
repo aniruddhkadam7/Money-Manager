@@ -57,7 +57,7 @@ export function NetWorthSparkline({ firstActivity }: { firstActivity: string | n
 
   return (
     <div className="mt-2 w-full sm:mt-3 lg:w-80" data-testid="net-worth-sparkline">
-      <div className="mb-2 flex items-center justify-between gap-2">
+      <div className="mb-2 flex items-center justify-end gap-2">
         <RangeTabs label="Net worth timeline" value={range} options={PERIODS} onChange={(v) => { setRange(v); setHover(null); }} />
       </div>
       <div className="mb-1 flex items-baseline justify-between gap-2 text-[11px] tabular-nums text-slate-400">
