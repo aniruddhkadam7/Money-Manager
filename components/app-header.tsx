@@ -122,6 +122,9 @@ function useCompactOnScroll(pathname: string) {
   return compact;
 }
 
+/** An iOS-like glide: quick to start, long soft settle. */
+const EASE = "duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none";
+
 function MobileNav({ pathname, onAdd }: { pathname: string; onAdd: () => void }) {
   const compact = useCompactOnScroll(pathname);
   const tab = ({ href, label, icon: Icon, also }: (typeof TABS)[number]) => {
@@ -131,8 +134,8 @@ function MobileNav({ pathname, onAdd }: { pathname: string; onAdd: () => void })
         <Icon className="size-5" strokeWidth={active ? 2.4 : 2} />
         <span
           className={cn(
-            "overflow-hidden leading-tight transition-[max-height,opacity] duration-300 ease-out motion-reduce:transition-none",
-            compact ? "max-h-0 opacity-0" : "max-h-4 opacity-100",
+            "leading-tight transition-opacity duration-200 ease-out motion-reduce:transition-none",
+            compact && "opacity-0",
           )}
         >
           {label}
@@ -150,7 +153,17 @@ function MobileNav({ pathname, onAdd }: { pathname: string; onAdd: () => void })
           active ? "text-primary" : "text-muted-foreground",
         )}
       >
-        <span className={cn("flex flex-col items-center px-2 py-1.5", !compact && "gap-0.5", active && "font-semibold")}>{body}</span>
+        {/* Shrunk, the name fades and the icon slides down to the middle (a transform, so it stays smooth). */}
+        <span
+          className={cn(
+            "flex flex-col items-center gap-0.5 px-2 py-1.5 transition-transform will-change-transform",
+            EASE,
+            compact && "translate-y-2",
+            active && "font-semibold",
+          )}
+        >
+          {body}
+        </span>
       </Link>
     );
   };
@@ -161,12 +174,14 @@ function MobileNav({ pathname, onAdd }: { pathname: string; onAdd: () => void })
     // It dips 1rem into the home-indicator area (34pt on iPhones as a home-screen app) so it doesn't float high above it.
     <nav aria-label="Main" className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-3 pb-[max(0.5rem,calc(env(safe-area-inset-bottom)_-_1rem))] sm:hidden">
       {/* touch-none: a drag on the bar would otherwise move the page around the scroller (taps still work). */}
-      {/* Shrunk while scrolling down: narrower and shorter, icons only. */}
+      {/* Shrunk while scrolling down, icons only. Only transform and opacity animate: the phone's graphics chip runs them
+          on its own, where changing the size would redo the layout (and the blur) every frame and stutter. */}
       <LiquidGlass
         className={cn(
-          "pointer-events-auto mx-auto flex touch-none items-stretch rounded-full bg-slate-200/75 px-1 dark:bg-card/75 shadow-lg shadow-slate-900/15",
-          "transition-[max-width,height] duration-300 ease-out motion-reduce:transition-none",
-          compact ? "h-[3.25rem] max-w-[19rem]" : "h-16 max-w-[32rem]",
+          "pointer-events-auto mx-auto flex h-16 max-w-[32rem] origin-bottom touch-none items-stretch rounded-full bg-slate-200/75 px-1 dark:bg-card/75 shadow-lg shadow-slate-900/15",
+          "transition-transform will-change-transform",
+          EASE,
+          compact && "scale-[0.86]",
         )}
       >
         <span aria-hidden className="pointer-events-none absolute inset-0 -z-20 rounded-[inherit] [-webkit-backdrop-filter:blur(6px)] [backdrop-filter:blur(6px)]" />
@@ -177,12 +192,9 @@ function MobileNav({ pathname, onAdd }: { pathname: string; onAdd: () => void })
             size="icon"
             onClick={onAdd}
             aria-label="Add an entry"
-            className={cn(
-              "z-20 rounded-full bg-card/85 text-primary shadow-lg shadow-slate-900/15 transition-[width,height] duration-300 ease-out hover:scale-100 active:scale-95 motion-reduce:transition-none",
-              compact ? "size-10" : "size-12",
-            )}
+            className="z-20 size-12 rounded-full bg-card/85 text-primary shadow-lg shadow-slate-900/15 hover:scale-100 active:scale-95"
           >
-            <Plus className={cn("transition-[width,height] duration-300", compact ? "size-6" : "size-7")} strokeWidth={2.6} />
+            <Plus className="size-7" strokeWidth={2.6} />
           </LiquidButton>
         </div>
         {TABS.slice(2).map(tab)}
