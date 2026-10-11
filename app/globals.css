@@ -195,6 +195,33 @@ body {
 .bar-grow { transform-origin: bottom; transform-box: fill-box; animation: bar-grow 700ms cubic-bezier(0.22, 0.8, 0.3, 1) both; }
 .fade-up { animation: fade-up 550ms ease-out both; }
 .pulse-ring { transform-box: fill-box; transform-origin: center; animation: pulse-ring 2.2s ease-out infinite; }
+
+/* Phone sheets (dialogs): a slide that moves the sheet only, and a plain fade behind it. The tw-animate keyframes also
+   animate filter (blur), which keeps iOS from handing the slide to the GPU, so it stutters. Unlayered, so these win. */
+@keyframes sheet-up {
+  from { transform: translate3d(0, 100%, 0); }
+  to { transform: translate3d(0, 0, 0); }
+}
+@keyframes sheet-down {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(0, 100%, 0); }
+}
+@keyframes dim-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes dim-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@media (max-width: 639.98px) {
+  /* Up like an iPhone sheet (quick start, long soft settle); away a little faster. */
+  .sheet[data-state="open"] { animation: sheet-up 480ms cubic-bezier(0.32, 0.72, 0, 1) both; }
+  .sheet[data-state="closed"] { animation: sheet-down 280ms cubic-bezier(0.4, 0, 1, 1) both; }
+  .sheet-dim[data-state="open"] { animation: dim-in 480ms ease-out both; }
+  .sheet-dim[data-state="closed"] { animation: dim-out 280ms ease-in both; }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .chart-reveal, .bar-grow, .fade-up, .pulse-ring { animation: none !important; }
+  .chart-reveal, .bar-grow, .fade-up, .pulse-ring, .sheet, .sheet-dim { animation: none !important; }
 }

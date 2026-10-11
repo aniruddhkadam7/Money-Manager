@@ -17,8 +17,8 @@ function DialogContent({
       <DialogPrimitive.Overlay
         className={cn(
           "fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-[2px] data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0",
-          // Phones: no blur (redrawing it every frame of the fade stutters), timed with the sheet.
-          "max-sm:backdrop-blur-none max-sm:data-[state=open]:duration-500 max-sm:data-[state=closed]:duration-300",
+          // Phones: no blur (redrawing it every frame of the fade stutters); sheet-dim fades it with the sheet (globals.css).
+          "sheet-dim max-sm:backdrop-blur-none",
         )}
       />
       <DialogPrimitive.Content
@@ -26,11 +26,9 @@ function DialogContent({
           "fixed left-1/2 top-1/2 z-50 grid w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 gap-5 glass-pop rounded-2xl border p-6 shadow-xl outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
           // Phones: a full-width sheet rising from the bottom, within thumb reach, scrolling when tall.
           "max-sm:inset-x-0 max-sm:top-auto max-sm:bottom-0 max-sm:w-full max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:max-h-[92dvh] max-sm:overflow-y-auto max-sm:overscroll-contain max-sm:rounded-b-none max-sm:rounded-t-3xl max-sm:border-x-0 max-sm:border-b-0 max-sm:p-5 max-sm:pb-[calc(1.5rem+env(safe-area-inset-bottom))] max-sm:data-[state=open]:zoom-in-100 max-sm:data-[state=open]:slide-in-from-bottom max-sm:data-[state=closed]:zoom-out-100 max-sm:data-[state=closed]:slide-out-to-bottom",
-          // The sheet glides up like an iPhone sheet (quick start, long soft settle) and drops away faster. It's solid, not
-          // frosted, on phones: a big blur sliding across the screen can't keep up, and at 88% white it looked the same.
-          "max-sm:will-change-transform max-sm:bg-[var(--glass-solid)] max-sm:[-webkit-backdrop-filter:none] max-sm:[backdrop-filter:none]",
-          "max-sm:data-[state=open]:fade-in-100 max-sm:data-[state=open]:duration-500 max-sm:data-[state=open]:ease-[cubic-bezier(0.32,0.72,0,1)]",
-          "max-sm:data-[state=closed]:fade-out-100 max-sm:data-[state=closed]:duration-300 max-sm:data-[state=closed]:ease-[cubic-bezier(0.4,0,1,1)]",
+          // sheet: the slide up and away on phones (globals.css). Solid, not frosted, there: a big blur sliding across the
+          // screen can't keep up, and at 88% white it looked the same.
+          "sheet max-sm:will-change-transform max-sm:bg-[var(--glass-solid)] max-sm:[-webkit-backdrop-filter:none] max-sm:[backdrop-filter:none]",
           className,
         )}
         {...props}
