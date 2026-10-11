@@ -298,6 +298,8 @@ export interface ImportRecord {
   cardStatement?: boolean;
   /** For a card statement: the bill it asks you to pay (total and minimum due, due date), when printed. */
   cardBill?: CardBill;
+  /** Which version of the bank-reading rules last read this file's bank (see BANK_READING_VERSION). */
+  bankRead?: number;
 }
 
 /** What the person taught us: "this counterparty, in this direction, means that". */

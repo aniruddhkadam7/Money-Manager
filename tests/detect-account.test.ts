@@ -87,3 +87,29 @@ describe("an account number seen before", () => {
     expect(detectAccount(b, store, { bankHint: "Kotak Mahindra Bank", accountMask: "2018", rows: bankRows }, false)).toBe("account-netbanking");
   });
 });
+
+describe("putting right a bank read wrongly before", () => {
+  it("fixes the import, the remembered number and an account named after the wrong bank", async () => {
+    const { correctBank, BANK_READING_VERSION } = await import("@/lib/statements/pipeline");
+    const b: Book = { ...book(), accounts: book().accounts.map((a) => (a.id === "account-netbanking" ? { ...a, name: "HDFC Bank" } : a)) };
+    const store = {
+      ...emptyImportStore(),
+      imports: [{ id: "imp-1", accountId: "account-netbanking", bankHint: "HDFC Bank", accountMask: "2018" } as never],
+      accountByMask: { "HDFC Bank:2018": "account-netbanking" },
+    };
+    const { store: next, rename } = correctBank(store, b, "imp-1", "Kotak Mahindra Bank");
+    expect(next.imports[0]).toMatchObject({ bankHint: "Kotak Mahindra Bank", bankRead: BANK_READING_VERSION });
+    expect(next.accountByMask).toEqual({ "Kotak Mahindra Bank:2018": "account-netbanking" });
+    expect(rename).toEqual({ accountId: "account-netbanking", name: "Kotak Mahindra Bank" });
+  });
+
+  it("leaves a name you chose alone, and only marks a statement already read right", async () => {
+    const { correctBank } = await import("@/lib/statements/pipeline");
+    const b = book([acct("acc-main", "My salary account", "bank")]);
+    const store = { ...emptyImportStore(), imports: [{ id: "imp-1", accountId: "acc-main", bankHint: "HDFC Bank" } as never] };
+    expect(correctBank(store, b, "imp-1", "Kotak Mahindra Bank").rename).toBeUndefined();
+    const same = correctBank(store, b, "imp-1", "HDFC Bank");
+    expect(same.rename).toBeUndefined();
+    expect(same.store.accountByMask).toBe(store.accountByMask);
+  });
+});

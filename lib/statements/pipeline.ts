@@ -15,7 +15,8 @@ import { missingInfo, type CommitOutcome, type PlanContext } from "./plan";
 import { reconcile } from "./reconcile";
 import { buildRows } from "./rows";
 import { classifyByRules, applyUserRule, fallbackClassification, gate, learnRule, relationships, ruleKey, type RuleContext } from "./rules";
-import { parseStatementItems } from "./table-parser";
+import { readBank } from "./bank";
+import { buildLines, parseStatementItems } from "./table-parser";
 import {
   PERSON_EVENTS,
   StatementError,
@@ -499,6 +500,7 @@ export async function processStatement(input: ProcessInput, env: PipelineEnv): P
       cardStatement,
       cardBill,
       bankHint: parsed.bankHint,
+      bankRead: BANK_READING_VERSION,
       accountMask: parsed.accountMask,
       periodStart: parsed.periodStart ?? period[0],
       periodEnd: parsed.periodEnd ?? period[period.length - 1],
@@ -718,6 +720,53 @@ export function markFailures(store: ImportStoreData, importId: string, failures:
     return { ...r, status: "review" as const, decision: undefined, error: message, };
   });
   return commitRows(store, importId, rows);
+}
+
+/** Raised whenever the way a statement's bank is read changes, so saved statements are read once more. */
+export const BANK_READING_VERSION = 2;
+
+/** The bank a saved statement file names, read with today's rules (PDF, CSV or Excel; photos aren't re-read). */
+export async function rereadBank(data: Uint8Array, filename: string, pdfjs: PdfjsLike): Promise<string | undefined> {
+  const format = detectFormat(data, filename);
+  const pages =
+    format === "csv" ? tableToPages(parseCsv(data))
+    : format === "xlsx" || format === "xls" ? tableToPages(await readWorkbook(data))
+    : format === "pdf" ? (await extractPdfText(data, pdfjs)).pages
+    : null;
+  return pages ? readBank(buildLines(pages).map((l) => l.text)) : undefined;
+}
+
+const PLACEHOLDER_NAME: Record<string, string> = { "account-netbanking": "Net banking", "account-debit": "Debit card" };
+
+/**
+ * Puts right the bank an earlier import read wrongly: the record, the remembered account number, and an
+ * account that was named after the wrong bank (the app names "Net banking" after a statement's bank).
+ */
+export function correctBank(
+  store: ImportStoreData,
+  book: Book,
+  importId: string,
+  bank: string | undefined,
+): { store: ImportStoreData; rename?: { accountId: string; name: string } } {
+  const record = store.imports.find((i) => i.id === importId);
+  if (!record) return { store };
+  const old = record.bankHint;
+  const imports = store.imports.map((i) => (i.id === importId ? { ...i, bankHint: bank, bankRead: BANK_READING_VERSION } : i));
+  if (old === bank) return { store: { ...store, imports } };
+
+  let accountByMask = store.accountByMask;
+  if (record.accountMask) {
+    const { [`${old ?? ""}:${record.accountMask}`]: was, ...rest } = accountByMask;
+    accountByMask = { ...rest, [`${bank ?? ""}:${record.accountMask}`]: was ?? record.accountId };
+  }
+
+  let rename: { accountId: string; name: string } | undefined;
+  const account = book.accounts.find((a) => a.id === record.accountId);
+  if (account && old && account.name.toLowerCase() === old.toLowerCase()) {
+    const name = bank ?? PLACEHOLDER_NAME[account.id];
+    if (name && !book.accounts.some((a) => a.id !== account.id && a.name.toLowerCase() === name.toLowerCase())) rename = { accountId: account.id, name };
+  }
+  return { store: { ...store, imports, accountByMask }, rename };
 }
 
 /** Removes an import and its lines from the import history, imported or not (see undo in the provider). */

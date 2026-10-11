@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { aiAvailable } from "@/lib/statements/ai";
 import { browserOcr, browserOcrImage, loadPdfjs } from "@/lib/statements/browser";
 import {
-  AUTO_ACCOUNT, acceptAllFlagged, discardImport, failedImport, markFailures, markImported, forgetImport, processStatement, readiness, reclassifyWaiting, resolveRow, setOverride,
+  AUTO_ACCOUNT, BANK_READING_VERSION, acceptAllFlagged, correctBank, discardImport, failedImport, markFailures, markImported, forgetImport, processStatement, readiness, reclassifyWaiting, rereadBank, resolveRow, setOverride,
   type Decision, type Progress, type Readiness,
 } from "@/lib/statements/pipeline";
 import { buildCommit, type CommitFailure } from "@/lib/statements/plan";
@@ -145,6 +145,40 @@ export function StatementsProvider({ children, repository = repo }: { children: 
       }
       if (Object.keys(found).length === 0) return;
       const next = { ...storeRef.current, imports: storeRef.current.imports.map((i) => (found[i.id] ? { ...i, ...found[i.id] } : i)) };
+      storeRef.current = next;
+      setStore(next);
+      repository.save(next).catch(() => undefined);
+    })();
+  }, [status, finance, repository]);
+
+  // Statements read before the bank-reading rules last changed: read the bank again from the saved file, once.
+  // An import once read as "HDFC Bank" from a Kotak statement gets its bank, and its account's name, put right.
+  const banksRead = useRef(false);
+  useEffect(() => {
+    if (banksRead.current || status !== "ready" || finance.status !== "ready") return;
+    banksRead.current = true;
+    const stale = storeRef.current.imports.filter((i) => i.status !== "FAILED" && (i.bankRead ?? 0) < BANK_READING_VERSION);
+    if (stale.length === 0) return;
+    (async () => {
+      const pdfjs = await loadPdfjs();
+      const read = new Map<string, string | undefined>();
+      for (const i of stale) {
+        const data = await loadStatementFile(i.id);
+        if (!data) continue; // uploaded on another device: that device puts it right
+        try {
+          read.set(i.id, await rereadBank(data, i.filename, pdfjs));
+        } catch {
+          read.set(i.id, i.bankHint); // password-protected: keep what was read with the password
+        }
+      }
+      if (read.size === 0) return;
+      // Applied to the store as it is now, so nothing saved meanwhile is lost.
+      let next = storeRef.current;
+      for (const [id, bank] of read) {
+        const fixed = correctBank(next, finance.getBook(), id, bank);
+        next = fixed.store;
+        if (fixed.rename) finance.updateAccount(fixed.rename.accountId, { name: fixed.rename.name });
+      }
       storeRef.current = next;
       setStore(next);
       repository.save(next).catch(() => undefined);

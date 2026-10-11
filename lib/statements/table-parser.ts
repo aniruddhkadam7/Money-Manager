@@ -1,3 +1,4 @@
+import { readBank } from "./bank";
 import { looksLikeDecimalAmount, parseAmount, parseStatementDate, startsWithDate } from "./parse-values";
 import type { ParsedStatement, RawRow, TextItem } from "./types";
 
@@ -135,23 +136,6 @@ function detectHeader(lines: Line[], from: number): Header | null {
 
 /* ---------------- Statement-level facts ---------------- */
 
-const BANKS: [RegExp, string][] = [
-  [/hdfc(?! ?(life|ergo|securities|credila|mutual|amc))/i, "HDFC Bank"], [/icici(?! ?(prudential|lombard|direct|securities))/i, "ICICI Bank"], [/state bank of india|\bsbi\b/i, "State Bank of India"],
-  [/axis bank/i, "Axis Bank"], [/kotak|\bkkbk\d/i, "Kotak Mahindra Bank"], [/yes bank/i, "YES Bank"], [/idfc/i, "IDFC FIRST Bank"],
-  [/punjab national|\bpnb\b/i, "Punjab National Bank"], [/bank of baroda/i, "Bank of Baroda"], [/canara/i, "Canara Bank"],
-  [/indusind/i, "IndusInd Bank"], [/federal bank/i, "Federal Bank"], [/paytm payments/i, "Paytm Payments Bank"],
-];
-
-/** The bank named earliest in the text: its own name heads the statement, others turn up further down. */
-function bankNamedFirst(text: string): string | undefined {
-  let best: { at: number; name: string } | undefined;
-  for (const [re, name] of BANKS) {
-    const at = text.search(re);
-    if (at !== -1 && (!best || at < best.at)) best = { at, name };
-  }
-  return best?.name;
-}
-
 function signedBalance(text: string): number | undefined {
   const p = parseAmount(text);
   if (!p) return undefined;
@@ -167,15 +151,7 @@ function amountsInText(text: string): number[] {
 
 function readFacts(lines: Line[]): Pick<ParsedStatement, "openingBalanceMinor" | "closingBalanceMinor" | "periodStart" | "periodEnd" | "accountMask" | "bankHint"> {
   const facts: ReturnType<typeof readFacts> = {};
-  // The bank's name is in the header block, above the first transaction. Narrations mention other banks.
-  const firstTxn = lines.findIndex((l) => startsWithDate(l.text) && /\d[\d,]*\.\d{2}/.test(l.text));
-  // Lines that read like a payment (UPI handles, NEFT/IMPS references) name the other side's bank, not this one.
-  const head = lines
-    .slice(0, firstTxn === -1 ? 25 : Math.min(firstTxn, 25))
-    .map((l) => l.text)
-    .filter((t) => !/@|\b(upi|neft|imps|rtgs|nach|ach)\b/i.test(t))
-    .join(" ");
-  facts.bankHint = bankNamedFirst(head);
+  facts.bankHint = readBank(lines.map((l) => l.text));
 
   for (const line of lines) {
     const t = line.text;
