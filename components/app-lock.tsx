@@ -84,16 +84,17 @@ export function PasscodePad({
   }, []);
 
   return (
-    <div className="grid justify-items-center gap-9">
-      <div ref={dots} className="flex h-4 items-center gap-4" aria-label={`${code.length} of ${length} digits entered`} role="status">
+    // A container, so the keys can shrink to fit a narrow space (the settings dialog on a small phone).
+    <div className="@container grid w-full justify-items-center gap-11">
+      <div ref={dots} className="flex h-4 items-center gap-5" aria-label={`${code.length} of ${length} digits entered`} role="status">
         {Array.from({ length }, (_, i) => (
           <span
             key={i}
-            className={cn("size-3.5 rounded-full border-[1.5px] border-foreground/70 transition-colors duration-150", i < code.length && "border-foreground bg-foreground")}
+            className={cn("size-4 rounded-full border-[1.5px] border-foreground/70 transition-colors duration-150", i < code.length && "border-foreground bg-foreground")}
           />
         ))}
       </div>
-      <div className="grid grid-cols-3 gap-x-6 gap-y-4">
+      <div className="grid grid-cols-3 gap-x-[min(1.75rem,7cqi)] gap-y-[min(1.1rem,4.5cqi)]">
         {KEYS.map(([digit, letters]) => (
           <PadKey key={digit} digit={digit} letters={letters} onClick={() => press(digit)} disabled={off} />
         ))}
@@ -104,9 +105,9 @@ export function PasscodePad({
           onClick={back}
           disabled={off || !code}
           aria-label="Delete last digit"
-          className="flex size-[4.75rem] items-center justify-center rounded-full text-foreground/80 transition-opacity duration-300 select-none [-webkit-tap-highlight-color:transparent] active:opacity-40 active:duration-0 disabled:opacity-0"
+          className="flex size-[min(5.25rem,26cqi)] items-center justify-center rounded-full text-foreground/80 transition-opacity duration-300 select-none [-webkit-tap-highlight-color:transparent] active:opacity-40 active:duration-0 disabled:opacity-0"
         >
-          {busy ? <Loader2 className="size-6 animate-spin" /> : <Delete className="size-7" strokeWidth={1.6} />}
+          {busy ? <Loader2 className="size-6 animate-spin" /> : <Delete className="size-8" strokeWidth={1.6} />}
         </button>
       </div>
     </div>
@@ -130,22 +131,22 @@ function PadKey({ digit, letters, onClick, disabled }: { digit: string; letters?
       onPointerCancel={release}
       disabled={disabled}
       aria-label={digit}
-      className="size-[4.75rem] rounded-full bg-card/55 text-foreground shadow-sm select-none [-webkit-tap-highlight-color:transparent] hover:scale-100"
+      className="size-[min(5.25rem,26cqi)] rounded-full bg-card/55 text-foreground shadow-sm select-none [-webkit-tap-highlight-color:transparent] hover:scale-100"
     >
       <span
         aria-hidden
         className={cn(
           // Sized to the whole key and centred: the button's content box is only as big as the digit.
-          "pointer-events-none absolute top-1/2 left-1/2 size-[4.75rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground/20 dark:bg-white/35",
+          "pointer-events-none absolute top-1/2 left-1/2 size-[min(5.25rem,26cqi)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground/20 dark:bg-white/35",
           pressed ? "opacity-100 duration-0" : "opacity-0 transition-opacity duration-500 ease-out",
         )}
       />
       <span className="relative flex flex-col items-center leading-none">
-        <span className="text-[2rem] font-light tabular-nums">{digit}</span>
+        <span className="text-[2.375rem] font-light tabular-nums">{digit}</span>
         {letters ? (
-          <span className="mt-0.5 text-[0.6rem] font-semibold tracking-[0.18em] text-foreground/70">{letters}</span>
+          <span className="mt-0.5 text-[0.65rem] font-semibold tracking-[0.18em] text-foreground/70">{letters}</span>
         ) : (
-          digit !== "0" && <span className="mt-0.5 h-[0.6rem]" />
+          digit !== "0" && <span className="mt-0.5 h-[0.65rem]" />
         )}
       </span>
     </LiquidButton>
@@ -188,7 +189,7 @@ export function LockScreen({ user, onUnlock }: { user: User; onUnlock: () => voi
   return (
     // Like the iPhone's own passcode screen: full screen, the keypad in the middle, the two ways out at the bottom.
     <div className="relative flex min-h-dvh flex-col items-center overflow-hidden bg-background px-6 pt-[max(3.5rem,env(safe-area-inset-top))] pb-[max(1.25rem,env(safe-area-inset-bottom))]">
-      <div className="relative flex w-full max-w-xs flex-1 flex-col items-center justify-center gap-10">
+      <div className="relative flex w-full max-w-sm flex-1 flex-col items-center justify-center gap-10">
         <div className="grid justify-items-center gap-3 text-center">
           <Lock className="size-6 text-foreground/80" strokeWidth={1.8} />
           <h1 className="text-xl font-semibold tracking-tight">{stuck ? "Money Manager is unavailable" : usePasscode ? "Enter Passcode" : "Enter Password"}</h1>
@@ -204,7 +205,7 @@ export function LockScreen({ user, onUnlock }: { user: User; onUnlock: () => voi
         )}
       </div>
 
-      <div className="relative flex w-full max-w-xs items-center justify-between pt-6 text-[15px] font-medium">
+      <div className="relative flex w-full max-w-sm items-center justify-between pt-6 text-[15px] font-medium">
         {settings.passcode && allowPassword && !tooMany ? (
           <button type="button" className="px-2 py-2 transition-opacity active:opacity-50" onClick={() => switchTo(usePasscode ? "password" : "passcode")}>
             {usePasscode ? "Use password" : "Use passcode"}
