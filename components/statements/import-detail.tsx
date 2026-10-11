@@ -78,7 +78,7 @@ const TILE_ROWS: Record<TileKey, (r: StatementRow) => boolean> = {
   skipped: (r) => r.status === "skipped" && r.match?.kind !== "in_statement_duplicate",
 };
 
-function Tile({ label, value, tone, testId, active, onClick }: { label: string; value: number; tone?: "warn" | "good"; testId: string; active: boolean; onClick: () => void }) {
+function Tile({ label, value, tone, testId, active, onClick, always }: { label: string; value: number; tone?: "warn" | "good"; testId: string; active: boolean; onClick: () => void; always?: boolean }) {
   return (
     <button
       type="button"
@@ -86,7 +86,8 @@ function Tile({ label, value, tone, testId, active, onClick }: { label: string; 
       aria-pressed={active}
       disabled={value === 0}
       className={cn(
-        "rounded-xl border bg-card px-3 py-2.5 text-left transition",
+        "min-w-0 rounded-xl border bg-card px-2.5 py-2 text-left transition sm:px-3 sm:py-2.5",
+        value === 0 && !always && "max-sm:hidden",
         value > 0 && "hover:border-foreground/30 hover:bg-muted/40",
         value === 0 && "cursor-default opacity-70",
         tone === "warn" && value > 0 && "border-amber-300 bg-amber-50 hover:bg-amber-100/60",
@@ -94,8 +95,8 @@ function Tile({ label, value, tone, testId, active, onClick }: { label: string; 
       )}
       data-testid={testId}
     >
-      <div className={cn("text-xl font-semibold tabular-nums", tone === "good" && value > 0 && "text-emerald-700")}>{value}</div>
-      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className={cn("text-lg font-semibold tabular-nums sm:text-xl", tone === "good" && value > 0 && "text-emerald-700")}>{value}</div>
+      <div className="text-xs leading-tight text-muted-foreground">{label}</div>
     </button>
   );
 }
@@ -340,8 +341,9 @@ export function ImportDetail({ importId, onBack }: { importId: string; onBack: (
         </p>
       )}
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7" data-testid="summary">
-        <Tile label="Transactions" value={record.counts.transactions} testId="count-transactions" {...pick("all", "All transactions")} />
+      {/* Phones: only the counts that aren't zero (and the total), three to a row. */}
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-7" data-testid="summary">
+        <Tile always label="Transactions" value={record.counts.transactions} testId="count-transactions" {...pick("all", "All transactions")} />
         <Tile label={imported ? "Imported" : "Will be imported"} value={imported ? record.counts.imported : toCreate} tone="good" testId="count-import" {...pick("import", imported ? "Imported" : "Will be imported")} />
         <Tile label="Already in your records" value={record.counts.matchedExisting + record.counts.alreadyImported} testId="count-existing" {...pick("existing", "Already in your records")} />
         <Tile label="Duplicates dropped" value={record.counts.duplicates} testId="count-duplicates" {...pick("duplicates", "Duplicates dropped")} />

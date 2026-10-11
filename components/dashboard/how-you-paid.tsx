@@ -25,7 +25,7 @@ export function HowYouPaid({ from, to }: { from: string; to: string }) {
   const oneCard = cards.length === 1 ? cards[0].account.id : null;
 
   return (
-    <div className="mt-5 rounded-2xl border p-4" data-testid="how-you-paid">
+    <div className="mt-3 rounded-2xl border p-3 sm:mt-5 sm:p-4" data-testid="how-you-paid">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-sm font-semibold">Paid from</h3>
         <span className="text-xs text-muted-foreground">
@@ -35,12 +35,12 @@ export function HowYouPaid({ from, to }: { from: string; to: string }) {
 
       {gross > 0 && (
         <>
-          <div className="mt-3 flex h-3 gap-0.5 overflow-hidden rounded-full" role="img" aria-label="Spending by where it was paid from">
+          <div className="mt-2 flex h-2.5 gap-0.5 sm:mt-3 sm:h-3 overflow-hidden rounded-full" role="img" aria-label="Spending by where it was paid from">
             {split.parts.map((p) => (
               <span key={p.from} className="h-full first:rounded-l-full last:rounded-r-full" style={{ width: `${(p.amountMinor / gross) * 100}%`, background: COLOR[p.from] }} />
             ))}
           </div>
-          <ul className="mt-3 grid gap-x-6 gap-y-1.5 sm:grid-cols-3">
+          <ul className="mt-2 grid gap-x-6 gap-y-0.5 sm:mt-3 sm:grid-cols-3 sm:gap-y-1.5">
             {split.parts.map((p) => {
               const body = (
                 <>
@@ -63,7 +63,7 @@ export function HowYouPaid({ from, to }: { from: string; to: string }) {
               );
             })}
           </ul>
-          <p className="mt-1 text-[11px] text-muted-foreground">Bank account includes UPI, debit card and net banking: they all take money from your bank.</p>
+          <p className="mt-1 text-[11px] text-muted-foreground max-sm:hidden">Bank account includes UPI, debit card and net banking: they all take money from your bank.</p>
         </>
       )}
 

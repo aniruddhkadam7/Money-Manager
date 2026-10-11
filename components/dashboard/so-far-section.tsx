@@ -27,6 +27,8 @@ export function SoFarSection() {
   const { book, report, getCategory } = useFinance();
   // The same periods as every other card on the dashboard.
   const [span, setSpan] = useState<RangeKey>(DEFAULT_PERIOD);
+  // Phones show one breakdown at a time; wider screens show both side by side.
+  const [side, setSide] = useState<"out" | "in">("out");
 
   const { from, to } = useMemo(() => {
     const today = todayISO();
@@ -63,11 +65,11 @@ export function SoFarSection() {
   const gotBack = r.cashFlow.lending?.inflowMinor ?? 0;
 
   return (
-    <section className="rounded-3xl border glass p-5 sm:p-6" data-testid="so-far">
+    <section className="rounded-3xl border glass p-4 sm:p-6" data-testid="so-far">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold">Earned & spent</h2>
-          <p className="text-xs text-muted-foreground" data-testid="data-range">
+          <p className="text-xs text-muted-foreground max-sm:hidden" data-testid="data-range">
             {coverage ? (
               <>
                 Your records run from <strong className="font-medium text-foreground">{formatDisplayDate(coverage.first)}</strong> to{" "}
@@ -82,7 +84,7 @@ export function SoFarSection() {
         <RangeTabs label="Period" value={span} options={PERIODS} onChange={setSpan} />
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="mt-3 grid grid-cols-3 gap-2 sm:mt-4 sm:grid-cols-4 sm:gap-3">
         <Big label="Earned" value={r.incomeMinor} tone="good" href={activityHref({ type: "income", from, to })} />
         <Big
           label="Spent"
@@ -92,33 +94,44 @@ export function SoFarSection() {
           href={activityHref({ group: "spending", from, to })}
         />
         <Big label={r.savingsMinor >= 0 ? "Saved" : "Overspent"} value={Math.abs(r.savingsMinor)} tone={r.savingsMinor >= 0 ? "good" : "bad"} />
-        <Big label="Lent out / got back" value={lentOut} sub={`got back ${rupees(gotBack)}`} href={activityHref({ group: "people", from, to })} />
+        <Big label="Lent out / got back" value={lentOut} sub={`got back ${rupees(gotBack)}`} href={activityHref({ group: "people", from, to })} className="max-sm:hidden" />
       </div>
-      <p className="mt-2 text-xs text-muted-foreground">
+      <p className="mt-2 text-xs text-muted-foreground max-sm:hidden">
         Bank & cash: in {formatExactINR(cameIn)} · out {formatExactINR(wentOut)}
       </p>
 
       <HowYouPaid from={from} to={to} />
 
-      <div className="mt-6 grid gap-5 lg:grid-cols-2">
-        <Breakdown tone="out" title="Where you spent" rows={spent} getCategory={getCategory} hrefFor={(id) => activityHref({ group: "spending", category: id, from, to })} slotOf={(id) => slots.spent.get(id)} />
-        <Breakdown tone="in" title="Where you earned from" rows={earned} getCategory={getCategory} hrefFor={(id) => activityHref({ type: "income", category: id, from, to })} slotOf={(id) => slots.earned.get(id)} />
+      <div className="mt-4 lg:hidden">
+        <RangeTabs
+          label="Show"
+          value={side}
+          options={[
+            { value: "out", label: "Where you spent" },
+            { value: "in", label: "Where you earned" },
+          ]}
+          onChange={setSide}
+        />
+      </div>
+      <div className="mt-3 grid gap-5 lg:mt-6 lg:grid-cols-2">
+        <Breakdown className={cn(side !== "out" && "max-lg:hidden")} tone="out" title="Where you spent" rows={spent} getCategory={getCategory} hrefFor={(id) => activityHref({ group: "spending", category: id, from, to })} slotOf={(id) => slots.spent.get(id)} />
+        <Breakdown className={cn(side !== "in" && "max-lg:hidden")} tone="in" title="Where you earned from" rows={earned} getCategory={getCategory} hrefFor={(id) => activityHref({ type: "income", category: id, from, to })} slotOf={(id) => slots.earned.get(id)} />
       </div>
     </section>
   );
 }
 
-function Big({ label, value, tone, sub, href }: { label: string; value: number; tone?: "good" | "bad"; sub?: string; href?: string }) {
+function Big({ label, value, tone, sub, href, className }: { label: string; value: number; tone?: "good" | "bad"; sub?: string; href?: string; className?: string }) {
   const body = (
     <>
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={cn("mt-0.5 text-xl font-semibold tabular-nums", tone === "good" && "text-emerald-700", tone === "bad" && "text-rose-700")} title={formatExactINR(value)}>
+      <div className={cn("mt-0.5 truncate text-base font-semibold tabular-nums sm:text-xl", tone === "good" && "text-emerald-700", tone === "bad" && "text-rose-700")} title={formatExactINR(value)}>
         {rupees(value)}
       </div>
-      {sub && <div className="text-xs text-muted-foreground">{sub}</div>}
+      {sub && <div className="text-xs text-muted-foreground max-sm:hidden">{sub}</div>}
     </>
   );
-  const cls = "block rounded-xl border bg-card px-3 py-2.5";
+  const cls = cn("block min-w-0 rounded-xl border bg-card px-2.5 py-2 sm:px-3 sm:py-2.5", className);
   return href ? (
     <Link href={href} className={cn(cls, "hover:bg-muted/50")}>
       {body}
@@ -142,6 +155,7 @@ const SLOTS = [
   ["#4a3aa7", "#9085e9"],
 ] as const;
 const REST_COLOR = "#a3a29d";
+const PHONE_ROWS = 5;
 const REST_ID = "__rest";
 
 type Row = { categoryId: string; amountMinor: number };
@@ -159,6 +173,7 @@ const TONES = {
 } as const;
 
 function Breakdown({
+  className,
   tone,
   title,
   rows,
@@ -166,6 +181,7 @@ function Breakdown({
   hrefFor,
   slotOf,
 }: {
+  className?: string;
   tone: keyof typeof TONES;
   title: string;
   rows: Row[];
@@ -174,6 +190,8 @@ function Breakdown({
   slotOf: (id: string) => number | undefined;
 }) {
   const [hover, setHover] = useState<string | null>(null);
+  // Phones list the top few; the rest open on request.
+  const [all, setAll] = useState(false);
   const total = rows.reduce((t, r) => t + r.amountMinor, 0);
   const hasOwn = (id: string) => (slotOf(id) ?? SLOTS.length) < SLOTS.length;
   const colorOf = (id: string) => (hasOwn(id) ? SLOTS[slotOf(id)!][0] : REST_COLOR);
@@ -196,8 +214,9 @@ function Breakdown({
   const t = TONES[tone];
 
   return (
-    <div className="glass overflow-hidden rounded-2xl border">
-      <div className={cn("flex items-center gap-3 border-b px-4 py-3", t.head)}>
+    <div className={cn("glass overflow-hidden rounded-2xl border max-sm:rounded-none max-sm:border-0 max-sm:bg-transparent max-sm:shadow-none max-sm:before:hidden", className)}>
+      {/* Phones: the switch above names this list and the strip above has its total, so the header is for wider screens. */}
+      <div className={cn("flex items-center gap-3 border-b px-4 py-3 max-sm:hidden", t.head)}>
         <span className={cn("grid size-8 shrink-0 place-items-center rounded-lg", t.badge)}>
           <t.Icon className="size-4" />
         </span>
@@ -207,14 +226,15 @@ function Breakdown({
         </div>
         <span className={cn("shrink-0 text-lg font-semibold tabular-nums", t.amount)}>{rupees(total)}</span>
       </div>
-      <div className="p-4">
+      <div className="sm:p-4">
         {rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nothing in this period.</p>
         ) : (
           <>
-            <div className="flex flex-col items-center gap-4 sm:flex-row">
+            {/* Phones: the donut alone; the list below has each colour and share, so the legend is for wider screens. */}
+            <div className="flex flex-col items-center gap-4 max-sm:mb-3 sm:flex-row">
               <Donut slices={slices} total={total} active={activeSlice} onHover={setHover} />
-              <ul className="grid w-full flex-1 grid-cols-2 gap-x-4 gap-y-1 text-xs" aria-label={`${title}: legend`}>
+              <ul className="grid w-full flex-1 grid-cols-2 gap-x-4 gap-y-1 text-xs max-sm:hidden" aria-label={`${title}: legend`}>
                 {slices.map((s) => (
                   <li
                     key={s.id}
@@ -229,7 +249,7 @@ function Breakdown({
                 ))}
               </ul>
             </div>
-            <p className="mt-2 h-4 text-xs text-muted-foreground" aria-live="polite">
+            <p className="mt-2 h-4 text-xs text-muted-foreground max-sm:hidden" aria-live="polite">
               {caption ? (
                 <>
                   <span className="font-medium text-foreground">{caption.label}</span> · {rupees(caption.amount)} · {pctText(caption.amount, total)}
@@ -239,11 +259,11 @@ function Breakdown({
               )}
             </p>
 
-            <ul className="mt-3 divide-y overflow-hidden rounded-xl border">
-              {rows.map((c) => {
+            <ul className="divide-y overflow-hidden rounded-xl border sm:mt-3">
+              {rows.map((c, i) => {
                 const cat = getCategory(c.categoryId);
                 return (
-                  <li key={c.categoryId}>
+                  <li key={c.categoryId} className={cn(!all && i >= PHONE_ROWS && "max-sm:hidden")}>
                     <Link
                       href={hrefFor(c.categoryId)}
                       onMouseEnter={() => setHover(c.categoryId)}
@@ -262,6 +282,11 @@ function Breakdown({
                 );
               })}
             </ul>
+            {rows.length > PHONE_ROWS && (
+              <button type="button" onClick={() => setAll((v) => !v)} className="mt-2 text-xs font-medium text-emerald-700 hover:underline sm:hidden">
+                {all ? "Show fewer" : `Show all ${rows.length}`}
+              </button>
+            )}
           </>
         )}
       </div>

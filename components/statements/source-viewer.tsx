@@ -48,7 +48,7 @@ export function ViewInStatement({ row, className }: { row: StatementRow; classNa
   return (
     <>
       <Button type="button" size="sm" variant="outline" className={className} onClick={() => (available ? setOpen(true) : input.current?.click())} data-testid="view-in-statement">
-        <FileSearch /> {available ? "View in statement" : "Select PDF to view line"}
+        <FileSearch /> <span className="max-sm:sr-only">{available ? "View in statement" : "Select PDF to view line"}</span>
       </Button>
       <input ref={input} type="file" accept="application/pdf,.pdf" className="sr-only" onChange={(e) => { void attach(e.target.files?.[0]); e.target.value = ""; }} />
       {problem && <span className="text-xs text-destructive">{problem}</span>}

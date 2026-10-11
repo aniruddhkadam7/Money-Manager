@@ -265,21 +265,22 @@ export function ReviewCard({ row, siblings, compact = false }: { row: StatementR
             </p>
           )}
 
+          {/* Phones: the accept button spans the card; Category and Type sit side by side, labels above. */}
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {c && !suggestionIssue && (
-              <Button size="sm" onClick={() => decide({ kind: "accept" }, c.eventType, c.category, describeClassification(c, row.direction, book.accounts))} data-testid="accept-suggestion">
+              <Button size="sm" className="max-sm:w-full" onClick={() => decide({ kind: "accept" }, c.eventType, c.category, describeClassification(c, row.direction, book.accounts))} data-testid="accept-suggestion">
                 <Check /> {describeClassification(c, row.direction, book.accounts)}
               </Button>
             )}
             {!picking && c && !suggestionIssue && needs(c.eventType, row.direction).category && (
-              <div className="flex items-center gap-1.5" data-testid="category-pick">
+              <div className="flex items-center gap-1.5 max-sm:basis-[calc(50%-0.25rem)] max-sm:flex-col max-sm:items-stretch max-sm:gap-0.5" data-testid="category-pick">
                 <span className="text-xs text-muted-foreground">Category</span>
                 <CategorySelect
                   names={categoryList}
                   value=""
                   placeholder={c.category ?? "Pick…"}
                   allowNew={row.direction === "debit"}
-                  className="h-8 w-44"
+                  className="h-8 w-44 max-sm:w-full"
                   ariaLabel="Pick a category"
                   onChange={(cat) =>
                     decide(
@@ -292,10 +293,10 @@ export function ReviewCard({ row, siblings, compact = false }: { row: StatementR
                 />
               </div>
             )}
-            <div className="flex items-center gap-1.5" data-testid="type-pick">
+            <div className="flex min-w-0 items-center gap-1.5 max-sm:basis-[calc(50%-0.25rem)] max-sm:flex-col max-sm:items-stretch max-sm:gap-0.5" data-testid="type-pick">
               <span className="text-xs text-muted-foreground">Type</span>
               <Select value={picking ?? ""} onValueChange={(t) => choose(t as StatementEventType)}>
-                <SelectTrigger className="h-8 w-56" aria-label="Type">
+                <SelectTrigger className="h-8 w-56 max-sm:w-full" aria-label="Type">
                   <SelectValue placeholder={c ? EVENT_LABEL[c.eventType] : "Choose type"} />
                 </SelectTrigger>
                 <SelectContent>
@@ -308,14 +309,14 @@ export function ReviewCard({ row, siblings, compact = false }: { row: StatementR
               </Select>
             </div>
             {picking && n?.category && (
-              <div className="flex items-center gap-1.5" data-testid="category-inline">
+              <div className="flex items-center gap-1.5 max-sm:basis-[calc(50%-0.25rem)] max-sm:flex-col max-sm:items-stretch max-sm:gap-0.5" data-testid="category-inline">
                 <span className="text-xs text-muted-foreground">Category</span>
                 <CategorySelect
                   names={categoryList}
                   value={form.category}
                   placeholder="Choose"
                   allowNew={row.direction === "debit"}
-                  className="h-8 w-44"
+                  className="h-8 w-44 max-sm:w-full"
                   ariaLabel="Category"
                   onChange={(v) => setForm({ ...form, category: v })}
                 />

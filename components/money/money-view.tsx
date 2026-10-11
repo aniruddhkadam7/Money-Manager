@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { CheckCircle2, Pencil, Plus } from "lucide-react";
+import { CheckCircle2, Pencil, Plus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { activityHref } from "@/lib/charts/links";
@@ -15,17 +15,43 @@ import { useEventDialog } from "../events/event-dialog";
 import { useQuickRepaymentReceived } from "../events/quick-repay";
 import { useFinance } from "../finance-provider";
 import { AccountLogo, useBankHints } from "../account-logo";
+import { RangeTabs } from "../charts/primitives";
 import { PageTitle } from "../page-title";
 import { PictureIcon } from "../picture-icon";
 import { statementMatches, useStatementChecks, type StatementCheck } from "../statements/use-statement-checks";
 import { ACCOUNT_TYPE_INFO, AccountDialog } from "./account-dialog";
-import { ManageLists } from "./manage-lists";
-import { ResetApp } from "./reset-app";
+import { PeopleList } from "./manage-lists";
+
+/** Phones show the page a part at a time, like a phone app's tabs; wider screens show it all. (Categories and
+ * Start over are in the profile's settings.) */
+type Tab = "accounts" | "people";
+const TABS: { value: Tab; label: string }[] = [
+  { value: "accounts", label: "Accounts" },
+  { value: "people", label: "People" },
+];
+/** Which tab a /money#section link lands on. */
+const TAB_OF: Record<string, Tab> = { owed: "people", owe: "people" };
 
 const SECTIONS: { id: string; title: string; types: AccountType[] }[] = [
   { id: "accounts", title: "Bank & cash", types: ["bank", "cash"] },
   { id: "cards-loans", title: "Cards & loans", types: ["credit_card", "loan"] },
 ];
+
+/** Phones: the section's add button reads as a plain green link, like a phone app's list header. */
+const ACTION = "max-sm:h-8 max-sm:border-0 max-sm:bg-transparent max-sm:px-2 max-sm:text-emerald-700 max-sm:shadow-none";
+
+/** A section's title with its total beside it, and its add button on the right. */
+function SectionHead({ title, total, action }: { title: string; total?: string; action?: ReactNode }) {
+  return (
+    <CardHeader className="gap-3 max-sm:px-4 max-sm:pt-4">
+      <div className="flex min-w-0 items-baseline gap-2">
+        <CardTitle>{title}</CardTitle>
+        {total && <span className="text-sm font-semibold tabular-nums text-foreground">{total}</span>}
+      </div>
+      {action}
+    </CardHeader>
+  );
+}
 
 export function MoneyView() {
   const { status, state, missingStandardAccounts, restoreStandardAccounts } = useFinance();
@@ -34,12 +60,17 @@ export function MoneyView() {
   const { openAdd } = useEventDialog();
   const theyPaidMe = useQuickRepaymentReceived();
   const [dialog, setDialog] = useState<{ open: boolean; editing: Account | null }>({ open: false, editing: null });
+  const [tab, setTab] = useState<Tab>("accounts");
+  const hide = (t: Tab) => (tab !== t ? "max-sm:hidden" : undefined);
 
   // Links like /money#investments jump straight to that section once the page has loaded.
   useEffect(() => {
     if (status !== "ready") return;
     const id = window.location.hash.slice(1);
-    if (id) document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (!id) return;
+    setTab(TAB_OF[id] ?? "accounts");
+    // After the tab has switched, so the section is on screen to scroll to.
+    requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }, [status]);
 
   if (status === "loading") return <div className="h-64 animate-pulse rounded-2xl bg-muted" aria-busy />;
@@ -52,8 +83,11 @@ export function MoneyView() {
       <PageTitle
         actions={
           missingStandardAccounts.length > 0 && (
-            <Button variant="outline" size="sm" onClick={restoreStandardAccounts}>
-              Restore {missingStandardAccounts.map((a) => a.name).join(", ")}
+            <Button variant="outline" size="sm" className="h-auto max-w-full whitespace-normal py-1.5 text-left" onClick={restoreStandardAccounts}>
+              <span className="max-sm:hidden">Restore {missingStandardAccounts.map((a) => a.name).join(", ")}</span>
+              <span className="sm:hidden" title={missingStandardAccounts.map((a) => a.name).join(", ")}>
+                Restore {missingStandardAccounts.length} default {missingStandardAccounts.length === 1 ? "account" : "accounts"}
+              </span>
             </Button>
           )
         }
@@ -61,20 +95,27 @@ export function MoneyView() {
         Money
       </PageTitle>
 
+      <div className="sm:hidden">
+        <RangeTabs label="Show" value={tab} options={TABS} onChange={setTab} />
+      </div>
+
       {SECTIONS.map((section) => {
         const rows = state.accounts.filter((a) => section.types.includes(a.account.type));
         // With a bank logo in the list, every row's picture sits in the logo's width so the names line up.
         const wide = rows.some((a) => bankBrandFor(a.account.name, bankOf(a.account.id)));
         return (
-          <Card key={section.title} id={section.id} className="scroll-mt-24">
-            <CardHeader>
-              <CardTitle>{section.title}</CardTitle>
-              {section.id === "cards-loans" && (
-                <Button size="sm" variant="outline" onClick={() => setDialog({ open: true, editing: null })}>
-                  <Plus /> Add loan
-                </Button>
-              )}
-            </CardHeader>
+          <Card key={section.title} id={section.id} className={cn("scroll-mt-24", hide("accounts"))}>
+            <SectionHead
+              title={section.title}
+              total={rows.length > 0 ? formatRupees(rows.reduce((t, a) => t + a.balanceMinor, 0)) : undefined}
+              action={
+                section.id === "cards-loans" && (
+                  <Button size="sm" variant="outline" className={ACTION} onClick={() => setDialog({ open: true, editing: null })}>
+                    <Plus /> Add loan
+                  </Button>
+                )
+              }
+            />
             {rows.length === 0 ? (
               <CardContent className="py-6 text-sm text-muted-foreground">None yet.</CardContent>
             ) : (
@@ -98,13 +139,16 @@ export function MoneyView() {
         );
       })}
 
-      <Card id="investments" className="scroll-mt-24">
-        <CardHeader>
-          <CardTitle>Investments</CardTitle>
-          <Button size="sm" variant="outline" onClick={() => openAdd("invest")}>
-            <Plus /> Invest
-          </Button>
-        </CardHeader>
+      <Card id="investments" className={cn("scroll-mt-24", hide("accounts"))}>
+        <SectionHead
+          title="Investments"
+          total={state.investments.holdings.length > 0 ? formatRupees(state.investments.valueMinor) : undefined}
+          action={
+            <Button size="sm" variant="outline" className={ACTION} onClick={() => openAdd("invest")}>
+              <Plus /> Invest
+            </Button>
+          }
+        />
         {state.investments.holdings.length === 0 ? (
           <CardContent className="py-6 text-sm text-muted-foreground">
             Nothing invested yet. Use “Invest” to add one.
@@ -125,8 +169,17 @@ export function MoneyView() {
                     </p>
                   </div>
                   <p className="shrink-0 font-semibold tabular-nums">{formatRupees(h.valueMinor)}</p>
-                  <Button size="sm" variant="outline" onClick={() => openAdd("update_valuation", { holdingId: h.account.id })}>
-                    Update value
+                  {/* Phones: an icon, so the holding's name and gain keep their room. */}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    aria-label={`Update the value of ${h.account.name}`}
+                    title="Update value"
+                    className="max-sm:size-9 max-sm:px-0"
+                    onClick={() => openAdd("update_valuation", { holdingId: h.account.id })}
+                  >
+                    <RefreshCw className="sm:hidden" />
+                    <span className="max-sm:hidden">Update value</span>
                   </Button>
                   <Button variant="ghost" size="icon" aria-label={`Edit ${h.account.name}`} onClick={() => setDialog({ open: true, editing: h.account })}>
                     <Pencil />
@@ -134,7 +187,8 @@ export function MoneyView() {
                 </li>
               ))}
             </ul>
-            <p className="border-t px-5 py-3 text-sm text-muted-foreground">
+            {/* Phones: the header already has the total. */}
+            <p className="border-t px-5 py-3 text-sm text-muted-foreground max-sm:hidden">
               Total {formatRupees(state.investments.valueMinor)} · put in {formatRupees(state.investments.costBasisMinor)} ·{" "}
               {state.investments.gainMinor >= 0 ? "gain" : "loss"} {formatRupees(Math.abs(state.investments.gainMinor))}
             </p>
@@ -142,14 +196,17 @@ export function MoneyView() {
         )}
       </Card>
 
-      <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
-        <Card id="owed" className="scroll-mt-24">
-          <CardHeader>
-            <CardTitle>Money others owe you</CardTitle>
-            <Button size="sm" variant="outline" onClick={() => openAdd("lend")}>
-              <Plus /> Lend
-            </Button>
-          </CardHeader>
+      <div className="grid gap-4 max-sm:contents sm:gap-6 lg:grid-cols-2">
+        <Card id="owed" className={cn("scroll-mt-24", hide("people"))}>
+          <SectionHead
+            title="Money others owe you"
+            total={owedToMe.length > 0 ? formatRupees(owedToMe.reduce((t, p) => t + p.owedToMe.outstandingMinor, 0)) : undefined}
+            action={
+              <Button size="sm" variant="outline" className={ACTION} onClick={() => openAdd("lend")}>
+                <Plus /> Lend
+              </Button>
+            }
+          />
           {owedToMe.length === 0 ? (
             <CardContent className="py-6 text-sm text-muted-foreground">Nobody owes you anything.</CardContent>
           ) : (
@@ -180,13 +237,16 @@ export function MoneyView() {
           )}
         </Card>
 
-        <Card id="owe" className="scroll-mt-24">
-          <CardHeader>
-            <CardTitle>Money you owe people</CardTitle>
-            <Button size="sm" variant="outline" onClick={() => openAdd("borrow")}>
-              <Plus /> Borrow
-            </Button>
-          </CardHeader>
+        <Card id="owe" className={cn("scroll-mt-24", hide("people"))}>
+          <SectionHead
+            title="Money you owe people"
+            total={iOwe.length > 0 ? formatRupees(iOwe.reduce((t, p) => t + p.iOwe.outstandingMinor, 0)) : undefined}
+            action={
+              <Button size="sm" variant="outline" className={ACTION} onClick={() => openAdd("borrow")}>
+                <Plus /> Borrow
+              </Button>
+            }
+          />
           {iOwe.length === 0 ? (
             <CardContent className="py-6 text-sm text-muted-foreground">You don&apos;t owe anyone.</CardContent>
           ) : (
@@ -217,9 +277,7 @@ export function MoneyView() {
         </Card>
       </div>
 
-      <ManageLists />
-
-      <ResetApp />
+      <PeopleList className={hide("people")} />
 
       <AccountDialog
         open={dialog.open}
@@ -251,8 +309,10 @@ function AccountRow({
 }) {
   const off = statement ? !statementMatches(statement) : false;
   return (
-    <li className="px-4 py-3 sm:px-5">
+    <li className="px-4 py-2.5 sm:px-5 sm:py-3">
       <div className="flex items-center gap-3">
+      {/* The logo and name open the account's entries (phones have no room for the Entries link). */}
+      <Link href={`/activity?account=${account.id}`} className="flex min-w-0 flex-1 items-center gap-3 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <span className={cn("flex shrink-0", wide && "w-16")}>
         <AccountLogo account={account} bankHint={bankHint} tile />
       </span>
@@ -265,6 +325,7 @@ function AccountRow({
           </p>
         )}
       </div>
+      </Link>
       <p className="shrink-0 text-right font-semibold tabular-nums">
         {value}
         {caption && <span className="block text-xs font-normal text-muted-foreground">{caption}</span>}

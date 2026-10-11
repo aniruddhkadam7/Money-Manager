@@ -1,10 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { formatExactINR, formatHeadlineINR } from "@/lib/charts/format";
+import { formatExactINR } from "@/lib/charts/format";
 import { activityHref } from "@/lib/charts/links";
-import { formatDisplayDate, monthEnd, monthStart } from "@/lib/domain/dates";
-import { accountActivity } from "@/lib/finance/account-activity";
+import { formatDisplayDate } from "@/lib/domain/dates";
 import { explainAccountBalance } from "@/lib/finance/explain";
 import type { FinancialState } from "@/lib/finance/state";
 import type { Account, Book } from "@/lib/finance/types";
@@ -14,18 +13,14 @@ import { useFinance } from "../finance-provider";
 import { AccountLogo, useBankHints } from "../account-logo";
 import { useStatementChecks } from "../statements/use-statement-checks";
 
-const short = (minor: number) => formatHeadlineINR(minor);
-
 /**
- * Every bank account and credit card you use, compactly, as its bank app would show it: the logo, what's
- * available (or, for a card, what's to pay) and this month's spending.
+ * Every bank account and credit card you use, compactly, as its bank app would show it: the logo and what's
+ * available (or, for a card, what's to pay). This month's spending is in the summary at the top.
  */
-export function AccountsSection({ book, state, today }: { book: Book; state: FinancialState; today: string }) {
+export function AccountsSection({ book, state }: { book: Book; state: FinancialState }) {
   const checks = useStatementChecks();
   // The bank any of the account's statements names (card statements print no closing balance, so not only `checks`).
   const bankOf = useBankHints();
-  const from = monthStart(today.slice(0, 7));
-  const to = monthEnd(today.slice(0, 7));
   const used = (id: string) =>
     book.events.some((e) => ("accountId" in e && e.accountId === id) || ("fromAccountId" in e && e.fromAccountId === id) || ("toAccountId" in e && e.toAccountId === id));
 
@@ -34,20 +29,18 @@ export function AccountsSection({ book, state, today }: { book: Book; state: Fin
     .filter((a) => a.account.type in order && (a.balanceMinor !== 0 || used(a.account.id) || checks.has(a.account.id)))
     .sort((a, b) => order[a.account.type] - order[b.account.type]);
   if (rows.length === 0) return null;
-  const month = new Date(`${from}T00:00:00`).toLocaleDateString("en-IN", { month: "short" });
 
   return (
-    // Phones: two compact tiles side by side, so a bank account and a card are both in view.
-    <section aria-label="Your accounts" className="grid grid-cols-2 gap-2 sm:gap-2.5 lg:grid-cols-3 xl:grid-cols-4">
+    // Phones: one row that swipes sideways (a bit of the next tile shows, so it's clear there's more); wider screens: a grid.
+    <section
+      aria-label="Your accounts"
+      className="-mx-4 flex snap-x snap-mandatory gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:grid sm:grid-cols-2 sm:gap-2.5 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-3 xl:grid-cols-4 [&::-webkit-scrollbar]:hidden"
+    >
       {rows.map(({ account, balanceMinor }) => {
         const card = account.type === "credit_card";
         const check = checks.get(account.id);
-        const act = accountActivity(book, account.id, from, to);
-        const parts = card
-          ? [`Spent ${short(act.spentMinor)}`, `Paid ${short(act.paymentsInMinor)}`]
-          : [`Spent ${short(act.spentMinor)}`, ...(account.type === "bank" ? [`Bills ${short(act.billsPaidMinor)}`] : []), `In ${short(act.receivedMinor)}`];
         return (
-          <div key={account.id} className="flex min-w-0 flex-col gap-1 glass rounded-xl border p-2.5 sm:gap-1.5 sm:p-3" data-testid="account-tile">
+          <div key={account.id} className="flex w-[42%] min-w-0 shrink-0 snap-start flex-col gap-1 glass rounded-xl border p-2.5 sm:w-auto sm:gap-1.5 sm:p-3" data-testid="account-tile">
             <Link
               href={activityHref({ account: account.id })}
               className="flex items-center gap-2 hover:underline max-sm:[&>span:first-child]:h-7 max-sm:[&>span:first-child]:max-w-11"
@@ -67,9 +60,6 @@ export function AccountsSection({ book, state, today }: { book: Book; state: Fin
                 {formatExactINR(card ? Math.max(balanceMinor, 0) : balanceMinor)}
               </span>
             </div>
-            <p className="text-[11px] leading-snug tabular-nums text-slate-500 sm:truncate" title={`In ${month}`}>
-              {month}: {parts.join(" · ")}
-            </p>
           </div>
         );
       })}

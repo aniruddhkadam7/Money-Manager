@@ -9,7 +9,7 @@ import { balanceSeries, DEFAULT_PERIOD, PERIODS, periodWords, rangeStart, sample
 import { RangeTabs } from "../charts/primitives";
 import { useWidth } from "../charts/use-width";
 import { useFinance } from "../finance-provider";
-import { axisLabel, GAIN, LOSS } from "./net-worth-section";
+import { axisLabel, GAIN, LOSS } from "./chart-helpers";
 
 const HEIGHT = 56;
 const PAD = 4;
@@ -56,7 +56,7 @@ export function NetWorthSparkline({ firstActivity }: { firstActivity: string | n
   };
 
   return (
-    <div className="mt-3 w-full lg:w-80" data-testid="net-worth-sparkline">
+    <div className="mt-2 w-full sm:mt-3 lg:w-80" data-testid="net-worth-sparkline">
       <div className="mb-2 flex items-center justify-between gap-2">
         <RangeTabs label="Net worth timeline" value={range} options={PERIODS} onChange={(v) => { setRange(v); setHover(null); }} />
       </div>

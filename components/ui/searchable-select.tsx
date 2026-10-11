@@ -151,7 +151,7 @@ export function SearchableSelect({
                   onPointerMove={() => setActive(i)}
                   onClick={() => choose(o)}
                   className={cn(
-                    "relative flex cursor-default select-none items-center gap-2 rounded-lg py-2 pl-2.5 pr-8 text-sm",
+                    "relative flex cursor-pointer select-none items-center gap-2 rounded-lg py-2 pl-2.5 pr-8 text-sm",
                     i === active && "bg-muted",
                   )}
                 >

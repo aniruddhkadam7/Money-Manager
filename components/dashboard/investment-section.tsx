@@ -13,7 +13,8 @@ import { ChartCard, EmptyChart, Headline, RangeTabs } from "../charts/primitives
 import { TooltipCard, TooltipHint, TooltipRow, TooltipTitle } from "../charts/tooltip";
 import { useEventDialog } from "../events/event-dialog";
 import { useFinance } from "../finance-provider";
-import { axisLabel, dateTitle, GAIN, LOSS } from "./net-worth-section";
+import { usePhone } from "../use-phone";
+import { axisLabel, dateTitle, GAIN, LOSS } from "./chart-helpers";
 
 /** Are my investments growing? Value over time against what I put in. */
 export function InvestmentSection({ model }: { model: DashboardModel }) {
@@ -22,6 +23,7 @@ export function InvestmentSection({ model }: { model: DashboardModel }) {
   const { openAdd } = useEventDialog();
   const [range, setRange] = useState<RangeKey>(DEFAULT_PERIOD);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  const phone = usePhone();
 
   const { dates, points } = useMemo(() => {
     const dates = sampleDates(rangeStart(range, today, model.firstActivity), today, 90);
@@ -69,7 +71,7 @@ export function InvestmentSection({ model }: { model: DashboardModel }) {
         <LineChart
           xs={xs}
           series={series}
-          height={220}
+          height={phone ? 160 : 220}
           includeZero
           animateKey={`${range}-${dates.length}-${value}`}
           ariaLabel="Investment value over time"

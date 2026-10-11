@@ -100,6 +100,32 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+@layer base {
+  /* Tailwind v4 leaves buttons with the arrow cursor: anything you can press shows the hand, and what's
+     switched off says so. In the base layer, so a cursor-* class on an element still wins. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="tab"],
+  [role="radio"],
+  [role="switch"],
+  [role="option"],
+  [role="menuitem"],
+  [role="checkbox"],
+  summary,
+  select,
+  label[for],
+  input[type="checkbox"],
+  input[type="radio"],
+  input[type="file"] {
+    cursor: pointer;
+  }
+  button:disabled,
+  [aria-disabled="true"],
+  [data-disabled] {
+    cursor: not-allowed;
+  }
+}
+
 @layer components {
   /*
    * A frosted card. The blur sits on a ::before layer rather than the card itself: backdrop-filter on the card

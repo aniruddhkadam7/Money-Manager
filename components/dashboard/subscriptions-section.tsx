@@ -12,6 +12,7 @@ import { BrandLogo } from "../brand-logo";
 import { CategoryIcon } from "../category-icon";
 import { ChartCard, EmptyChart } from "../charts/primitives";
 import { useFinance } from "../finance-provider";
+import { usePhone } from "../use-phone";
 
 const EVERY: Record<Frequency, string> = { weekly: "weekly", monthly: "monthly", yearly: "yearly" };
 
@@ -28,6 +29,7 @@ export function SubscriptionsSection({ model }: { model: DashboardModel }) {
   const { getCategory, today } = useFinance();
   const subs = model.subscriptions;
   const [all, setAll] = useState(false);
+  const top = usePhone() ? 4 : 6;
   const monthly = subs.reduce((t, c) => t + c.monthlyEquivalentMinor, 0);
 
   return (
@@ -39,7 +41,7 @@ export function SubscriptionsSection({ model }: { model: DashboardModel }) {
       ) : (
         <>
           <div className="mb-2" data-testid="subscriptions-total">
-            <p className="text-3xl font-semibold tracking-tight tabular-nums text-slate-900">
+            <p className="text-2xl font-semibold tracking-tight tabular-nums text-slate-900 sm:text-3xl">
               {formatExactINR(monthly)}
               <span className="ml-1.5 text-base font-normal text-slate-400">/ month</span>
             </p>
@@ -48,7 +50,7 @@ export function SubscriptionsSection({ model }: { model: DashboardModel }) {
             </p>
           </div>
           <ul className="grid" data-testid="subscriptions-list">
-            {(all ? subs : subs.slice(0, 6)).map((c) => {
+            {(all ? subs : subs.slice(0, top)).map((c) => {
               const days = daysBetween(today, c.nextDate);
               return (
                 <li key={c.key}>
@@ -61,7 +63,8 @@ export function SubscriptionsSection({ model }: { model: DashboardModel }) {
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[15px] font-medium text-slate-900">{c.name}</p>
                       <p className={cn("text-xs", days < 0 ? "text-amber-600" : "text-slate-400")}>
-                        {c.assumed ? "usually monthly" : c.via === "autopay" ? `auto-debit · ${EVERY[c.frequency]}` : c.via === "pattern" ? `repeats ${EVERY[c.frequency]}` : EVERY[c.frequency]} · {due(days)} · {formatDayMonth(c.nextDate)}
+                        <span className="max-sm:hidden">{c.assumed ? "usually monthly" : c.via === "autopay" ? `auto-debit · ${EVERY[c.frequency]}` : c.via === "pattern" ? `repeats ${EVERY[c.frequency]}` : EVERY[c.frequency]} · </span>
+                        {due(days)} · {formatDayMonth(c.nextDate)}
                       </p>
                     </div>
                     <p className="text-[15px] font-semibold tabular-nums text-slate-900">{formatExactINR(c.amountMinor)}</p>
@@ -70,9 +73,9 @@ export function SubscriptionsSection({ model }: { model: DashboardModel }) {
               );
             })}
           </ul>
-          {subs.length > 6 && (
+          {subs.length > top && (
             <button type="button" onClick={() => setAll((v) => !v)} className="mt-1 text-xs font-medium text-emerald-700 hover:underline">
-              {all ? "Show fewer" : `+${subs.length - 6} more`}
+              {all ? "Show fewer" : `+${subs.length - top} more`}
             </button>
           )}
         </>

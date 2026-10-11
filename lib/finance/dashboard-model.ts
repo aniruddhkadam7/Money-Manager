@@ -1,16 +1,12 @@
 import { monthEnd, shiftMonth } from "@/lib/domain/dates";
-import { buildInsights, type Insight } from "./insights";
-import { detectRecurring, fixedCommitmentsMinor, subscriptionsOf, upcomingCharges, type RecurringCharge } from "./recurring";
+import { detectRecurring, subscriptionsOf, type RecurringCharge } from "./recurring";
 import {
   balanceSeries,
   changeBps,
   firstActivityDate,
-  healthMetrics,
   monthlySummaries,
-  type HealthMetrics,
   type MonthlyPoint,
 } from "./series";
-import type { FinancialState } from "./state";
 import type { Book, Ledger } from "./types";
 
 /**
@@ -29,20 +25,13 @@ export interface DashboardModel {
   /** This month's spending vs the same point last month. */
   spendingChangeBps: number | null;
   firstActivity: string | null;
-  recurring: RecurringCharge[];
-  upcoming: RecurringCharge[];
   subscriptions: RecurringCharge[];
-  fixedCommitmentsMinor: number;
-  health: HealthMetrics;
-  insights: Insight[];
 }
 
 export function buildDashboardModel(
   book: Book,
   ledger: Ledger,
-  state: FinancialState,
   today: string,
-  categoryName: (id: string) => string,
 ): DashboardModel {
   const ym = today.slice(0, 7);
   const months = monthlySummaries(book, ledger, ym, 12, today);
@@ -58,9 +47,6 @@ export function buildDashboardModel(
   }
 
   const recurring = detectRecurring(book, ledger, today);
-  const upcoming = upcomingCharges(recurring, today, 30);
-  const fixed = fixedCommitmentsMinor(recurring);
-  const health = healthMetrics(current, state, fixed);
 
   return {
     today,
@@ -71,19 +57,6 @@ export function buildDashboardModel(
     netWorthChangeMinor,
     spendingChangeBps: changeBps(current.expensesMinor, current.comparableExpensesMinor),
     firstActivity,
-    recurring,
-    upcoming,
     subscriptions: subscriptionsOf(recurring),
-    fixedCommitmentsMinor: fixed,
-    health,
-    insights: buildInsights({
-      months,
-      categoryName,
-      netWorthChangeMinor,
-      people: state.people,
-      upcoming,
-      health,
-      today,
-    }),
   };
 }

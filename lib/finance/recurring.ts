@@ -228,17 +228,6 @@ export function detectRecurring(book: Book, ledger: Ledger, today: string): Recu
   return found.sort((a, b) => (a.nextDate < b.nextDate ? -1 : a.nextDate > b.nextDate ? 1 : 0));
 }
 
-export const fixedCommitmentsMinor = (charges: RecurringCharge[]) =>
-  charges.reduce((t, c) => t + c.monthlyEquivalentMinor, 0);
-
-/** Charges expected within the next `days` days (and anything a few days overdue that isn't recorded yet). */
-export function upcomingCharges(charges: RecurringCharge[], today: string, days = 30): RecurringCharge[] {
-  return charges.filter((c) => {
-    const until = daysBetween(today, c.nextDate);
-    return until >= -3 && until <= days;
-  });
-}
-
 /** Just the subscriptions, costliest first. */
 export const subscriptionsOf = (charges: RecurringCharge[]) =>
   charges.filter((c) => c.kind === "subscription").sort((a, b) => b.monthlyEquivalentMinor - a.monthlyEquivalentMinor);

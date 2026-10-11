@@ -2,7 +2,7 @@
 
 import { Copy, Info, Pencil, Trash2, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { formatDisplayDate } from "@/lib/domain/dates";
+import { formatDayMonth, formatDisplayDate } from "@/lib/domain/dates";
 import { formatRupees } from "@/lib/finance/describe";
 import { matchRefunds } from "@/lib/finance/state";
 import type { FinancialEvent } from "@/lib/finance/types";
@@ -36,12 +36,12 @@ export function headline(e: FinancialEvent): { amountMinor: number; tone: "in" |
 }
 
 /**
- * One entry in a list. Click the row for the full "what changed" view; the
- * pencil is always visible so correcting a mistake is obvious. Copy and bin show
- * from tablet width up; on phones they live in the row's details.
+ * One entry in a list. Click the row for the full "what changed" view. From tablet width up the pencil,
+ * copy and bin sit on the row; on phones they live in the row's details (which has Edit), leaving room
+ * for the title and the date line.
  */
 export function EventRow({ event, onOpen }: { event: FinancialEvent; /** Tapping the row does this instead of opening the details. */ onOpen?: () => void }) {
-  const { book, describer, issuesByEvent } = useFinance();
+  const { book, describer, issuesByEvent, today } = useFinance();
   const refunded = event.type === "expense" ? [...matchRefunds(book).values()].filter((m) => m.expenseId === event.id).reduce((t, m) => t + m.amountMinor, 0) : 0;
   const refundFor = matchRefunds(book).get(event.id);
   const refundedItem = refundFor ? book.events.find((e) => e.id === refundFor.expenseId) : undefined;
@@ -63,7 +63,7 @@ export function EventRow({ event, onOpen }: { event: FinancialEvent; /** Tapping
         <div className="min-w-0 flex-1">
           <p className="break-words font-medium leading-snug">{title}</p>
           <p className="truncate text-sm text-muted-foreground">
-            {formatDisplayDate(event.date)} · {describer.subtitle(event)}
+            {event.date.slice(0, 4) === today.slice(0, 4) ? formatDayMonth(event.date) : formatDisplayDate(event.date)} · {describer.subtitle(event)}
           </p>
           {refunded > 0 && (
             <p className="mt-0.5 text-xs font-medium text-emerald-700">
@@ -101,7 +101,7 @@ export function EventRow({ event, onOpen }: { event: FinancialEvent; /** Tapping
             <Info />
           </Button>
         )}
-        <Button variant="ghost" size="icon" aria-label={`Edit ${title}`} title="Edit" onClick={() => openEdit(event.id)}>
+        <Button variant="ghost" size="icon" aria-label={`Edit ${title}`} title="Edit" className="max-sm:hidden" onClick={() => openEdit(event.id)}>
           <Pencil />
         </Button>
         <Button variant="ghost" size="icon" aria-label={`Duplicate ${title}`} title="Duplicate" className="hidden sm:inline-flex" onClick={() => openDuplicate(event.id)}>

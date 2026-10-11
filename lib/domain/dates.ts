@@ -14,10 +14,6 @@ export function monthKey(isoDate: string): string {
   return isoDate.slice(0, 7);
 }
 
-export function currentMonthKey(): string {
-  return monthKey(todayISO());
-}
-
 export function shiftMonth(ym: string, delta: number): string {
   const [y, m] = ym.split("-").map(Number);
   const d = new Date(y, m - 1 + delta, 1);
@@ -92,11 +88,6 @@ export function formatDayMonth(isoDate: string): string {
 /** e.g. "Sept 2026" style short month + year: "Oct 2026" */
 export function formatMonthYear(ym: string): string {
   return parse(`${ym}-01`).toLocaleDateString("en-IN", { month: "short", year: "numeric" });
-}
-
-/** e.g. "Mon" */
-export function formatWeekdayShort(isoDate: string): string {
-  return parse(isoDate).toLocaleDateString("en-IN", { weekday: "short" });
 }
 
 /** e.g. "October 4" */

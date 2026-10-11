@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Camera, Eye, EyeOff, KeyRound, Loader2, LockKeyhole, LogOut, Monitor, Moon, Pencil, Sun, Trash2 } from "lucide-react";
+import { createContext, useContext, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { Camera, ChevronLeft, ChevronRight, Cloud, Eye, EyeOff, KeyRound, Loader2, LockKeyhole, LogOut, Monitor, Moon, Pencil, RotateCcw, ShieldCheck, Sun, SunMoon, Tags, Trash2, UserRound } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
@@ -14,6 +14,9 @@ import { signOut as signOutAndReload } from "@/lib/cloud/sign-out";
 import { formatDisplayDate } from "@/lib/domain/dates";
 import { loadPhoto, saveProfile, useProfile, type Profile } from "@/lib/profile";
 import { setTheme, useTheme, type ThemeChoice } from "@/lib/theme";
+import { CategoriesList } from "./money/manage-lists";
+import { ResetDialog } from "./money/reset-app";
+import { useFinance } from "./finance-provider";
 import { cn } from "@/lib/utils";
 import { PasscodePad } from "./app-lock";
 import { LOGIN_DOMAIN, usernameFor } from "./cloud-gate";
@@ -98,7 +101,7 @@ export function ProfileMenu() {
         {unsaved && <span className="absolute -right-0.5 -top-0.5 size-2.5 rounded-full bg-amber-500 ring-2 ring-card" />}
       </LiquidButton>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-h-[90dvh] sm:max-w-lg sm:overflow-y-auto">
           <ProfileBody me={me} profile={profile} user={user} />
         </DialogContent>
       </Dialog>
@@ -106,56 +109,224 @@ export function ProfileMenu() {
   );
 }
 
+type View = "main" | "details" | "security" | "account" | "categories";
+
+/**
+ * Like a phone app's settings: the photo and name on top, then grouped rows. Each row opens its own page
+ * within the sheet (with a back arrow); the theme switches right on its row, and Sign out is the last row.
+ */
 function ProfileBody({ me, profile, user }: { me: Identity; profile: Profile; user: User | null }) {
+  const [view, setView] = useState<View>("main");
   const [editing, setEditing] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const status = useSyncStatus();
+  const f = useFinance();
+  const signedIn = cloudConfigured && !!user;
+
+  const signOut = async () => {
+    setSigningOut(true);
+    if (!(await signOutAndReload())) setSigningOut(false);
+  };
+
+  if (view !== "main") {
+    const back = () => {
+      setView("main");
+      setEditing(false);
+    };
+    const title = { details: "Personal details", security: "Security", account: "Sign-in & backup", categories: "Spending categories" }[view];
+    return (
+      <>
+        <DialogHeader className="flex flex-row items-center gap-1 space-y-0 pr-8">
+          <Button variant="ghost" size="icon" className="-ml-2 shrink-0" aria-label="Back to settings" onClick={back}>
+            <ChevronLeft />
+          </Button>
+          <DialogTitle className="truncate">{title}</DialogTitle>
+        </DialogHeader>
+        {/* The page's own sections drop their titles: the header above already says what this is. */}
+        <BareSections.Provider value>
+          {view === "details" &&
+            (editing ? (
+              <DetailsForm profile={profile} defaultName={me.name} onDone={() => setEditing(false)} />
+            ) : (
+              <Section
+                title="Personal details"
+                action={
+                  <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setEditing(true)}>
+                    <Pencil /> Edit
+                  </Button>
+                }
+              >
+                <Rows
+                  empty="Add your phone, birthday and other details."
+                  rows={[
+                    ["Full name", profile.name],
+                    ["Phone", profile.phone],
+                    ["Date of birth", profile.dateOfBirth && formatDisplayDate(profile.dateOfBirth)],
+                    ["City", profile.city],
+                    ["Occupation", profile.occupation],
+                  ]}
+                />
+              </Section>
+            ))}
+          {view === "security" && user && <SecuritySection user={user} />}
+          {view === "account" && <SignInSection me={me} />}
+          {view === "categories" && <CategoriesList />}
+        </BareSections.Provider>
+      </>
+    );
+  }
+
+  const added = f.expenseCategories.filter((c) => !c.isDefault).length;
+  const details = [profile.phone, profile.city, profile.occupation].filter(Boolean).join(" · ");
+  const passcode = user ? lockSettings(user).passcode : undefined;
+
   return (
     <>
-      <DialogHeader className="flex flex-row items-center gap-4 space-y-0 pr-6">
+      <DialogHeader className="flex flex-col items-center gap-2 space-y-0 pt-2 text-center">
         <PhotoPicker me={me} profile={profile} />
-        <div className="min-w-0">
-          <DialogTitle className="truncate">{me.name}</DialogTitle>
+        <div className="min-w-0 max-w-full">
+          <DialogTitle className="truncate text-xl">{me.name}</DialogTitle>
           <DialogDescription className="truncate">{me.email ?? (me.username ? `@${me.username}` : "Your profile")}</DialogDescription>
         </div>
       </DialogHeader>
 
-      {editing ? (
-        <DetailsForm profile={profile} defaultName={me.name} onDone={() => setEditing(false)} />
-      ) : (
-        <Section
-          title="Personal details"
-          action={
-            <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
-              <Pencil /> Edit
-            </Button>
-          }
-        >
-          <Rows
-            empty="Add your phone, birthday and other details."
-            rows={[
-              ["Full name", profile.name],
-              ["Phone", profile.phone],
-              ["Date of birth", profile.dateOfBirth && formatDisplayDate(profile.dateOfBirth)],
-              ["City", profile.city],
-              ["Occupation", profile.occupation],
-            ]}
+      <Group title="Account">
+        <NavRow icon={UserRound} tint="bg-sky-500" label="Personal details" value={details || "Add details"} onClick={() => setView("details")} />
+        {signedIn && <NavRow icon={ShieldCheck} tint="bg-emerald-600" label="Security" value={passcode ? "Passcode on" : "Passcode off"} onClick={() => setView("security")} />}
+        {signedIn && (
+          <NavRow
+            icon={Cloud}
+            tint="bg-indigo-500"
+            label="Sign-in & backup"
+            value={<span className={cn(status === "error" && "text-amber-600")}>{SYNC_LABEL[status]}</span>}
+            onClick={() => setView("account")}
           />
-        </Section>
-      )}
+        )}
+      </Group>
 
-      <AppearanceSection />
-      {cloudConfigured && user && <SecuritySection user={user} />}
-      {cloudConfigured && <SignInSection me={me} />}
+      <Group title="Preferences">
+        <ThemeRow />
+        <NavRow
+          icon={Tags}
+          tint="bg-orange-500"
+          label="Spending categories"
+          value={added > 0 ? `${added} added` : "Built-in only"}
+          onClick={() => setView("categories")}
+        />
+      </Group>
+
+      <Group>
+        <NavRow icon={RotateCcw} tint="bg-red-500" label="Start over" danger onClick={() => setResetOpen(true)} />
+        {cloudConfigured && (
+          <NavRow
+            icon={signingOut ? Loader2 : LogOut}
+            tint="bg-slate-500"
+            label="Sign out"
+            danger
+            chevron={false}
+            disabled={signingOut}
+            onClick={signOut}
+          />
+        )}
+      </Group>
+      <ResetDialog open={resetOpen} onOpenChange={setResetOpen} />
     </>
   );
 }
 
+/** A settings group: an optional small title, then rows in one rounded box. */
+function Group({ title, children }: { title?: string; children: ReactNode }) {
+  return (
+    <section className="grid gap-1.5">
+      {title && <h3 className="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{title}</h3>}
+      <div className="divide-y overflow-hidden rounded-2xl border bg-card">{children}</div>
+    </section>
+  );
+}
+
+/** One settings row: a coloured icon tile, the label, its current value, and a chevron to its page. */
+function NavRow({
+  icon: Icon,
+  tint,
+  label,
+  value,
+  onClick,
+  danger,
+  chevron = true,
+  disabled,
+}: {
+  icon: typeof Sun;
+  tint: string;
+  label: string;
+  value?: ReactNode;
+  onClick: () => void;
+  danger?: boolean;
+  chevron?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="flex w-full items-center gap-3 px-3.5 py-3 text-left outline-none transition-colors hover:bg-muted/60 focus-visible:bg-muted/60 disabled:opacity-60"
+    >
+      <span className={cn("grid size-8 shrink-0 place-items-center rounded-lg text-white", tint)}>
+        <Icon className={cn("size-4", Icon === Loader2 && "animate-spin")} />
+      </span>
+      <span className={cn("min-w-0 flex-1 text-[15px] font-medium", danger && "text-destructive")}>{label}</span>
+      {value && <span className="min-w-0 max-w-[45%] truncate text-sm text-muted-foreground">{value}</span>}
+      {chevron && <ChevronRight className="size-4 shrink-0 text-muted-foreground/70" />}
+    </button>
+  );
+}
+
+/** Light, dark or automatic, switched right on the row. Saved on this device only. */
+function ThemeRow() {
+  const theme = useTheme();
+  return (
+    <div className="flex items-center gap-3 px-3.5 py-2.5">
+      <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-violet-500 text-white">
+        <SunMoon className="size-4" />
+      </span>
+      <span className="min-w-0 flex-1 text-[15px] font-medium">Appearance</span>
+      <div role="radiogroup" aria-label="Theme" className="flex shrink-0 gap-0.5 rounded-lg bg-muted p-0.5">
+        {THEMES.map(({ value, label, icon: Icon }) => (
+          <button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={theme === value}
+            aria-label={label}
+            title={label}
+            onClick={() => setTheme(value)}
+            className={cn(
+              "grid size-8 place-items-center rounded-md transition-colors",
+              theme === value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <Icon className="size-4" />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Inside a settings page, sections leave out their own title (the page header already has it). */
+const BareSections = createContext(false);
+
 function Section({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
+  const bare = useContext(BareSections);
   return (
     <section className="grid gap-2">
-      <div className="flex min-h-8 items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-muted-foreground">{title}</h3>
-        {action}
-      </div>
+      {(!bare || action) && (
+        <div className="flex min-h-8 items-center justify-between gap-2">
+          {!bare && <h3 className="text-sm font-semibold text-muted-foreground">{title}</h3>}
+          {action}
+        </div>
+      )}
       {children}
     </section>
   );
@@ -345,40 +516,9 @@ const THEMES: { value: ThemeChoice; label: string; icon: typeof Sun }[] = [
   { value: "system", label: "Auto", icon: Monitor },
 ];
 
-/** Light, dark, or follow the phone / computer. Saved on this device only. */
-function AppearanceSection() {
-  const theme = useTheme();
-  return (
-    <Section title="Appearance">
-      <div role="radiogroup" aria-label="Theme" className="grid grid-cols-3 gap-1 rounded-xl border bg-muted p-1">
-        {THEMES.map(({ value, label, icon: Icon }) => (
-          <button
-            key={value}
-            type="button"
-            role="radio"
-            aria-checked={theme === value}
-            onClick={() => setTheme(value)}
-            className={cn(
-              "flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium transition-colors",
-              theme === value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            <Icon className="size-4" /> {label}
-          </button>
-        ))}
-      </div>
-    </Section>
-  );
-}
-
+/** Who's signed in and whether the cloud copy is up to date. (Sign out is the last row of the settings.) */
 function SignInSection({ me }: { me: Identity }) {
   const status = useSyncStatus();
-  const [busy, setBusy] = useState(false);
-
-  const signOut = async () => {
-    setBusy(true);
-    if (!(await signOutAndReload())) setBusy(false);
-  };
 
   return (
     <Section title="Sign-in">
@@ -391,9 +531,6 @@ function SignInSection({ me }: { me: Identity }) {
           ["Cloud backup", <span key="sync" className={cn(status === "error" && "text-amber-600")}>{SYNC_LABEL[status]}</span>],
         ]}
       />
-      <Button variant="outline" onClick={signOut} disabled={busy} className="mt-1 w-full text-destructive hover:text-destructive">
-        {busy ? <Loader2 className="animate-spin" /> : <LogOut />} Sign out
-      </Button>
     </Section>
   );
 }

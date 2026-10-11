@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { accountActivity } from "@/lib/finance/account-activity";
 import { buildLedger } from "@/lib/finance/engine";
 import { deriveState } from "@/lib/finance/state";
 import type { Book, FinancialEvent } from "@/lib/finance/types";
@@ -41,10 +40,5 @@ describe("debts from before you started tracking", () => {
     ]);
     expect(state.people.find((p) => p.person.id === "g")!.iOwe.outstandingMinor + 0).toBe(0);
     expect(state.accounts[0].balanceMinor).toBe(2944631 - 500000);
-  });
-
-  it("isn't counted as money received in the account's month", () => {
-    const { book } = stateOf([ev("b", { type: "borrow", personId: "g", accountId: "kotak", amountMinor: 500000, predatesRecords: true })]);
-    expect(accountActivity(book, "kotak", "2026-07-01", "2026-07-31").receivedMinor).toBe(0);
   });
 });

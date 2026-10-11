@@ -138,92 +138,94 @@ function ManagedRow({
   );
 }
 
-/** People and categories: fix a typo, tidy up, or remove what you never used. */
-export function ManageLists() {
+/** People: fix a typo in a name, tidy up, or remove someone you never used. */
+export function PeopleList({ className }: { className?: string }) {
   const f = useFinance();
   const people = f.state.people;
-  const custom = f.expenseCategories.filter((c) => !c.isDefault);
-  const builtIn = f.expenseCategories.filter((c) => c.isDefault);
 
   return (
-    <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
-      <Card>
-        <CardHeader>
-          <CardTitle>People</CardTitle>
-        </CardHeader>
-        <SamePeopleBanner className="mx-4 sm:mx-5" />
-        {people.length === 0 ? (
-          <CardContent className="py-6 text-sm text-muted-foreground">
-            Added when you lend, borrow or split a bill.
-          </CardContent>
-        ) : (
-          <ul className="divide-y py-2">
-            {people.map((p) => {
-              const owed = p.owedToMe.outstandingMinor;
-              const owe = p.iOwe.outstandingMinor;
-              const detail = owed > 0 ? `Owes you ${formatRupees(owed)}` : owe > 0 ? `You owe ${formatRupees(owe)}` : "All settled";
-              return (
-                <ManagedRow
-                  key={p.person.id}
-                  lead={
-                    <PartyLogo
-                      name={p.person.name}
-                      className="!rounded-full [&>img]:!size-6"
-                      fallback={<span className="grid size-9 shrink-0 place-items-center rounded-full bg-slate-100 text-sm font-semibold text-slate-600">{p.person.name.charAt(0).toUpperCase()}</span>}
-                    />
-                  }
-                  name={p.person.name}
-                  detail={detail}
-                  href={activityHref({ person: p.person.id })}
-                  onRename={(name) => {
-                    const r = f.renamePerson(p.person.id, name);
-                    return r.ok ? null : r.issues[0]?.message ?? "Couldn't rename.";
-                  }}
-                  onDelete={() => {
-                    const r = f.deletePerson(p.person.id);
-                    return r.ok ? null : r.issues[0]?.message ?? "Couldn't delete.";
-                  }}
-                />
-              );
-            })}
-          </ul>
-        )}
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Spending categories</CardTitle>
-        </CardHeader>
+    <Card className={className}>
+      <CardHeader className="max-sm:px-4 max-sm:pt-4">
+        <CardTitle>People</CardTitle>
+      </CardHeader>
+      <SamePeopleBanner className="mx-4 sm:mx-5" />
+      {people.length === 0 ? (
+        <CardContent className="py-6 text-sm text-muted-foreground">
+          Added when you lend, borrow or split a bill.
+        </CardContent>
+      ) : (
         <ul className="divide-y py-2">
-          {custom.map((c) => {
-            const used = f.categoryUsage(c.id);
+          {people.map((p) => {
+            const owed = p.owedToMe.outstandingMinor;
+            const owe = p.iOwe.outstandingMinor;
+            const detail = owed > 0 ? `Owes you ${formatRupees(owed)}` : owe > 0 ? `You owe ${formatRupees(owe)}` : "All settled";
             return (
               <ManagedRow
-                key={c.id}
-                lead={<CategoryIcon category={c} tile className="!size-9 !rounded-lg" />}
-                name={c.name}
-                detail={used > 0 ? `Used in ${used} ${used === 1 ? "entry" : "entries"}` : "Not used yet"}
-                onRename={async (name) => {
-                  const r = await f.renameCategory(c.id, name);
-                  return r.ok ? null : r.message;
+                key={p.person.id}
+                lead={
+                  <PartyLogo
+                    name={p.person.name}
+                    className="!rounded-full [&>img]:!size-6"
+                    fallback={<span className="grid size-9 shrink-0 place-items-center rounded-full bg-slate-100 text-sm font-semibold text-slate-600">{p.person.name.charAt(0).toUpperCase()}</span>}
+                  />
+                }
+                name={p.person.name}
+                detail={detail}
+                href={activityHref({ person: p.person.id })}
+                onRename={(name) => {
+                  const r = f.renamePerson(p.person.id, name);
+                  return r.ok ? null : r.issues[0]?.message ?? "Couldn't rename.";
                 }}
-                onDelete={async () => {
-                  const r = await f.deleteCategory(c.id);
-                  return r.ok ? null : r.message;
+                onDelete={() => {
+                  const r = f.deletePerson(p.person.id);
+                  return r.ok ? null : r.issues[0]?.message ?? "Couldn't delete.";
                 }}
               />
             );
           })}
-          {custom.length === 0 && (
-            <li className="px-5 py-4 text-sm text-muted-foreground">
-              Categories you add show up here.
-            </li>
-          )}
         </ul>
-        <p className="border-t px-5 py-3 text-xs text-muted-foreground">
-          Built in: {builtIn.map((c) => c.name).join(", ")}.
-        </p>
-      </Card>
+      )}
+    </Card>
+  );
+}
+
+/** Spending categories you added: rename or remove them. The built-in ones are listed below them. Lives in the profile's settings. */
+export function CategoriesList() {
+  const f = useFinance();
+  const custom = f.expenseCategories.filter((c) => !c.isDefault);
+  const builtIn = f.expenseCategories.filter((c) => c.isDefault);
+
+  return (
+    <div className="overflow-hidden rounded-xl border">
+      <ul className="divide-y">
+        {custom.map((c) => {
+          const used = f.categoryUsage(c.id);
+          return (
+            <ManagedRow
+              key={c.id}
+              lead={<CategoryIcon category={c} tile className="!size-9 !rounded-lg" />}
+              name={c.name}
+              detail={used > 0 ? `Used in ${used} ${used === 1 ? "entry" : "entries"}` : "Not used yet"}
+              onRename={async (name) => {
+                const r = await f.renameCategory(c.id, name);
+                return r.ok ? null : r.message;
+              }}
+              onDelete={async () => {
+                const r = await f.deleteCategory(c.id);
+                return r.ok ? null : r.message;
+              }}
+            />
+          );
+        })}
+        {custom.length === 0 && (
+          <li className="px-4 py-3 text-sm text-muted-foreground">
+            Categories you add show up here.
+          </li>
+        )}
+      </ul>
+      <p className="border-t px-4 py-3 text-xs text-muted-foreground">
+        Built in: {builtIn.map((c) => c.name).join(", ")}.
+      </p>
     </div>
   );
 }

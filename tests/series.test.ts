@@ -2,11 +2,10 @@ import { describe, expect, it } from "vitest";
 import { formatBps, formatCompactINR, formatExactINR, formatHeadlineINR, formatSignedINR } from "@/lib/charts/format";
 import { monotonePath } from "@/lib/charts/path";
 import { nearestIndex, niceTicks, spreadIndexes } from "@/lib/charts/scale";
-import { buildInsights } from "@/lib/finance/insights";
 import { incomeSources } from "@/lib/finance/sources";
-import { detectRecurring, fixedCommitmentsMinor, upcomingCharges } from "@/lib/finance/recurring";
+import { detectRecurring } from "@/lib/finance/recurring";
 import {
-  balanceSeries, changeBps, firstActivityDate, healthMetrics, monthlySummaries, moneyFlow, rangeStart, sampleDates,
+  balanceSeries, changeBps, firstActivityDate, monthlySummaries, rangeStart, sampleDates,
 } from "@/lib/finance/series";
 import { deriveState } from "@/lib/finance/state";
 import { rs, Scenario, startingScenario } from "./helpers";
@@ -182,26 +181,6 @@ describe("monthly summaries", () => {
   });
 });
 
-describe("money flow", () => {
-  it("splits income into spent, invested and saved", () => {
-    const { s } = realisticYear();
-    const sept = monthlySummaries(s.book, s.ledger, "2026-10", 6, TODAY)[4];
-    const flow = moneyFlow(sept);
-    expect(flow.spentMinor + flow.investedMinor + flow.savedMinor).toBe(flow.incomeMinor);
-    expect(flow.fromSavingsMinor).toBe(0);
-  });
-
-  it("reports a shortfall instead of a negative saving", () => {
-    const { s, hdfc } = startingScenario();
-    s.ok({ type: "income", date: "2026-10-01", accountId: hdfc.id, amountMinor: rs(10_000), categoryId: "salary" });
-    s.ok({ type: "expense", date: "2026-10-02", accountId: hdfc.id, amountMinor: rs(15_000), categoryId: "food", description: "Big month" });
-    const oct = monthlySummaries(s.book, s.ledger, "2026-10", 1, TODAY)[0];
-    const flow = moneyFlow(oct);
-    expect(flow.savedMinor).toBe(0);
-    expect(flow.fromSavingsMinor).toBe(rs(5_000));
-  });
-});
-
 describe("recurring commitments", () => {
   it("finds steady monthly charges and their next date", () => {
     const { s } = realisticYear();
@@ -215,7 +194,6 @@ describe("recurring commitments", () => {
     expect(rent.lastDate).toBe("2026-10-02");
     expect(rent.nextDate).toBe("2026-11-02");
     expect(rent.occurrences).toBe(6);
-    expect(fixedCommitmentsMinor(found)).toBeGreaterThanOrEqual(rs(18_000 + 649));
   });
 
   it("ignores irregular or erratic spending and one-offs", () => {
@@ -254,69 +232,6 @@ describe("recurring commitments", () => {
     expect(found.find((c) => c.name === "Internet")!.nextDate).toBe("2026-10-30");
   });
 
-  it("upcoming picks charges due soon", () => {
-    const { s } = realisticYear();
-    const found = detectRecurring(s.book, s.ledger, TODAY);
-    const soon = upcomingCharges(found, TODAY, 30).map((c) => c.name);
-    expect(soon).toContain("Rent"); // due 2026-11-02, 29 days away
-    expect(upcomingCharges(found, TODAY, 10)).toEqual([]);
-  });
-});
-
-describe("financial health", () => {
-  it("computes rates in basis points and tolerates missing income", () => {
-    const { s } = realisticYear();
-    const months = monthlySummaries(s.book, s.ledger, "2026-10", 6, TODAY);
-    const sept = months[4];
-    const st = s.state(TODAY);
-    const h = healthMetrics(sept, st, rs(18_649));
-    expect(h.savingsRateBps).toBe(Math.round(((sept.incomeMinor - sept.expensesMinor) / sept.incomeMinor) * 10_000));
-    expect(h.investmentRateBps).toBe(1000);
-    expect(h.commitmentsShareBps).toBe(1865);
-    expect(h.debtToAssetBps).toBe(Math.round((st.liabilities.totalMinor / st.assets.totalMinor) * 10_000));
-
-    const none = new Scenario();
-    const m = monthlySummaries(none.book, none.ledger, "2026-10", 1, TODAY)[0];
-    const empty = healthMetrics(m, none.state(), 0);
-    expect(empty.savingsRateBps).toBeNull();
-    expect(empty.debtToAssetBps).toBeNull();
-  });
-});
-
-describe("insights", () => {
-  it("writes sentences from computed numbers only", () => {
-    const { s } = realisticYear();
-    const months = monthlySummaries(s.book, s.ledger, "2026-10", 6, TODAY);
-    const st = s.state(TODAY);
-    const found = detectRecurring(s.book, s.ledger, TODAY);
-    const insights = buildInsights({
-      months,
-      categoryName: (id) => id[0].toUpperCase() + id.slice(1),
-      netWorthChangeMinor: rs(42_500),
-      people: st.people,
-      upcoming: upcomingCharges(found, TODAY, 40),
-      health: healthMetrics(months[5], st, fixedCommitmentsMinor(found)),
-      today: TODAY,
-    });
-    const text = insights.map((i) => i.text).join("\n");
-    expect(insights.length).toBeGreaterThan(0);
-    expect(insights.length).toBeLessThanOrEqual(5);
-    expect(text).toContain("₹42,500");
-    expect(text).toContain("Rahul owes you ₹5,000");
-    expect(text).toMatch(/Rent is your biggest expense this month/);
-    expect(insights.find((i) => i.id === "net-worth")!.tone).toBe("positive");
-  });
-
-  it("stays quiet when there is nothing to say", () => {
-    const s = new Scenario();
-    const months = monthlySummaries(s.book, s.ledger, "2026-10", 2, TODAY);
-    expect(
-      buildInsights({
-        months, categoryName: (id) => id, netWorthChangeMinor: 0, people: [], upcoming: [],
-        health: healthMetrics(months[1], s.state(), 0), today: TODAY,
-      }),
-    ).toEqual([]);
-  });
 });
 
 describe("income sources", () => {

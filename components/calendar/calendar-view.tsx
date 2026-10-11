@@ -8,14 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { formatCompactINR, formatExactINR } from "@/lib/charts/format";
 import { activityHref } from "@/lib/charts/links";
-import { daysBetween, formatDayMonth, formatMonthLong, formatWeekdayDate, monthEnd, monthKey, shiftMonth } from "@/lib/domain/dates";
-import { calendarMonth, expectedPayments, monthOutlook, type CalendarCardDue, type CalendarDay, type ExpectedPayment } from "@/lib/finance/calendar";
+import { daysBetween, formatMonthLong, formatMonthShort, formatWeekdayDate, monthEnd, monthKey, monthStart, shiftMonth } from "@/lib/domain/dates";
+import { calendarMonth, monthPace, spendLevels, type CalendarCardDue, type CalendarDay, type SpendLevel } from "@/lib/finance/calendar";
 import { cardDueDates } from "@/lib/finance/card-bill-status";
 import { chronological } from "@/lib/finance/order";
-import { detectRecurring, type Frequency } from "@/lib/finance/recurring";
 import { cn } from "@/lib/utils";
-import { BrandLogo } from "../brand-logo";
-import { CategoryIcon } from "../category-icon";
 import { useEventDialog } from "../events/event-dialog";
 import { EventRow } from "../events/event-row";
 import { useFinance } from "../finance-provider";
@@ -25,7 +22,15 @@ import { useStatements } from "../statements/statements-provider";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const isMonth = (s: string | null): s is string => !!s && /^\d{4}-\d{2}$/.test(s);
-const RHYTHM: Record<Frequency, string> = { weekly: "every week", monthly: "every month", yearly: "every year" };
+// A day's shading for what went out, from barely there to the month's heaviest days. It's laid over the cell's own
+// background (not in place of it), so the grid lines behind the cells don't show through.
+const HEAT: Record<SpendLevel, string> = {
+  0: "",
+  1: "[background-image:linear-gradient(rgb(239_68_68/0.07),rgb(239_68_68/0.07))]",
+  2: "[background-image:linear-gradient(rgb(239_68_68/0.14),rgb(239_68_68/0.14))]",
+  3: "[background-image:linear-gradient(rgb(239_68_68/0.22),rgb(239_68_68/0.22))]",
+  4: "[background-image:linear-gradient(rgb(239_68_68/0.32),rgb(239_68_68/0.32))]",
+};
 
 const byDate = <T,>(items: T[], dateOf: (item: T) => string) => {
   const map = new Map<string, T[]>();
@@ -49,8 +54,8 @@ export function ActivityViewSwitch({ current }: { current: "list" | "calendar" }
   );
   return (
     <nav aria-label="View" className="flex rounded-full bg-muted p-0.5">
-      {tab("list", "/activity", "List")}
       {tab("calendar", "/calendar", "Calendar")}
+      {tab("list", "/activity", "Statement")}
     </nav>
   );
 }
@@ -70,9 +75,8 @@ export function CalendarView() {
 /**
  * A month at a glance, like a paper money diary: every day shows what came in and what was spent, and
  * tapping a day lists its entries. Swipe sideways (or use the arrows) to move between months.
- * `embedded` drops the cards around the two halves, for when it sits inside a dashboard card.
  */
-export function CalendarBoard({ initialMonth, embedded = false }: { initialMonth?: string; embedded?: boolean }) {
+export function CalendarBoard({ initialMonth }: { initialMonth?: string }) {
   const { status, book, ledger, today } = useFinance();
   const statements = useStatements();
   const { openAdd } = useEventDialog();
@@ -96,12 +100,9 @@ export function CalendarBoard({ initialMonth, embedded = false }: { initialMonth
     [book.events, selected],
   );
   const selectedDay = weeks.flat().find((d) => d.date === selected);
+  const heat = useMemo(() => spendLevels(weeks.flat()), [weeks]);
 
-  // What's still to come: repeating payments on the days they're expected, and the due dates card statements print.
-  const charges = useMemo(() => detectRecurring(book, ledger, today), [book, ledger, today]);
-  const gridFrom = weeks[0][0].date;
-  const gridTo = weeks[weeks.length - 1][6].date;
-  const expected = useMemo(() => expectedPayments(charges, today, gridFrom, gridTo), [charges, today, gridFrom, gridTo]);
+  // The due dates card statements print.
   const dues = useMemo<CalendarCardDue[]>(
     () =>
       book.accounts
@@ -115,10 +116,8 @@ export function CalendarBoard({ initialMonth, embedded = false }: { initialMonth
         ),
     [book, statements.imports],
   );
-  const expectedByDay = useMemo(() => byDate(expected, (p) => p.date), [expected]);
   const duesByDay = useMemo(() => byDate(dues, (d) => d.dueDate), [dues]);
-  const outlook = monthOutlook(ym, today, expected, dues);
-  const dayExpected = (selected && expectedByDay.get(selected)) || [];
+  const pace = useMemo(() => monthPace(book, ledger, ym, today, totals.spent), [book, ledger, ym, today, totals.spent]);
   const dayDues = (selected && duesByDay.get(selected)) || [];
 
   const goTo = (next: string) => {
@@ -145,12 +144,14 @@ export function CalendarBoard({ initialMonth, embedded = false }: { initialMonth
   if (status === "loading") return <div className="h-64 animate-pulse rounded-2xl bg-muted" aria-busy />;
 
   const left = totals.income - totals.spent;
-  const Pane = embedded ? "div" : Card;
+  // Average spend per day over the days gone by: all of a past month, up to today in this one, none in a future one.
+  const daysGone = ym < monthKey(today) ? daysBetween(monthStart(ym), monthEnd(ym)) + 1 : ym === monthKey(today) ? daysBetween(monthStart(ym), today) + 1 : 0;
+  const perDay = daysGone > 0 ? Math.round(totals.spent / daysGone / 100) * 100 : null;
 
   return (
-    <div className={cn("grid grid-cols-1 items-start lg:grid-cols-[minmax(0,1fr)_420px]", embedded ? "gap-4 lg:gap-6" : "gap-4 sm:gap-6")}>
-      <Pane className={cn(!embedded && "overflow-hidden")}>
-        <div className={cn("grid gap-3 sm:gap-4", !embedded && "p-2 sm:p-5")}>
+    <div className="grid grid-cols-1 items-start gap-4 sm:gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
+      <Card className="overflow-hidden">
+        <div className="grid gap-2 p-2 sm:gap-4 sm:p-5">
           <div className="flex items-center justify-between gap-2 px-1">
             <Button variant="ghost" size="icon" aria-label="Previous month" onClick={() => goTo(shiftMonth(ym, -1))}>
               <ChevronLeft />
@@ -170,39 +171,52 @@ export function CalendarBoard({ initialMonth, embedded = false }: { initialMonth
             </Button>
           </div>
 
-          <dl className="grid grid-cols-3 divide-x rounded-xl bg-muted/50 py-2 text-center">
-            <div>
-              <dt className="text-xs text-muted-foreground">Income</dt>
-              <dd className="font-semibold tabular-nums text-emerald-700">{formatExactINR(totals.income)}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-muted-foreground">Spent</dt>
-              <dd className="font-semibold tabular-nums text-red-600">{formatExactINR(totals.spent)}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-muted-foreground">Left over</dt>
-              <dd className="font-semibold tabular-nums">{formatExactINR(left)}</dd>
-            </div>
-          </dl>
-          {outlook && (outlook.expectedCount > 0 || outlook.cardBillCount > 0) && (
-            <p className="-mt-1 px-1 text-sm text-muted-foreground" data-testid="month-outlook">
-              {outlook.expectedCount > 0 && (
-                <>
-                  <span className="font-semibold tabular-nums text-foreground">{formatExactINR(outlook.expectedMinor)}</span>{" "}
-                  {ym > monthKey(today) ? `expected to go out in ${formatMonthLong(ym)}` : `still expected to go out by ${formatDayMonth(monthEnd(ym))}`} (
-                  {outlook.expectedCount} repeating {outlook.expectedCount === 1 ? "payment" : "payments"})
-                </>
-              )}
-              {outlook.expectedCount > 0 && outlook.cardBillCount > 0 && ", plus "}
-              {outlook.cardBillCount > 0 && (
-                <>
-                  <span className="font-semibold tabular-nums text-red-600">{formatExactINR(outlook.cardBillsMinor)}</span> left to pay on{" "}
-                  {outlook.cardBillCount === 1 ? "a card bill" : `${outlook.cardBillCount} card bills`} due this month
-                </>
-              )}
-              .
-            </p>
-          )}
+          <div className="rounded-xl bg-muted/50 text-center">
+            <dl className="grid grid-cols-3 divide-x py-1.5 sm:py-2">
+              <div>
+                <dt className="text-[11px] text-muted-foreground sm:text-xs">Income</dt>
+                <dd className="text-sm font-semibold tabular-nums text-emerald-700 sm:text-base">{formatExactINR(totals.income)}</dd>
+              </div>
+              <div>
+                <dt className="text-[11px] text-muted-foreground sm:text-xs">Spent</dt>
+                <dd className="text-sm font-semibold tabular-nums text-red-600 sm:text-base">{formatExactINR(totals.spent)}</dd>
+              </div>
+              <div>
+                <dt className="text-[11px] text-muted-foreground sm:text-xs">Left over</dt>
+                <dd className="text-sm font-semibold tabular-nums sm:text-base">{formatExactINR(left)}</dd>
+              </div>
+            </dl>
+            {/* The month's pace, laid out like the totals above: a day's average, against last month, and where it's heading. */}
+            {(perDay !== null || pace?.previousMinor != null || pace?.projectedMinor != null) && (
+              <dl className="grid auto-cols-fr grid-flow-col divide-x border-t py-1.5 sm:py-2" data-testid="month-pace">
+                {perDay !== null && (
+                  <div>
+                    <dt className="text-[11px] text-muted-foreground sm:text-xs">Per day</dt>
+                    <dd className="text-sm font-semibold tabular-nums sm:text-base">{formatExactINR(perDay)}</dd>
+                  </div>
+                )}
+                {pace?.previousMinor != null &&
+                  (() => {
+                    const diff = totals.spent - pace.previousMinor;
+                    const same = Math.abs(diff) < 100;
+                    return (
+                      <div title={pace.wholeMonth ? undefined : "Against the same days of last month"}>
+                        <dt className="text-[11px] text-muted-foreground sm:text-xs">vs {formatMonthShort(pace.previousMonth)}</dt>
+                        <dd className={cn("text-sm font-semibold tabular-nums sm:text-base", !same && (diff > 0 ? "text-red-600" : "text-emerald-700"))}>
+                          {same ? "Same" : `${diff > 0 ? "▲" : "▼"}${formatExactINR(Math.round(Math.abs(diff) / 100) * 100)}`}
+                        </dd>
+                      </div>
+                    );
+                  })()}
+                {pace?.projectedMinor != null && (
+                  <div>
+                    <dt className="text-[11px] text-muted-foreground sm:text-xs">By month end</dt>
+                    <dd className="text-sm font-semibold tabular-nums sm:text-base">~{formatExactINR(Math.round(pace.projectedMinor / 100) * 100)}</dd>
+                  </div>
+                )}
+              </dl>
+            )}
+          </div>
 
           <div
             role="grid"
@@ -228,8 +242,8 @@ export function CalendarBoard({ initialMonth, embedded = false }: { initialMonth
                   <DayCell
                     key={d.date}
                     day={d}
-                    expected={expectedByDay.get(d.date) ?? []}
                     dues={duesByDay.get(d.date) ?? []}
+                    heat={heat.get(d.date) ?? 0}
                     today={d.date === today}
                     selected={d.date === selected}
                     onPick={() => pick(d)}
@@ -239,9 +253,9 @@ export function CalendarBoard({ initialMonth, embedded = false }: { initialMonth
             ))}
           </div>
         </div>
-      </Pane>
+      </Card>
 
-      <Pane className={cn(embedded ? "overflow-hidden rounded-2xl border bg-card" : "lg:sticky lg:top-24")}>
+      <Card className="lg:sticky lg:top-24">
         {selected ? (
           <>
             <div className="flex items-start justify-between gap-3 border-b px-4 py-3 sm:px-5">
@@ -249,7 +263,7 @@ export function CalendarBoard({ initialMonth, embedded = false }: { initialMonth
                 <h2 className="font-semibold">{formatWeekdayDate(selected)}</h2>
                 <p className="text-sm text-muted-foreground">
                   {dayEvents.length === 0 ? (
-                    dayExpected.length + dayDues.length > 0 ? "Nothing recorded yet" : "Nothing recorded"
+                    dayDues.length > 0 ? "Nothing recorded yet" : "Nothing recorded"
                   ) : (
                     <>
                       {dayEvents.length} {dayEvents.length === 1 ? "entry" : "entries"}
@@ -264,8 +278,8 @@ export function CalendarBoard({ initialMonth, embedded = false }: { initialMonth
                 <Plus /> Add
               </Button>
             </div>
-            {dayEvents.length + dayExpected.length + dayDues.length > 0 ? (
-              <div className={cn(embedded && "max-h-[26rem] overflow-y-auto")}>
+            {dayEvents.length + dayDues.length > 0 ? (
+              <div>
                 {dayEvents.length > 0 && (
                   <ul className="divide-y py-1">
                     {dayEvents.map((e) => (
@@ -273,15 +287,12 @@ export function CalendarBoard({ initialMonth, embedded = false }: { initialMonth
                     ))}
                   </ul>
                 )}
-                {dayExpected.length + dayDues.length > 0 && (
-                  <section aria-label="Expected" className={cn(dayEvents.length > 0 && "border-t")}>
-                    <h3 className="px-4 pt-3 text-xs font-medium uppercase tracking-wide text-muted-foreground sm:px-5">Expected</h3>
+                {dayDues.length > 0 && (
+                  <section aria-label="Due" className={cn(dayEvents.length > 0 && "border-t")}>
+                    <h3 className="px-4 pt-3 text-xs font-medium uppercase tracking-wide text-muted-foreground sm:px-5">Due</h3>
                     <ul className="divide-y py-1">
                       {dayDues.map((d) => (
                         <CardDueRow key={`${d.accountId}-${d.statementDate}`} due={d} today={today} />
-                      ))}
-                      {dayExpected.map((p) => (
-                        <ExpectedRow key={p.charge.key} payment={p} />
                       ))}
                     </ul>
                   </section>
@@ -294,34 +305,8 @@ export function CalendarBoard({ initialMonth, embedded = false }: { initialMonth
         ) : (
           <p className="px-5 py-10 text-center text-sm text-muted-foreground">Tap a day to see what happened on it.</p>
         )}
-      </Pane>
+      </Card>
     </div>
-  );
-}
-
-/** A repeating payment that should come on this day: faded, since it hasn't happened yet. */
-function ExpectedRow({ payment }: { payment: ExpectedPayment }) {
-  const { getCategory } = useFinance();
-  const { charge: c, overdue } = payment;
-  return (
-    <li>
-      <Link
-        href={activityHref({ q: c.name, category: c.categoryId })}
-        aria-label={`${c.name}, expected: see every payment`}
-        className="flex items-center gap-3 px-3 py-3 outline-none transition-colors hover:bg-muted/50 focus-visible:bg-muted/60 sm:px-5"
-      >
-        <span className="opacity-60">
-          <BrandLogo slug={c.brand} name={c.name} fallback={<CategoryIcon category={getCategory(c.categoryId)} tile className="!size-9 !rounded-lg" />} />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium text-muted-foreground">{c.name}</span>
-          <span className={cn("block text-xs", overdue ? "text-amber-700" : "text-muted-foreground")}>
-            {overdue ? "Expected, not recorded yet" : `Expected · ${RHYTHM[c.frequency]}`}
-          </span>
-        </span>
-        <span className="text-sm font-semibold tabular-nums text-muted-foreground">−{formatExactINR(c.amountMinor)}</span>
-      </Link>
-    </li>
   );
 }
 
@@ -357,31 +342,28 @@ function CardDueRow({ due, today }: { due: CalendarCardDue; today: string }) {
 
 function DayCell({
   day,
-  expected,
   dues,
+  heat,
   today,
   selected,
   onPick,
 }: {
   day: CalendarDay;
-  expected: ExpectedPayment[];
   dues: CalendarCardDue[];
+  heat: SpendLevel;
   today: boolean;
   selected: boolean;
   onPick: () => void;
 }) {
   const dayNumber = Number(day.date.slice(8));
   const weekday = new Date(`${day.date}T00:00:00`).getDay();
-  const expectedMinor = expected.reduce((t, p) => t + p.charge.amountMinor, 0);
   const owedOnCards = dues.filter((d) => d.latest).reduce((t, d) => t + d.remainingMinor, 0);
-  const logo = expected.find((p) => p.charge.brand)?.charge;
   const label = [
     formatWeekdayDate(day.date),
     day.incomeMinor > 0 && `income ${formatExactINR(day.incomeMinor)}`,
     day.expensesMinor > 0 && `spent ${formatExactINR(day.expensesMinor)}`,
     day.expensesMinor < 0 && `${formatExactINR(-day.expensesMinor)} came back`,
     day.entryCount > 0 && `${day.entryCount} ${day.entryCount === 1 ? "entry" : "entries"}`,
-    expected.length > 0 && `expected ${formatExactINR(expectedMinor)} (${expected.map((p) => p.charge.name).join(", ")})`,
     dues.length > 0 && (owedOnCards > 0 ? `card bill due, ${formatExactINR(owedOnCards)} left to pay` : "card bill due"),
   ]
     .filter(Boolean)
@@ -395,9 +377,10 @@ function DayCell({
       aria-label={label}
       onClick={onPick}
       className={cn(
-        "relative flex min-h-16 min-w-0 flex-col items-stretch gap-0.5 bg-card p-1 text-left outline-none transition-colors hover:bg-muted/60 focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring sm:min-h-24 sm:p-2",
+        "relative flex min-h-12 min-w-0 flex-col items-stretch gap-0.5 bg-card p-1 text-left outline-none transition-colors hover:bg-muted/60 focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring sm:min-h-24 sm:p-2",
         !day.inMonth && "bg-muted/30 text-muted-foreground/60",
         selected && "z-10 bg-primary/5 ring-2 ring-inset ring-primary",
+        HEAT[heat],
       )}
     >
       <span className="flex items-start justify-between gap-0.5">
@@ -412,7 +395,6 @@ function DayCell({
           {dayNumber}
         </span>
         <span className={cn("flex items-center gap-0.5 pt-0.5", !day.inMonth && "opacity-60")} aria-hidden>
-          {logo && <BrandLogo slug={logo.brand} name={logo.name} fallback={null} className="hidden !size-5 !rounded-md opacity-60 sm:grid [&>img]:!size-4" />}
           {dues.length > 0 &&
             (owedOnCards > 0 ? <span className="size-2 rounded-full bg-red-600 ring-2 ring-card" /> : <CreditCard className="size-3 text-muted-foreground" />)}
         </span>
@@ -421,7 +403,6 @@ function DayCell({
         {day.incomeMinor > 0 && <span className="truncate text-emerald-700">+{formatCompactINR(day.incomeMinor)}</span>}
         {day.expensesMinor > 0 && <span className="truncate text-red-600">−{formatCompactINR(day.expensesMinor)}</span>}
         {day.expensesMinor < 0 && <span className="truncate text-emerald-700">↩{formatCompactINR(-day.expensesMinor)}</span>}
-        {expectedMinor > 0 && <span className="truncate italic text-muted-foreground/80">~{formatCompactINR(expectedMinor)}</span>}
         {day.entryCount > 0 && day.incomeMinor <= 0 && day.expensesMinor === 0 && (
           // Only transfers, loans or investments that day: counted as neither, but still worth a look.
           <span className="ml-auto size-1.5 rounded-full bg-muted-foreground/50" aria-hidden />

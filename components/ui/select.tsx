@@ -68,7 +68,7 @@ function SelectItem({
   return (
     <SelectPrimitive.Item
       className={cn(
-        "relative flex w-full cursor-default select-none items-center rounded-lg py-2 pl-2.5 pr-8 text-sm outline-none data-[highlighted]:bg-muted",
+        "relative flex w-full cursor-pointer select-none items-center rounded-lg py-2 pl-2.5 pr-8 text-sm outline-none data-[disabled]:cursor-not-allowed data-[highlighted]:bg-muted",
         className,
       )}
       {...props}
@@ -83,21 +83,8 @@ function SelectItem({
   );
 }
 
-function SelectGroup(props: React.ComponentProps<typeof SelectPrimitive.Group>) {
-  return <SelectPrimitive.Group {...props} />;
-}
-
-function SelectLabel({ className, ...props }: React.ComponentProps<typeof SelectPrimitive.Label>) {
-  return (
-    <SelectPrimitive.Label
-      className={cn("px-2.5 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground", className)}
-      {...props}
-    />
-  );
-}
-
 function SelectSeparator({ className, ...props }: React.ComponentProps<typeof SelectPrimitive.Separator>) {
   return <SelectPrimitive.Separator className={cn("-mx-1 my-1 h-px bg-border", className)} {...props} />;
 }
 
-export { Select, SelectValue, SelectTrigger, SelectContent, SelectItem, SelectGroup, SelectLabel, SelectSeparator };
+export { Select, SelectValue, SelectTrigger, SelectContent, SelectItem, SelectSeparator };

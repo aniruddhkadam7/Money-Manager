@@ -12,6 +12,7 @@ import { brandFor } from "@/lib/finance/brands";
 import { CategoryIcon } from "../category-icon";
 import { PartyLogo } from "../brand-logo";
 import { ChartCard, EmptyChart, RangeTabs } from "../charts/primitives";
+import { cn } from "@/lib/utils";
 import { useFinance } from "../finance-provider";
 
 const MAX_ROWS = 4;
@@ -74,13 +75,14 @@ function Row({
       <Link href={href} className="flex min-w-0 items-center gap-3 rounded-xl px-1.5 py-1.5 outline-none hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-ring">
         {lead}
         <div className="min-w-0 flex-1">
-          <div className="flex items-baseline justify-between gap-3">
+          {/* Phones (two cards side by side): the name on one line, cut short if need be, and the amount under it. */}
+          <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
             {/* Bank text can hold long unbroken codes ("HSBC01100"): let them wrap anywhere rather than push out of the card. */}
-            <span className="min-w-0 text-sm font-medium text-slate-900 [overflow-wrap:anywhere]">{title}</span>
+            <span className="min-w-0 text-sm font-medium text-slate-900 max-sm:truncate sm:[overflow-wrap:anywhere]">{title}</span>
             <span className="shrink-0 text-sm font-semibold tabular-nums text-slate-900">{amount}</span>
           </div>
           <Bar ratio={ratio} color={color} />
-          <p className="mt-1 truncate text-[11px] text-slate-400">{caption}</p>
+          <p className="mt-1 truncate text-[11px] text-slate-400 max-sm:hidden">{caption}</p>
         </div>
       </Link>
     </li>
@@ -174,7 +176,7 @@ function PeopleCard({ title, side, people }: { title: string; side: "borrowers" 
     <ChartCard
       title={title}
       action={
-        <Link href={activityHref({ group: mine ? "lent" : "borrowed", owed: mine ? "me" : "you" })} className="text-xs font-medium text-emerald-700 hover:underline">
+        <Link href={activityHref({ group: mine ? "lent" : "borrowed", owed: mine ? "me" : "you" })} className="text-xs font-medium text-emerald-700 hover:underline max-sm:hidden">
           {mine ? "All lending" : "All borrowing"}
         </Link>
       }
@@ -185,7 +187,7 @@ function PeopleCard({ title, side, people }: { title: string; side: "borrowers" 
         <>
           <p className="mb-2 text-xs text-slate-500">
             <span className="text-base font-semibold tabular-nums text-slate-900">{formatHeadlineINR(total)}</span>{" "}
-            {mine ? `owed to you by ${rows.length} ${rows.length === 1 ? "person" : "people"}` : `owed by you to ${rows.length} ${rows.length === 1 ? "person" : "people"}`}
+            <span className="max-sm:hidden">{mine ? `owed to you by ${rows.length} ${rows.length === 1 ? "person" : "people"}` : `owed by you to ${rows.length} ${rows.length === 1 ? "person" : "people"}`}</span>
           </p>
           <ul className="grid grid-cols-1 gap-0.5">
             {shown.map((r) => (
@@ -217,15 +219,19 @@ export function hasPartyData(state: FinancialState, hasIncome: boolean): boolean
 }
 
 export function TopParties({ state }: { state: FinancialState }) {
+  // Phones: income sources repeat "Where you earned" just above, so only the two people cards show, side by side,
+  // and only when someone owes or is owed something.
+  const open = state.people.some((p) => p.owedToMe.outstandingMinor > 0 || p.iOwe.outstandingMinor > 0);
+  const people = cn("min-w-0 [&>section]:h-full", !open && "max-md:hidden");
   return (
-    <div className="col-span-full grid grid-cols-1 gap-4 md:grid-cols-3">
-      <div className="min-w-0 [&>section]:h-full">
+    <div className="col-span-full grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3">
+      <div className="min-w-0 max-md:hidden [&>section]:h-full">
         <IncomeSourcesCard />
       </div>
-      <div className="min-w-0 [&>section]:h-full">
+      <div className={people}>
         <PeopleCard title="Who owes you" side="borrowers" people={state.people} />
       </div>
-      <div className="min-w-0 [&>section]:h-full">
+      <div className={people}>
         <PeopleCard title="Who you owe" side="lenders" people={state.people} />
       </div>
     </div>

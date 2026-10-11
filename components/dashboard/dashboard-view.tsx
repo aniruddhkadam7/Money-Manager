@@ -8,26 +8,22 @@ import { buildDashboardModel } from "@/lib/finance/dashboard-model";
 import { useEventDialog } from "../events/event-dialog";
 import { useFinance } from "../finance-provider";
 import { AccountsSection } from "./accounts-section";
-import { CalendarSection } from "./calendar-section";
-import { IncomeExpenseSection, SpendingSection } from "./cash-flow-sections";
-import { HealthSection } from "./health-section";
+import { SpendingSection } from "./cash-flow-sections";
 import { InvestmentSection } from "./investment-section";
-import { MoneyFlowSection } from "./money-flow-section";
 import { SamePeopleBanner } from "../money/same-people-banner";
 import { SoFarSection } from "./so-far-section";
 import { SummaryHero } from "./summary-hero";
 import { hasPartyData, TopParties } from "./top-parties";
 import { SubscriptionsSection } from "./subscriptions-section";
-import { UpcomingSection } from "./upcoming-and-insights";
 
 export function DashboardView() {
-  const { status, book, ledger, state, today, getCategory } = useFinance();
+  const { status, book, ledger, state, today } = useFinance();
   const { openAdd } = useEventDialog();
 
   // Every number on this page comes from this one deterministic model.
   const model = useMemo(
-    () => buildDashboardModel(book, ledger, state, today, (id) => getCategory(id).name),
-    [book, ledger, state, today, getCategory],
+    () => buildDashboardModel(book, ledger, today),
+    [book, ledger, today],
   );
 
   if (status === "loading") return <DashboardSkeleton />;
@@ -72,17 +68,12 @@ export function DashboardView() {
 
       {/* Each bank account and card: logo, available balance / to pay, this month's spending */}
       <div className="col-span-full">
-        <AccountsSection book={book} state={state} today={today} />
+        <AccountsSection book={book} state={state} />
       </div>
 
       {/* So far: earned, spent, and where */}
       <div className="col-span-full">
         <SoFarSection />
-      </div>
-
-      {/* This month day by day: tap a day to see its entries */}
-      <div className="col-span-full">
-        <CalendarSection />
       </div>
 
       <SamePeopleBanner className="col-span-full" />
@@ -118,32 +109,21 @@ export function DashboardView() {
       {/* Net worth, assets and liabilities are in the summary at the top (with their history and breakdowns);
           spending by category is in "Earned & spent". The cards below each add something those don't. */}
 
-      {/* Income vs spending over time, and investments */}
-      <div className={cell}>
-        <IncomeExpenseSection model={model} />
-      </div>
+      {/* Spending over time, and investments */}
       <div className={cell}>
         <SpendingSection model={model} />
       </div>
-      <div className={cell}>
-        <InvestmentSection model={model} />
-      </div>
+      {state.investments.valueMinor !== 0 || state.investments.costBasisMinor !== 0 ? (
+        <div className={cell}>
+          <InvestmentSection model={model} />
+        </div>
+      ) : null}
 
-      {/* Card bills, what's coming up, subscriptions */}
-      <div className={cell}>
-        <UpcomingSection model={model} />
-      </div>
+      {/* Subscriptions */}
       <div className={cell}>
         <SubscriptionsSection model={model} />
       </div>
 
-      {/* Ratios, and what happened to my income */}
-      <div className={cell}>
-        <HealthSection health={model.health} />
-      </div>
-      <div className={`${cell} xl:col-span-2`}>
-        <MoneyFlowSection model={model} />
-      </div>
     </div>
   );
 }

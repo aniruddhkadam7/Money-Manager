@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Download, RotateCcw } from "lucide-react";
+import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { exportBackup, resetEverything } from "@/lib/storage/reset";
@@ -20,9 +19,8 @@ function downloadBackup() {
   URL.revokeObjectURL(url);
 }
 
-/** "Start over": wipes everything this app stored in the browser, after typing RESET. */
-export function ResetApp() {
-  const [open, setOpen] = useState(false);
+/** "Start over": wipes everything this app stored in the browser, after typing RESET. Opened from the profile's settings. */
+export function ResetDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -33,49 +31,42 @@ export function ResetApp() {
   };
 
   return (
-    <>
-      <Card className="border-red-200" data-testid="reset-app">
-        <CardContent className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="font-semibold">Start over</h2>
-            <p className="text-sm text-muted-foreground">Deletes all entries, accounts, people, categories, imports and rules.</p>
-          </div>
-          <Button variant="outline" className="border-red-300 text-destructive hover:bg-red-50 hover:text-destructive" onClick={() => { setTyped(""); setOpen(true); }}>
-            <RotateCcw /> Reset app
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (busy) return;
+        if (!o) setTyped(""); // a fresh start next time
+        onOpenChange(o);
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Reset the whole app?</DialogTitle>
+          <DialogDescription>
+            This can't be undone. Download a backup first.
+          </DialogDescription>
+        </DialogHeader>
+
+        <Button type="button" variant="outline" onClick={downloadBackup}>
+          <Download /> Download a backup
+        </Button>
+
+        <div className="grid gap-1.5">
+          <label htmlFor="reset-confirm" className="text-sm">
+            Type <strong>{WORD}</strong> to confirm
+          </label>
+          <Input id="reset-confirm" value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" placeholder={WORD} />
+        </div>
+
+        <DialogFooter>
+          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
+            Cancel
           </Button>
-        </CardContent>
-      </Card>
-
-      <Dialog open={open} onOpenChange={(o) => !busy && setOpen(o)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Reset the whole app?</DialogTitle>
-            <DialogDescription>
-              This can't be undone. Download a backup first.
-            </DialogDescription>
-          </DialogHeader>
-
-          <Button type="button" variant="outline" onClick={downloadBackup}>
-            <Download /> Download a backup
+          <Button type="button" variant="destructive" onClick={reset} disabled={typed.trim().toUpperCase() !== WORD || busy} data-testid="confirm-reset">
+            {busy ? "Resetting…" : "Delete everything"}
           </Button>
-
-          <div className="grid gap-1.5">
-            <label htmlFor="reset-confirm" className="text-sm">
-              Type <strong>{WORD}</strong> to confirm
-            </label>
-            <Input id="reset-confirm" value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" placeholder={WORD} />
-          </div>
-
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={busy}>
-              Cancel
-            </Button>
-            <Button type="button" variant="destructive" onClick={reset} disabled={typed.trim().toUpperCase() !== WORD || busy} data-testid="confirm-reset">
-              {busy ? "Resetting…" : "Delete everything"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

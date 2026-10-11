@@ -1,6 +1,5 @@
-import { addDays, monthEnd, monthStart } from "@/lib/domain/dates";
+import { addDays, daysBetween, monthEnd, monthStart, shiftMonth } from "@/lib/domain/dates";
 import type { CardDue } from "./card-bill-status";
-import { nthAfter, type RecurringCharge } from "./recurring";
 import { periodReport } from "./state";
 import type { Book, Ledger } from "./types";
 
@@ -51,65 +50,56 @@ export function calendarMonth(book: Book, ledger: Ledger, ym: string): CalendarD
   return weeks;
 }
 
-/** A repeating payment's next turn, placed on the day it should come. */
-export interface ExpectedPayment {
-  date: string;
-  charge: RecurringCharge;
-  /** Its day has passed (by a few days at most) and the payment isn't recorded yet. */
-  overdue: boolean;
-}
-
-/** How late a payment can be and still be expected; the dashboard's "Coming up" uses the same allowance. */
-const GRACE_DAYS = 3;
-
-/**
- * Every turn of the repeating payments that falls between `from` and `to`, from the next one on. Each
- * turn is counted from the last real payment, so once that payment is recorded the expected one is
- * gone and the rhythm moves on. A turn missed by more than a few days is dropped (the payment moved or
- * stopped), but the ones after it are still expected. Only rhythms seen in your history are used.
- */
-export function expectedPayments(charges: RecurringCharge[], today: string, from: string, to: string): ExpectedPayment[] {
-  const out: ExpectedPayment[] = [];
-  const earliest = addDays(today, -GRACE_DAYS);
-  for (const charge of charges) {
-    // A rhythm guessed from one payment (a known service, or filed under Subscriptions) is no date to put on a calendar.
-    if (charge.assumed) continue;
-    for (let n = 1; ; n++) {
-      const date = nthAfter(charge.lastDate, charge.frequency, n);
-      if (date > to) break;
-      if (date < earliest || date < from) continue;
-      out.push({ date, charge, overdue: date < today });
-    }
-  }
-  return out.sort((a, b) => a.date.localeCompare(b.date) || b.charge.amountMinor - a.charge.amountMinor);
-}
-
 /** A card bill's due date, with the card's name. */
 export interface CalendarCardDue extends CardDue {
   accountId: string;
   cardName: string;
 }
 
-/** What is still to come in a month: the repeating payments due from today on, and card bills not yet paid. */
-export interface MonthOutlook {
-  /** Repeating payments still expected this month (overdue ones not recorded yet included). */
-  expectedMinor: number;
-  expectedCount: number;
-  /** What's left to pay on the latest card bills due this month. */
-  cardBillsMinor: number;
-  cardBillCount: number;
+/** How a month's spending is going: against the month before, and (while it runs) where it is heading. */
+export interface MonthPace {
+  /** The month before, as "YYYY-MM". */
+  previousMonth: string;
+  /** Spent in the month before over the same days (all of it, once this month is over); null when it has no entries. */
+  previousMinor: number | null;
+  /** Whether the comparison covers the whole of both months, rather than the days so far. */
+  wholeMonth: boolean;
+  /** This month's spending at its pace so far, carried to the month's last day; null once the month is over. */
+  projectedMinor: number | null;
 }
 
-export function monthOutlook(ym: string, today: string, expected: ExpectedPayment[], dues: CalendarCardDue[]): MonthOutlook | null {
+export function monthPace(book: Book, ledger: Ledger, ym: string, today: string, spentMinor: number): MonthPace | null {
   const first = monthStart(ym);
   const last = monthEnd(ym);
-  if (last < addDays(today, -GRACE_DAYS)) return null; // a past month: nothing is still to come
-  const inMonth = expected.filter((p) => p.date >= first && p.date <= last);
-  const unpaid = dues.filter((d) => d.latest && d.remainingMinor > 0 && d.dueDate >= first && d.dueDate <= last);
+  if (first > today) return null; // a future month: nothing spent yet
+
+  const previousMonth = shiftMonth(ym, -1);
+  const prevFirst = monthStart(previousMonth);
+  const prevLast = monthEnd(previousMonth);
+  const wholeMonth = today >= last;
+  // The same days of the month before, stopping at its end (30 Mar compares with all of February).
+  const daysSoFar = daysBetween(first, today) + 1;
+  const prevTo = wholeMonth ? prevLast : [addDays(prevFirst, daysSoFar - 1), prevLast].sort()[0];
+  const hasPrevious = book.events.some((e) => e.date >= prevFirst && e.date <= prevLast);
+
   return {
-    expectedMinor: inMonth.reduce((t, p) => t + p.charge.amountMinor, 0),
-    expectedCount: inMonth.length,
-    cardBillsMinor: unpaid.reduce((t, d) => t + d.remainingMinor, 0),
-    cardBillCount: unpaid.length,
+    previousMonth,
+    previousMinor: hasPrevious ? periodReport(book, ledger, prevFirst, prevTo).expensesMinor : null,
+    wholeMonth,
+    projectedMinor: wholeMonth ? null : Math.round((spentMinor / daysSoFar) * (daysBetween(first, last) + 1)),
   };
+}
+
+/** How strongly a day is shaded for what went out: 0 for nothing, up to 4 for the month's heaviest days. */
+export type SpendLevel = 0 | 1 | 2 | 3 | 4;
+
+/**
+ * Each of the month's days with spending, graded against the month itself. The top of the scale is the
+ * 90th-percentile day rather than the biggest, so one rent payment doesn't leave every other day pale.
+ */
+export function spendLevels(days: CalendarDay[]): Map<string, SpendLevel> {
+  const spending = days.filter((d) => d.inMonth && d.expensesMinor > 0);
+  const sorted = spending.map((d) => d.expensesMinor).sort((a, b) => a - b);
+  const top = sorted[Math.ceil(sorted.length * 0.9) - 1] ?? 0;
+  return new Map(spending.map((d) => [d.date, Math.max(1, Math.ceil(Math.min(1, d.expensesMinor / top) * 4)) as SpendLevel]));
 }

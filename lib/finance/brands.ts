@@ -36,6 +36,7 @@ export const BRANDS: Brand[] = [
   b("claude", "Claude", "claude.ai", /anthropic|claude\.ai|\bclaude\b/),
   b("github", "GitHub", "github.com", /github/),
   b("godaddy", "GoDaddy", "godaddy.com", /godaddy|go daddy/),
+  b("hostinger", "Hostinger", "hostinger.in", /hostinger/),
   b("linkedin", "LinkedIn", "linkedin.com", /linkedin/),
   b("audible", "Audible", "audible.in", /audible/),
   b("gaana", "Gaana", "gaana.com", /gaana/),
@@ -99,8 +100,6 @@ export const subscriptionBrandFor = (text: string): Brand | null => {
   const t = text.toLowerCase();
   return BRANDS.find((x) => x.subscription && x.re.test(t)) ?? null;
 };
-
-export const logoSrc = (brand: Pick<Brand, "slug">) => brandLogoSrc(brand.slug);
 
 /** Insurance and similar with no specific brand: still a subscription, no logo. */
 export const GENERIC_SUBSCRIPTION = /insurance|premium|mutual fund sip/;

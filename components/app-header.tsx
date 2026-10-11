@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Suspense, useState } from "react";
-import { FileUp, LayoutDashboard, Plus, ReceiptText, RefreshCw, Wallet } from "lucide-react";
+import { CalendarDays, FileUp, LayoutDashboard, Plus, RefreshCw, Wallet } from "lucide-react";
 import { flush } from "@/lib/cloud/sync";
 import { Button } from "@/components/ui/button";
 import { LiquidButton, LiquidGlass } from "@/components/ui/liquid-glass-button";
@@ -85,8 +85,8 @@ export function AppHeader() {
 
 const TABS = [
   { href: "/", label: "Home", icon: LayoutDashboard },
-  // The calendar is Activity's other view (List / Calendar), so the tab stays lit on it.
-  { href: "/activity", label: "Activity", icon: ReceiptText, also: "/calendar" },
+  // Activity opens on its calendar; the list is its other view (Calendar / Statement), so the tab stays lit on it too.
+  { href: "/calendar", label: "Calendar", icon: CalendarDays, also: "/activity" },
   { href: "/money", label: "Money", icon: Wallet },
   { href: "/import", label: "Import", icon: FileUp },
 ];

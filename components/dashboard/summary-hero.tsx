@@ -30,13 +30,13 @@ function Metric({ label, value, sub, subTone, title, href, onHow }: { label: str
       aria-label={`${label}: ${value}. See details.`}
       className="-m-2 block min-w-0 rounded-xl p-2 outline-none transition-colors hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <dt className="text-[11px] font-medium uppercase tracking-[0.08em] text-slate-400">{label}</dt>
+      <dt className="truncate pr-5 text-[11px] font-medium uppercase tracking-[0.08em] text-slate-400">{label}</dt>
       <dd className="mt-1 truncate text-lg font-semibold leading-none tracking-tight tabular-nums text-slate-900" title={title}>
         {value}
       </dd>
       <p
         className={cn(
-          "mt-1 min-h-4 text-xs tabular-nums",
+          "mt-1 min-h-4 text-xs tabular-nums max-sm:truncate",
           subTone === "positive" && "text-emerald-600",
           subTone === "negative" && "text-rose-600",
           (!subTone || subTone === "neutral") && "text-slate-400",
@@ -61,9 +61,6 @@ export function SummaryHero({ model, state, book }: { model: DashboardModel; sta
   const nw = state.netWorthMinor;
   const change = model.netWorthChangeMinor;
   const spendBps = model.spendingChangeBps;
-  const invGain = state.investments.gainMinor;
-  const invBase = state.investments.costBasisMinor;
-  const invPct = invBase > 0 ? Math.round((invGain / invBase) * 10_000) : null;
 
   // "How it adds up" for each number, built from the same entries as the number.
   const { ledger, getCategory, today } = useFinance();
@@ -83,7 +80,7 @@ export function SummaryHero({ model, state, book }: { model: DashboardModel; sta
   const catId = (label: string) => [...book.events].map((e) => ("categoryId" in e ? e.categoryId : "")).find((id) => id && name(id) === label);
 
   return (
-    <section className="relative overflow-hidden rounded-3xl border glass p-5 sm:p-6">
+    <section className="relative overflow-hidden rounded-3xl border glass p-4 sm:p-6">
 
       <div className="relative lg:flex lg:items-end lg:justify-between lg:gap-10">
         <div className="shrink-0">
@@ -106,13 +103,14 @@ export function SummaryHero({ model, state, book }: { model: DashboardModel; sta
           )}
         </div>
         <NetWorthSparkline firstActivity={model.firstActivity} />
-        <div className="mt-3">
+        {/* Phones: the ⓘ on Total assets and Liabilities open the same breakdown, so the button is for wider screens. */}
+        <div className="mt-3 max-sm:hidden">
           <NetWorthBreakdown state={state} />
         </div>
         </div>
 
-        <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-slate-100 pt-4 sm:grid-cols-3 lg:mt-0 lg:max-w-4xl lg:flex-1 lg:grid-cols-5 lg:border-t-0 lg:pt-0">
-          <Metric onHow={howAssets.open} href="/money#accounts" label="Total assets" value={formatHeadlineINR(state.assets.totalMinor)} title={formatExactINR(state.assets.totalMinor)} sub={`Bank & cash ${formatHeadlineINR(state.cashMinor)}${state.assets.creditBalancesMinor > 0 ? ` · Card paid ahead ${formatHeadlineINR(state.assets.creditBalancesMinor)}` : ""}`} />
+        <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-3 border-t border-slate-100 pt-3 sm:mt-5 sm:grid-cols-4 sm:gap-y-4 sm:pt-4 lg:mt-0 lg:max-w-4xl lg:flex-1 lg:border-t-0 lg:pt-0">
+          <Metric onHow={howAssets.open} href="/money#accounts" label="Total assets" value={formatHeadlineINR(state.assets.totalMinor)} title={formatExactINR(state.assets.totalMinor)} sub={<>Bank & cash {formatHeadlineINR(state.cashMinor)}{state.assets.creditBalancesMinor > 0 && <span className="max-sm:hidden"> · Card paid ahead {formatHeadlineINR(state.assets.creditBalancesMinor)}</span>}</>} />
           <Metric
             // Go where most of it is: people you owe, or cards and loans.
             href={state.liabilities.borrowedMinor >= state.liabilities.creditCardsMinor + state.liabilities.loansMinor ? "/money#owe" : "/money#cards-loans"}
@@ -153,14 +151,6 @@ export function SummaryHero({ model, state, book }: { model: DashboardModel; sta
             value={formatHeadlineINR(current.incomeMinor)}
             title={formatExactINR(current.incomeMinor)}
             sub={current.incomeMinor > 0 ? `Saved ${formatHeadlineINR(Math.max(current.savingsMinor, 0))}` : undefined}
-          />
-          <Metric
-            href="/money#investments"
-            label="Investments"
-            value={formatHeadlineINR(state.investments.valueMinor)}
-            title={formatExactINR(state.investments.valueMinor)}
-            sub={invBase > 0 ? `${invGain >= 0 ? "+" : "−"}${formatHeadlineINR(Math.abs(invGain))}${invPct !== null ? ` (${invPct >= 0 ? "+" : "−"}${formatBps(Math.abs(invPct), 1)})` : ""}` : undefined}
-            subTone={invBase > 0 ? (invGain >= 0 ? "positive" : "negative") : undefined}
           />
         </dl>
       </div>
