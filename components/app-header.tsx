@@ -156,7 +156,8 @@ function MobileNav({ pathname, onAdd }: { pathname: string; onAdd: () => void })
   };
 
   return (
-    // A floating liquid glass pill (like the header from tablet width up). The bar itself has no blur: it would hide the glass distortion.
+    // A floating liquid glass pill (like the header from tablet width up). A light blur sits in its own layer behind the glass:
+    // on the bar itself it would hide the glass distortion (which iPhones don't draw, so there the blur is what frosts it).
     // It dips 1rem into the home-indicator area (34pt on iPhones as a home-screen app) so it doesn't float high above it.
     <nav aria-label="Main" className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-3 pb-[max(0.5rem,calc(env(safe-area-inset-bottom)_-_1rem))] sm:hidden">
       {/* touch-none: a drag on the bar would otherwise move the page around the scroller (taps still work). */}
@@ -168,6 +169,7 @@ function MobileNav({ pathname, onAdd }: { pathname: string; onAdd: () => void })
           compact ? "h-[3.25rem] max-w-[19rem]" : "h-16 max-w-[32rem]",
         )}
       >
+        <span aria-hidden className="pointer-events-none absolute inset-0 -z-20 rounded-[inherit] [-webkit-backdrop-filter:blur(6px)] [backdrop-filter:blur(6px)]" />
         {TABS.slice(0, 2).map(tab)}
         <div className="flex flex-1 items-center justify-center">
           {/* White liquid glass, a shade lighter than the bar, centred in it; the green + marks the main action. */}
