@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { CalendarDays, FileUp, LayoutDashboard, Plus, RefreshCw, Wallet } from "lucide-react";
 import { flush } from "@/lib/cloud/sync";
 import { Button } from "@/components/ui/button";
@@ -91,13 +91,52 @@ const TABS = [
   { href: "/import", label: "Import", icon: FileUp },
 ];
 
+/** Past the top of the page, scrolling down shrinks the bar (as Instagram does); scrolling up or reaching the top brings it back. */
+function useCompactOnScroll(pathname: string) {
+  const [compact, setCompact] = useState(false);
+  useEffect(() => {
+    setCompact(false);
+    // Phones scroll the body (see globals.css), other screens the window; inner scrollers (the account cards) are ignored.
+    let last = -1;
+    let travel = 0;
+    const onScroll = (e: Event) => {
+      const el = e.target === document ? document.scrollingElement : e.target;
+      if (el !== document.body && el !== document.scrollingElement) return;
+      const top = (el as Element).scrollTop;
+      if (last < 0) last = top;
+      const delta = top - last;
+      last = top;
+      if (top < 40) {
+        travel = 0;
+        setCompact(false);
+        return;
+      }
+      // Small wobbles (a finger resting, iOS bounce) don't flip it: it takes a short run in one direction.
+      travel = Math.sign(delta) === Math.sign(travel) ? travel + delta : delta;
+      if (travel > 12) setCompact(true);
+      else if (travel < -12) setCompact(false);
+    };
+    document.addEventListener("scroll", onScroll, { capture: true, passive: true });
+    return () => document.removeEventListener("scroll", onScroll, { capture: true });
+  }, [pathname]);
+  return compact;
+}
+
 function MobileNav({ pathname, onAdd }: { pathname: string; onAdd: () => void }) {
+  const compact = useCompactOnScroll(pathname);
   const tab = ({ href, label, icon: Icon, also }: (typeof TABS)[number]) => {
     const active = pathname === href || pathname === also;
     const body = (
       <>
         <Icon className="size-5" strokeWidth={active ? 2.4 : 2} />
-        {label}
+        <span
+          className={cn(
+            "overflow-hidden leading-tight transition-[max-height,opacity] duration-300 ease-out motion-reduce:transition-none",
+            compact ? "max-h-0 opacity-0" : "max-h-4 opacity-100",
+          )}
+        >
+          {label}
+        </span>
       </>
     );
     return (
@@ -111,7 +150,7 @@ function MobileNav({ pathname, onAdd }: { pathname: string; onAdd: () => void })
           active ? "text-primary" : "text-muted-foreground",
         )}
       >
-        <span className={cn("flex flex-col items-center gap-0.5 px-2 py-1.5", active && "font-semibold")}>{body}</span>
+        <span className={cn("flex flex-col items-center px-2 py-1.5", !compact && "gap-0.5", active && "font-semibold")}>{body}</span>
       </Link>
     );
   };
@@ -121,7 +160,14 @@ function MobileNav({ pathname, onAdd }: { pathname: string; onAdd: () => void })
     // It dips 1rem into the home-indicator area (34pt on iPhones as a home-screen app) so it doesn't float high above it.
     <nav aria-label="Main" className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-3 pb-[max(0.5rem,calc(env(safe-area-inset-bottom)_-_1rem))] sm:hidden">
       {/* touch-none: a drag on the bar would otherwise move the page around the scroller (taps still work). */}
-      <LiquidGlass className="pointer-events-auto flex h-16 touch-none items-stretch rounded-full bg-slate-200/75 px-1 dark:bg-card/75 shadow-lg shadow-slate-900/15">
+      {/* Shrunk while scrolling down: narrower and shorter, icons only. */}
+      <LiquidGlass
+        className={cn(
+          "pointer-events-auto mx-auto flex touch-none items-stretch rounded-full bg-slate-200/75 px-1 dark:bg-card/75 shadow-lg shadow-slate-900/15",
+          "transition-[max-width,height] duration-300 ease-out motion-reduce:transition-none",
+          compact ? "h-[3.25rem] max-w-[19rem]" : "h-16 max-w-[32rem]",
+        )}
+      >
         {TABS.slice(0, 2).map(tab)}
         <div className="flex flex-1 items-center justify-center">
           {/* White liquid glass, a shade lighter than the bar, centred in it; the green + marks the main action. */}
@@ -129,9 +175,12 @@ function MobileNav({ pathname, onAdd }: { pathname: string; onAdd: () => void })
             size="icon"
             onClick={onAdd}
             aria-label="Add an entry"
-            className="z-20 size-12 rounded-full bg-card/85 text-primary shadow-lg shadow-slate-900/15 hover:scale-100 active:scale-95"
+            className={cn(
+              "z-20 rounded-full bg-card/85 text-primary shadow-lg shadow-slate-900/15 transition-[width,height] duration-300 ease-out hover:scale-100 active:scale-95 motion-reduce:transition-none",
+              compact ? "size-10" : "size-12",
+            )}
           >
-            <Plus className="size-7" strokeWidth={2.6} />
+            <Plus className={cn("transition-[width,height] duration-300", compact ? "size-6" : "size-7")} strokeWidth={2.6} />
           </LiquidButton>
         </div>
         {TABS.slice(2).map(tab)}
