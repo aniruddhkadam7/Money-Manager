@@ -63,6 +63,10 @@ export function makeDescriber(book: Book, categoryName: (id: string) => string):
         return `${who(e.personId)} paid you back`;
       case "repayment_made":
         return `Paid back ${who(e.personId)}`;
+      case "loan_taken":
+        return `Loan from ${acct(e.fromAccountId)}`;
+      case "emi_payment":
+        return `EMI · ${acct(e.toAccountId)}`;
       case "split_expense":
         return e.description || `Split ${categoryName(e.categoryId).toLowerCase()} bill`;
       case "reimbursable_expense":
@@ -92,6 +96,10 @@ export function makeDescriber(book: Book, categoryName: (id: string) => string):
       case "repayment_received":
         if (e.type === "borrow" && e.predatesRecords) return "From before you started tracking";
         return cap(via(e, e.accountId, "into"));
+      case "loan_taken":
+        return cap(via(e, e.toAccountId, "into"));
+      case "emi_payment":
+        return `Principal ${formatRupees(e.amountMinor - e.interestMinor)} · interest ${formatRupees(e.interestMinor)} · ${via(e, e.fromAccountId, "from")}`;
       case "split_expense": {
         const others = e.shares.reduce((t, s) => t + s.amountMinor, 0);
         return `${categoryName(e.categoryId)} · your share ${formatRupees(e.totalMinor - others)} of ${formatRupees(e.totalMinor)}`;

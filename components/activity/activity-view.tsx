@@ -38,18 +38,21 @@ const SORTS: { value: SortKey; label: string }[] = [
   { value: "highest", label: "Highest amount" },
   { value: "lowest", label: "Lowest amount" },
 ];
-const amountOf = (e: FinancialEvent): number => ("amountMinor" in e ? e.amountMinor : 0);
+// The amount the row shows: a split's total, a sale's proceeds, a holding's new value.
+const amountOf = (e: FinancialEvent): number => headline(e).amountMinor;
 
 /** Broad shortcuts, kept alongside the individual entry types. */
 const GROUPS: { id: string; label: string; types: EventType[] }[] = [
-  { id: "credit", label: "Received · money in", types: ["income", "repayment_received", "borrow", "sell_investment"] },
-  { id: "debit", label: "Paid · money out", types: ["expense", "split_expense", "reimbursable_expense", "lend", "repayment_made", "invest"] },
-  { id: "spending", label: "Spending", types: ["expense", "split_expense", "reimbursable_expense"] },
+  { id: "credit", label: "Received · money in", types: ["income", "repayment_received", "borrow", "loan_taken", "sell_investment"] },
+  { id: "debit", label: "Paid · money out", types: ["expense", "split_expense", "reimbursable_expense", "lend", "repayment_made", "emi_payment", "invest"] },
+  // An EMI's interest is spending, so the dashboard's "Spent" and its EMI category lead here too.
+  { id: "spending", label: "Spending", types: ["expense", "split_expense", "reimbursable_expense", "emi_payment"] },
   { id: "income", label: "Income", types: ["income"] },
   { id: "people", label: "Lent & borrowed", types: ["lend", "borrow", "repayment_received", "repayment_made"] },
   { id: "borrowed", label: "Money I borrowed", types: ["borrow", "repayment_made"] },
   { id: "lent", label: "Money I lent", types: ["lend", "repayment_received"] },
   { id: "investments", label: "Investments", types: ["invest", "sell_investment", "update_valuation"] },
+  { id: "loans", label: "Loans & EMIs", types: ["loan_taken", "emi_payment"] },
   { id: "transfers", label: "Transfers & payments", types: ["transfer"] },
 ];
 
@@ -62,6 +65,7 @@ const SHOW: { label: string; value: string }[] = [
   { label: "Income", value: "type:income" },
   { label: "Refunds & reimbursements", value: "group:moneyback" },
   { label: "Lent & borrowed", value: "group:people" },
+  { label: "Loans & EMIs", value: "group:loans" },
   { label: "Investments", value: "group:investments" },
   { label: "Transfers", value: "type:transfer" },
 ];

@@ -102,6 +102,8 @@ interface Group {
   subscription: boolean;
   explicit: boolean;
   autopay: boolean;
+  /** Its name reads like a person's ("Rahul Sharma"), not a company's. */
+  person: boolean;
   brand?: string;
   items: { date: string; amountMinor: number }[];
 }
@@ -121,11 +123,15 @@ function mergeTruncatedNames(groups: Map<string, Group>): Map<string, Group> {
     if (!into) {
       merged.set(target, { ...g, items: [...g.items] });
     } else {
+      // The name printed most recently wins: compare before this group's own payments are added.
+      const latest = into.items.reduce((m, x) => (x.date > m ? x.date : m), "");
+      if (g.items.some((i) => i.date > latest)) into.name = g.name;
       into.items.push(...g.items);
       into.subscription ||= g.subscription;
       into.explicit ||= g.explicit;
       into.autopay ||= g.autopay;
-      if (g.items.some((i) => i.date > into.items.reduce((m, x) => (x.date > m ? x.date : m), ""))) into.name = g.name;
+      // A person only if every spelling reads like one: "Razorpay Pv" is "Razorpay" cut short, not a name.
+      into.person &&= g.person;
     }
   }
   return merged;
@@ -160,7 +166,7 @@ export function detectRecurring(book: Book, ledger: Ledger, today: string): Recu
     const { key, display } = merchant;
     // Anything the person filed under Subscriptions counts, even a service we don't know by name.
     const explicit = e.categoryId === "subscriptions";
-    const group = raw.get(key) ?? { name: display, categoryId: e.categoryId, subscription: false, explicit: false, autopay: false, brand: merchant.brand, items: [] };
+    const group = raw.get(key) ?? { name: display, categoryId: e.categoryId, subscription: false, explicit: false, autopay: false, person: false, brand: merchant.brand, items: [] };
     group.subscription ||= merchant.subscription || explicit;
     group.explicit ||= explicit;
     if (e.sources?.some((x) => x.narration && AUTOPAY.test(x.narration))) group.autopay = true;
@@ -169,6 +175,7 @@ export function detectRecurring(book: Book, ledger: Ledger, today: string): Recu
     group.categoryId = e.categoryId;
     raw.set(key, group);
   }
+  for (const group of raw.values()) group.person = looksLikePersonName(group.name, book.people);
 
   const found: RecurringCharge[] = [];
   for (const [groupKey, group] of mergeTruncatedNames(raw)) {
@@ -199,7 +206,7 @@ export function detectRecurring(book: Book, ledger: Ledger, today: string): Recu
       // (Never for a person: a monthly payment to someone is rent or help, not a subscription.)
       const closeToTypical = items.filter((i) => Math.abs(i.amountMinor - typical) <= typical * 0.05).length;
       const steady = items.length >= 3 && closeToTypical >= Math.ceil(items.length * 0.6);
-      const person = looksLikePersonName(group.name, book.people);
+      const person = group.person;
       const via: RecurringCharge["via"] = group.subscription
         ? undefined
         : group.autopay

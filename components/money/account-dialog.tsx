@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { todayISO } from "@/lib/domain/dates";
+import { BANK_BRANDS } from "@/lib/finance/bank-logos";
 import { accountIdsUsedBy } from "@/lib/finance/book-ops";
 import { minorToInputString, parseAmountToMinor } from "@/lib/domain/money";
 import type { Account, AccountType } from "@/lib/finance/types";
@@ -14,7 +15,7 @@ import { type PictureName } from "../picture-icon";
 
 export const ACCOUNT_TYPE_INFO: Record<AccountType, { label: string; picture: PictureName; balanceLabel: string }> = {
   bank: { label: "Bank / UPI", picture: "bank", balanceLabel: "Balance today" },
-  cash: { label: "Cash / wallet", picture: "cash", balanceLabel: "Balance today" },
+  cash: { label: "Cash", picture: "cash", balanceLabel: "Balance today" },
   credit_card: { label: "Credit card", picture: "credit-card", balanceLabel: "Amount you owe now" },
   loan: { label: "Loan", picture: "loan", balanceLabel: "Amount you still owe" },
   investment: { label: "Investment", picture: "invest", balanceLabel: "Current value" },
@@ -27,34 +28,74 @@ function parseOpeningBalance(input: string): number | null {
   return parseAmountToMinor(cleaned);
 }
 
+/** The kinds of account that can be added here (investments are added with "Invest"). */
+export type AddableAccountType = "bank" | "cash" | "credit_card" | "loan";
+
+/** Card issuers that aren't banks you'd hold a savings account with. */
+const CARD_ONLY = new Set(["bank-sbicard", "bank-onecard", "bank-amex"]);
+
+const ADD_INFO: Record<AddableAccountType, { title: string; description: string; placeholder: string; submit: string; suggestions: string[] }> = {
+  bank: {
+    title: "Add a bank account",
+    description: "A savings or current account. Its bank's logo shows up on its own.",
+    placeholder: "e.g. HDFC Bank",
+    submit: "Add bank",
+    suggestions: BANK_BRANDS.filter((b) => !CARD_ONLY.has(b.slug)).map((b) => b.name),
+  },
+  cash: {
+    title: "Add cash",
+    description: "Cash you keep somewhere, like a purse or at home.",
+    placeholder: "e.g. Cash at home",
+    submit: "Add",
+    suggestions: [],
+  },
+  credit_card: {
+    title: "Add a credit card",
+    description: "Enter what you owe on it today. Pay its bill with a Transfer.",
+    placeholder: "e.g. ICICI Credit Card",
+    submit: "Add card",
+    suggestions: BANK_BRANDS.map((b) => (CARD_ONLY.has(b.slug) ? b.name : `${b.name.replace(/ Bank$/, "")} Credit Card`)),
+  },
+  loan: {
+    title: "Add a loan",
+    description: "A home or car loan you're repaying. Pay it with a Transfer.",
+    placeholder: "e.g. Home loan",
+    submit: "Add loan",
+    suggestions: [],
+  },
+};
+
 /**
- * Edit an account's name, starting balance and start date, or (with no `editing`)
- * add a loan. Everyday accounts (Cash, UPI, cards...) are a fixed set that already
- * exists; there is deliberately no way to add another bank account.
+ * Edit an account's name, starting balance and start date (and delete it), or, with
+ * `adding`, add a new bank account, cash, credit card or loan.
  */
 export function AccountDialog({
   open,
   onOpenChange,
   editing,
+  adding = "loan",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** The account to edit. Leave out to add a loan. */
+  /** The account to edit. Leave out to add one. */
   editing?: Account | null;
+  /** What kind of account to add, when not editing. */
+  adding?: AddableAccountType;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
-        {open && <AccountForm key={editing?.id ?? "new-loan"} editing={editing ?? null} onDone={() => onOpenChange(false)} />}
+        {open && <AccountForm key={editing?.id ?? `new-${adding}`} editing={editing ?? null} adding={adding} onDone={() => onOpenChange(false)} />}
       </DialogContent>
     </Dialog>
   );
 }
 
-function AccountForm({ editing, onDone }: { editing: Account | null; onDone: () => void }) {
+function AccountForm({ editing, adding, onDone }: { editing: Account | null; adding: AddableAccountType; onDone: () => void }) {
   const f = useFinance();
-  const type: AccountType = editing?.type ?? "loan";
+  const type: AccountType = editing?.type ?? adding;
   const info = ACCOUNT_TYPE_INFO[type];
+  const add = ADD_INFO[adding];
   const [name, setName] = useState(editing?.name ?? "");
   const [balance, setBalance] = useState(editing ? minorToInputString(editing.openingBalanceMinor) : "");
   const [openedOn, setOpenedOn] = useState(editing?.openedOn ?? todayISO());
@@ -91,12 +132,8 @@ function AccountForm({ editing, onDone }: { editing: Account | null; onDone: () 
   return (
     <form onSubmit={submit} noValidate className="grid gap-4">
       <DialogHeader>
-        <DialogTitle>{editing ? `Edit ${editing.name}` : "Add a loan"}</DialogTitle>
-        <DialogDescription>
-          {editing
-            ? "Rename it, or set its starting balance."
-            : "A home or car loan you're repaying. Pay it with a Transfer."}
-        </DialogDescription>
+        <DialogTitle>{editing ? `Edit ${editing.name}` : add.title}</DialogTitle>
+        <DialogDescription>{editing ? "Rename it, set its starting balance, or delete it." : add.description}</DialogDescription>
       </DialogHeader>
 
       <div className="grid gap-1.5">
@@ -106,10 +143,18 @@ function AccountForm({ editing, onDone }: { editing: Account | null; onDone: () 
           autoFocus
           autoComplete="off"
           maxLength={40}
-          placeholder={editing ? "Name" : "e.g. Home loan"}
+          placeholder={editing ? "Name" : add.placeholder}
+          list={!editing && add.suggestions.length > 0 ? "acc-name-suggestions" : undefined}
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
+        {!editing && add.suggestions.length > 0 && (
+          <datalist id="acc-name-suggestions">
+            {add.suggestions.map((s) => (
+              <option key={s} value={s} />
+            ))}
+          </datalist>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -182,7 +227,7 @@ function AccountForm({ editing, onDone }: { editing: Account | null; onDone: () 
               Delete
             </Button>
           ))}
-        {!confirmDelete && <Button type="submit">{editing ? "Save" : "Add loan"}</Button>}
+        {!confirmDelete && <Button type="submit">{editing ? "Save" : add.submit}</Button>}
       </DialogFooter>
     </form>
   );

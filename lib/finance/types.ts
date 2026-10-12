@@ -154,6 +154,31 @@ export interface ReimbursableExpenseEvent extends EventBase {
   personId: string;
 }
 
+/** A bank loan was paid out to me: the money arrives in my account and the loan's amount owed goes up. */
+export interface LoanTakenEvent extends EventBase {
+  type: "loan_taken";
+  /** The loan (an account of type `loan`). */
+  fromAccountId: string;
+  /** Where the money arrived (bank or cash). */
+  toAccountId: string;
+  amountMinor: number;
+}
+
+/** One EMI on a loan: the principal part pays the loan down, the interest part is spending. */
+export interface EmiPaymentEvent extends EventBase {
+  type: "emi_payment";
+  /** Where the EMI was paid from (bank or cash). */
+  fromAccountId: string;
+  /** The loan (an account of type `loan`). */
+  toAccountId: string;
+  /** The whole EMI. */
+  amountMinor: number;
+  /** The interest inside it (0 up to the whole EMI). The rest is principal. */
+  interestMinor: number;
+  /** Where the interest counts as spending. */
+  categoryId: string;
+}
+
 /** I put money into an investment. */
 export interface InvestEvent extends EventBase {
   type: "invest";
@@ -189,6 +214,8 @@ export type FinancialEvent =
   | BorrowEvent
   | RepaymentReceivedEvent
   | RepaymentMadeEvent
+  | LoanTakenEvent
+  | EmiPaymentEvent
   | SplitExpenseEvent
   | ReimbursableExpenseEvent
   | InvestEvent

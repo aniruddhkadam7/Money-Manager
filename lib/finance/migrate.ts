@@ -8,7 +8,7 @@ export const DEFAULT_ACCOUNT_ID = "account-cash";
 export const DEFAULTS_VERSION = 2;
 
 /** Standard accounts added in version 2 (people on version 1 already have the rest). */
-const ADDED_IN_V2 = new Set(["account-netbanking", "account-wallet"]);
+const ADDED_IN_V2 = new Set(["account-netbanking"]);
 
 /**
  * The fixed set of ways people actually pay. There is no "add a bank account":
@@ -19,10 +19,8 @@ export function defaultAccounts(now: string): Account[] {
   return [
     { id: DEFAULT_ACCOUNT_ID, name: "Cash", type: "cash", ...base },
     { id: "account-upi", name: "UPI", type: "bank", ...base },
-    { id: "account-debit", name: "Debit card", type: "bank", ...base },
     { id: "account-credit", name: "Credit card", type: "credit_card", ...base },
     { id: "account-netbanking", name: "Net banking", type: "bank", ...base },
-    { id: "account-wallet", name: "Wallet", type: "cash", ...base },
   ];
 }
 
@@ -32,7 +30,7 @@ const stamp = (defaultsVersion: number) => ({ defaultAccountsAdded: true, defaul
  * One-time updates to the standard accounts:
  *  - only the starter Cash account (or none): add the whole set;
  *  - already given the first four: add just the ones introduced since;
- *  - set up their own accounts before: leave them alone (they can restore the set from the Money page).
+ *  - set up their own accounts before: leave them alone.
  * Nothing is ever re-added after it has run, even if the person deleted some.
  */
 export function withDefaultAccounts(book: Book, now: string): Book {
@@ -50,18 +48,6 @@ export function withDefaultAccounts(book: Book, now: string): Book {
 
   const added = wanted.filter((a) => ADDED_IN_V2.has(a.id) && !have.has(a.id));
   return { ...book, accounts: [...book.accounts, ...added], setup: stamp(DEFAULTS_VERSION) };
-}
-
-/** Which standard accounts are missing (deleted, or never offered). */
-export function missingDefaultAccounts(book: Book, now: string): Account[] {
-  const have = new Set(book.accounts.map((a) => a.id));
-  return defaultAccounts(now).filter((a) => !have.has(a.id));
-}
-
-/** Puts back any standard accounts that are missing. Existing accounts are untouched. */
-export function restoreDefaultAccounts(book: Book, now: string): Book {
-  const missing = missingDefaultAccounts(book, now);
-  return missing.length === 0 ? book : { ...book, accounts: [...book.accounts, ...missing], setup: stamp(DEFAULTS_VERSION) };
 }
 
 /**

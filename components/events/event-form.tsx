@@ -10,7 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { todayISO } from "@/lib/domain/dates";
 import { minorToInputString, parseAmountToMinor } from "@/lib/domain/money";
+import { ensurePerson } from "@/lib/finance/book-ops";
 import { formatRupees } from "@/lib/finance/describe";
+import { ledgerIds } from "@/lib/finance/engine";
 import type { AccountType, EventDraft, EventType, FinancialEvent } from "@/lib/finance/types";
 import { accountPicture, BankMark } from "../account-logo";
 import { CategoryIcon } from "../category-icon";
@@ -36,6 +38,12 @@ interface Values {
   holdingName: string;
   holdingId: string;
   soldValue: string;
+  /** Take a loan: the loan's name (an existing loan, or a new one to add). */
+  loanName: string;
+  /** Pay EMI: which loan. */
+  loanId: string;
+  /** Pay EMI: the interest part. */
+  interest: string;
   date: string;
   shares: { person: string; amount: string }[];
   /** Lend / borrow: owed from before records began, so no money moves in an account now. */
@@ -50,8 +58,10 @@ function primaryAccountId(e: FinancialEvent): string | undefined {
   switch (e.type) {
     case "transfer":
     case "invest":
+    case "emi_payment":
       return e.fromAccountId;
     case "sell_investment":
+    case "loan_taken":
       return e.toAccountId;
     case "update_valuation":
       return undefined;
@@ -90,6 +100,8 @@ export function EventForm({
   const mainAccounts = accountsFor(spec.accountTypes);
   const toAccounts = accountsFor(["bank", "cash", "credit_card", "loan"]);
   const investments = accountsFor(["investment"]);
+  const loans = accountsFor(["loan"]);
+  const owedOnLoan = (id: string) => f.state.accounts.find((a) => a.account.id === id)?.balanceMinor ?? 0;
 
   const [values, setValues] = useState<Values>(() => initialValues());
   const [errors, setErrors] = useState<Errors>({});
@@ -97,6 +109,8 @@ export function EventForm({
   const [pickingCategory, setPickingCategory] = useState(false);
   const [addingCategory, setAddingCategory] = useState(false);
   const [newCategory, setNewCategory] = useState("");
+  // A repayment larger than what was owed is saved only once confirmed, for exactly these values.
+  const [overpayConfirmed, setOverpayConfirmed] = useState<string | null>(null);
 
   function initialValues(): Values {
     const v = carriedValues();
@@ -130,6 +144,9 @@ export function EventForm({
       holdingName: "",
       holdingId: preset?.holdingId ?? investments[0]?.id ?? "",
       soldValue: "",
+      loanName: "",
+      loanId: loans[0]?.id ?? "",
+      interest: "",
       date: preset?.date ?? todayISO(),
       shares: [{ person: "", amount: "" }],
       beforeTracking: false,
@@ -177,6 +194,16 @@ export function EventForm({
         };
       case "update_valuation":
         return { ...base, amount: minorToInputString(e.valueMinor), holdingId: e.holdingId };
+      case "loan_taken":
+        return { ...base, amount: minorToInputString(e.amountMinor), accountId: e.toAccountId, loanName: accountName(e.fromAccountId) };
+      case "emi_payment":
+        return {
+          ...base,
+          amount: minorToInputString(e.amountMinor),
+          accountId: e.fromAccountId,
+          loanId: e.toAccountId,
+          interest: minorToInputString(e.interestMinor),
+        };
     }
   }
 
@@ -186,7 +213,8 @@ export function EventForm({
   };
 
   const categories = spec.categoryKind === "income" ? f.incomeCategories : f.expenseCategories;
-  const amountMinor = parseAmountToMinor(values.amount);
+  // An investment can be worth nothing; every other amount must be more than zero.
+  const amountMinor = parseAmountToMinor(values.amount, type === "update_valuation");
 
   /** For repayments: how much does this person owe / am I owed? */
   const personHint = useMemo(() => {
@@ -197,6 +225,49 @@ export function EventForm({
       ? `${match.person.name} owes you ${formatRupees(match.owedToMe.outstandingMinor)}`
       : `You owe ${match.person.name} ${formatRupees(match.iOwe.outstandingMinor)}`;
   }, [type, values.person, f.state.people]);
+
+  /**
+   * Repayments: a warning when the amount is more than was owed on the entry's date (the entry being
+   * edited left out). Null when it fits. The extra is counted as owed from before records began, which is
+   * right for an old loan but hides it if they simply paid too much, so the person is asked first.
+   */
+  function overpayWarning(amount: number): string | null {
+    if (type !== "repayment_received" && type !== "repayment_made") return null;
+    const found = ensurePerson(f.getBook(), values.person);
+    if (!found) return null;
+    const { person } = found;
+    const received = type === "repayment_received";
+    const ledgerId = received ? ledgerIds.receivable(person.id) : ledgerIds.payable(person.id);
+    let balance = 0;
+    for (const entry of f.ledger.entries) {
+      if (entry.date > values.date || entry.sourceId === editing?.id) continue;
+      for (const p of entry.postings) if (p.ledger === ledgerId) balance += p.amountMinor;
+    }
+    const owed = Math.max(received ? balance : -balance, 0);
+    if (amount <= owed) return null;
+    const extra = formatRupees(amount - owed);
+    const name = person.name;
+    if (received) {
+      return owed > 0
+        ? `${name} only owed you ${formatRupees(owed)} on that date. If the extra ${extra} is for a loan from before you started tracking, press Save again. If they paid you too much, save ${formatRupees(owed)} here and the extra as Borrow money.`
+        : `${name} didn't owe you anything on that date. If this is for a loan from before you started tracking, press Save again.`;
+    }
+    return owed > 0
+      ? `You only owed ${name} ${formatRupees(owed)} on that date. If the extra ${extra} is for a loan from before you started tracking, press Save again. If you paid too much, save ${formatRupees(owed)} here and the extra as Lend money.`
+      : `You didn't owe ${name} anything on that date. If this is for a loan from before you started tracking, press Save again.`;
+  }
+
+  // Pay EMI: the interest part (0 allowed) and what is left for the loan.
+  const interestMinor = parseAmountToMinor(values.interest, true);
+  const principalMinor = amountMinor !== null && interestMinor !== null ? amountMinor - interestMinor : null;
+  // The EMI's interest counts as spending under EMI (or Other, if EMI was removed); an edited EMI keeps its own.
+  const emiCategoryId =
+    editing?.type === "emi_payment" ? editing.categoryId : f.expenseCategories.some((c) => c.id === "emi") ? "emi" : "other";
+  /** Take a loan: a typed name that already belongs to an account that isn't a loan. */
+  const loanNameClash = () => {
+    const name = values.loanName.trim().toLowerCase();
+    return f.book.accounts.find((a) => a.type !== "loan" && a.name.toLowerCase() === name);
+  };
 
   const othersTotal = values.shares.reduce((t, s) => t + (parseAmountToMinor(s.amount) ?? 0), 0);
   const yourShare = amountMinor === null ? null : amountMinor - othersTotal;
@@ -316,6 +387,16 @@ export function EventForm({
     if (has("holdingName") && !values.holdingName.trim()) next.holdingName = "Enter what you invested in";
     if (has("holdingSelect") && !values.holdingId) next.holdingSelect = "Choose an investment";
     if (has("date") && !values.date) next.date = "Pick a date";
+    if (has("loanName")) {
+      const clash = loanNameClash();
+      if (!values.loanName.trim()) next.loanName = "Enter the loan's name, e.g. Home loan";
+      else if (clash) next.loanName = `“${clash.name}” is already one of your other accounts. Give the loan its own name, e.g. ${clash.name} home loan.`;
+    }
+    if (has("loanSelect") && !values.loanId) next.loanSelect = "Choose a loan";
+    if (has("interest")) {
+      if (interestMinor === null) next.interest = "Enter the interest part of this EMI (0 if none)";
+      else if (amountMinor !== null && interestMinor > amountMinor) next.interest = "Interest can't be more than the whole EMI";
+    }
     if (has("soldValue") && values.soldValue.trim() && parseAmountToMinor(values.soldValue) === null) {
       next.soldValue = "Enter an amount, or leave blank to sell everything";
     }
@@ -331,9 +412,23 @@ export function EventForm({
     if (next.category) setPickingCategory(true);
     if (Object.keys(next).length > 0 || (has("amount") && amountMinor === null)) return;
 
+    const warning = overpayWarning(amountMinor ?? 0);
+    const overpayKey = `${values.person.trim().toLowerCase()}|${amountMinor}|${values.date}`;
+    if (warning && overpayConfirmed !== overpayKey) {
+      setOverpayConfirmed(overpayKey);
+      setErrors({ form: warning });
+      return;
+    }
+
     setSaving(true);
+    // Building the entry can add a new person or investment; if the entry isn't saved, take them back out.
+    const before = f.getBook();
+    const undoNewNames = () => {
+      if (f.getBook() !== before) void f.commitBook(before);
+    };
     const draft = buildDraft(amountMinor ?? 0);
     if (!draft) {
+      undoNewNames();
       setErrors({ form: "Something is missing. Please check the form." });
       setSaving(false);
       return;
@@ -341,6 +436,7 @@ export function EventForm({
 
     const result = editing ? f.updateEvent(editing.id, draft) : f.addEvent(draft);
     if (!result.ok) {
+      undoNewNames();
       setErrors({ form: result.issues[0]?.message ?? "That can't be saved." });
       setSaving(false);
       return;
@@ -405,6 +501,21 @@ export function EventForm({
       }
       case "update_valuation":
         return { type, date, holdingId: values.holdingId, valueMinor: amount };
+      case "loan_taken": {
+        const loanId = f.resolveLoan(values.loanName, date);
+        return loanId ? { type, date, fromAccountId: loanId, toAccountId: values.accountId, amountMinor: amount } : null;
+      }
+      case "emi_payment":
+        if (interestMinor === null) return null;
+        return {
+          type,
+          date,
+          fromAccountId: values.accountId,
+          toAccountId: values.loanId,
+          amountMinor: amount,
+          interestMinor,
+          categoryId: emiCategoryId,
+        };
     }
   }
 
@@ -485,7 +596,11 @@ export function EventForm({
             id="account"
             label={label("account", "Account")}
             value={values.accountId}
-            onChange={(v) => set("accountId", v)}
+            onChange={(v) => {
+              set("accountId", v);
+              // A transfer can't go to the account it comes from: clear "To" rather than leave it hidden but set.
+              if (type === "transfer" && v === values.toAccountId) set("toAccountId", "");
+            }}
             accounts={mainAccounts}
             error={errors.account}
           />
@@ -606,6 +721,88 @@ export function EventForm({
           </Field>
         );
 
+      case "loanName": {
+        const existing = loans.find((a) => a.name.toLowerCase() === values.loanName.trim().toLowerCase());
+        return (
+          <Field key={key} id="loanName" label={label("loanName", "Loan")} error={errors.loanName}>
+            <Input
+              id="loanName"
+              list="loans-list"
+              autoComplete="off"
+              autoFocus={!editing}
+              maxLength={50}
+              placeholder="e.g. Home loan, HDFC car loan"
+              value={values.loanName}
+              onChange={(e) => set("loanName", e.target.value)}
+              aria-invalid={!!errors.loanName}
+            />
+            <datalist id="loans-list">
+              {loans.map((a) => (
+                <option key={a.id} value={a.name} />
+              ))}
+            </datalist>
+            {values.loanName.trim() && (
+              <p className="text-xs text-muted-foreground">
+                {existing
+                  ? `You owe ${formatRupees(owedOnLoan(existing.id))} on it now. This adds to it.`
+                  : "A new loan is added under Cards & loans on the Money page."}
+              </p>
+            )}
+          </Field>
+        );
+      }
+
+      case "loanSelect":
+        return loans.length === 0 ? (
+          <p key={key} className="rounded-xl bg-muted p-3 text-sm text-muted-foreground">
+            You don&apos;t have a loan yet. For a new loan, record it with Take a loan. For one you&apos;re already repaying, add it on
+            the Money page with what you still owe.
+          </p>
+        ) : (
+          <Field key={key} id="loan" label={label("loanSelect", "Loan")} error={errors.loanSelect}>
+            <Select value={values.loanId} onValueChange={(v) => (v ? set("loanId", v) : undefined)}>
+              <SelectTrigger id="loan" aria-invalid={!!errors.loanSelect}>
+                <SelectValue placeholder="Select" />
+              </SelectTrigger>
+              <SelectContent>
+                {loans.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    <span className="flex items-center gap-2">
+                      <BankMark name={a.name} fallback={<PictureIcon name="loan" />} />
+                      {a.name}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {values.loanId && <p className="text-xs text-muted-foreground">You owe {formatRupees(owedOnLoan(values.loanId))} on it now.</p>}
+          </Field>
+        );
+
+      case "interest":
+        return (
+          <Field key={key} id="interest" label="Interest part" error={errors.interest}>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">₹</span>
+              <Input
+                id="interest"
+                inputMode="decimal"
+                autoComplete="off"
+                placeholder="0"
+                className="pl-7 tabular-nums"
+                value={values.interest}
+                onChange={(e) => set("interest", e.target.value)}
+                aria-invalid={!!errors.interest}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {principalMinor !== null && principalMinor >= 0 && interestMinor !== null
+                ? `${formatRupees(principalMinor)} pays the loan down · ${formatRupees(interestMinor)} counts as spending`
+                : "Your loan's repayment schedule shows how much of each EMI is interest."}
+            </p>
+          </Field>
+        );
+
       case "shares":
         return (
           <div key={key} className="grid gap-2">
@@ -680,6 +877,8 @@ export function EventForm({
 
   // Put short fields (account/date, etc.) side by side where it reads naturally.
   const noAccountsForType = spec.fields.includes("account") && mainAccounts.length === 0;
+  // Pay EMI needs a loan to pay; the loan field explains how to add one.
+  const noLoanToPay = spec.fields.includes("loanSelect") && loans.length === 0;
 
   return (
     <form onSubmit={submit} noValidate className="grid gap-4">
@@ -728,7 +927,7 @@ export function EventForm({
       {errors.form && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{errors.form}</p>}
 
       <DialogFooter>
-        <Button type="submit" disabled={saving || noAccountsForType}>
+        <Button type="submit" disabled={saving || noAccountsForType || noLoanToPay}>
           {editing ? "Save changes" : "Save"}
         </Button>
       </DialogFooter>

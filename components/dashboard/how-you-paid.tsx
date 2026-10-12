@@ -63,7 +63,7 @@ export function HowYouPaid({ from, to }: { from: string; to: string }) {
               );
             })}
           </ul>
-          <p className="mt-1 text-[11px] text-muted-foreground max-sm:hidden">Bank account includes UPI, debit card and net banking: they all take money from your bank.</p>
+          <p className="mt-1 text-[11px] text-muted-foreground max-sm:hidden">Bank account includes UPI and net banking: they both take money from your bank.</p>
         </>
       )}
 

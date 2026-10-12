@@ -54,7 +54,7 @@ const mkRow = (desc: string, dir: "debit" | "credit", rupees: number, balance = 
       parser: "t", warnings: [], ocr: false,
       rows: [{ index: n, page: 1, date: "2026-09-10", rawDescription: desc, debitMinor: dir === "debit" ? rupees * 100 : 0, creditMinor: dir === "credit" ? rupees * 100 : 0, balanceMinor: Math.round(balance * 100), confidence: 1, rawLine: desc, warnings: [] }],
     },
-    { importId: "i", accountId: "account-debit", newId: () => `row${n++}` },
+    { importId: "i", accountId: "account-upi", newId: () => `row${n++}` },
   )[0];
 
 const EXP = ["Food", "Shopping", "Transport", "Rent", "Bills", "Entertainment", "Health", "Travel", "Other"];
@@ -144,7 +144,7 @@ describe("the classification route", () => {
     const sent = JSON.stringify(received[0].body);
     expect(sent).not.toMatch(/\d{6,}/);
     expect(sent).not.toMatch(/98765|9876543/);
-    expect(sent).not.toContain("account-debit");
+    expect(sent).not.toContain("account-upi");
   });
 });
 

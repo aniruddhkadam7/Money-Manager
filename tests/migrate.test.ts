@@ -5,30 +5,28 @@ import {
   defaultAccounts,
   DEFAULT_ACCOUNT_ID,
   DEFAULTS_VERSION,
-  missingDefaultAccounts,
-  restoreDefaultAccounts,
   withDefaultAccounts,
 } from "@/lib/finance/migrate";
 import { deriveState } from "@/lib/finance/state";
 import type { Book } from "@/lib/finance/types";
 
 const NOW = "2026-10-05T00:00:00.000Z";
-const SIX = ["Cash", "UPI", "Debit card", "Credit card", "Net banking", "Wallet"];
+const SIX = ["Cash", "UPI", "Credit card", "Net banking"];
 const names = (b: Book) => b.accounts.map((a) => a.name);
 const all = defaultAccounts(NOW);
 const cashOnly = (): Book => ({ accounts: [all[0]], people: [], events: [] });
-/** What someone who already received the first four accounts has stored. */
-const version1 = (): Book => ({ accounts: all.slice(0, 4), people: [], events: [], setup: { defaultAccountsAdded: true } });
+/** What someone who already received the first set of accounts has stored. */
+const version1 = (): Book => ({ accounts: all.slice(0, 3), people: [], events: [], setup: { defaultAccountsAdded: true } });
 
 describe("the fixed set of everyday accounts", () => {
-  it("is Cash, UPI, Debit card, Credit card, Net banking and Wallet, all empty", () => {
+  it("is Cash, UPI, Credit card and Net banking, all empty", () => {
     expect(all.map((a) => a.name)).toEqual(SIX);
-    expect(all.map((a) => a.type)).toEqual(["cash", "bank", "bank", "credit_card", "bank", "cash"]);
+    expect(all.map((a) => a.type)).toEqual(["cash", "bank", "credit_card", "bank"]);
     expect(all.every((a) => a.openingBalanceMinor === 0)).toBe(true);
-    expect(new Set(all.map((a) => a.id)).size).toBe(6);
+    expect(new Set(all.map((a) => a.id)).size).toBe(4);
   });
 
-  it("a brand-new or migrated book starts with all six", () => {
+  it("a brand-new or migrated book starts with all four", () => {
     const book = bookFromLegacyExpenses([], NOW);
     expect(names(book)).toEqual(SIX);
     expect(book.setup).toEqual({ defaultAccountsAdded: true, defaultsVersion: DEFAULTS_VERSION });
@@ -51,17 +49,17 @@ describe("one-time updates for people who already have data", () => {
     expect(withDefaultAccounts(upgraded, NOW)).toBe(upgraded); // second run changes nothing
   });
 
-  it("someone who got the first four gets just Net banking and Wallet, once", () => {
+  it("someone who got the first set gets just Net banking, once", () => {
     const upgraded = withDefaultAccounts(version1(), NOW);
     expect(names(upgraded)).toEqual(SIX);
     expect(upgraded.setup?.defaultsVersion).toBe(DEFAULTS_VERSION);
     expect(withDefaultAccounts(upgraded, NOW)).toBe(upgraded);
   });
 
-  it("never re-adds an old standard account they deleted (UPI), but does add the two new ones", () => {
+  it("never re-adds an old standard account they deleted (UPI), but does add the new one", () => {
     const book = version1();
     const withoutUpi: Book = { ...book, accounts: book.accounts.filter((a) => a.name !== "UPI") };
-    expect(names(withDefaultAccounts(withoutUpi, NOW))).toEqual(["Cash", "Debit card", "Credit card", "Net banking", "Wallet"]);
+    expect(names(withDefaultAccounts(withoutUpi, NOW))).toEqual(["Cash", "Credit card", "Net banking"]);
   });
 
   it("keeps existing entries and balances untouched", () => {
@@ -87,24 +85,5 @@ describe("one-time updates for people who already have data", () => {
 
   it("an empty book gets the full set", () => {
     expect(names(withDefaultAccounts({ accounts: [], people: [], events: [] }, NOW))).toEqual(SIX);
-  });
-});
-
-describe("restoring the standard accounts", () => {
-  it("reports which are missing and puts only those back, leaving everything else alone", () => {
-    const mine: Book = {
-      accounts: [
-        all[0],
-        { id: "hdfc", name: "HDFC", type: "bank", openingBalanceMinor: 100_000, openedOn: "2026-01-01", createdAt: NOW },
-      ],
-      people: [],
-      events: [],
-      setup: { defaultAccountsAdded: true, defaultsVersion: DEFAULTS_VERSION },
-    };
-    expect(missingDefaultAccounts(mine, NOW).map((a) => a.name)).toEqual(["UPI", "Debit card", "Credit card", "Net banking", "Wallet"]);
-    const restored = restoreDefaultAccounts(mine, NOW);
-    expect(names(restored)).toEqual(["Cash", "HDFC", "UPI", "Debit card", "Credit card", "Net banking", "Wallet"]);
-    expect(restored.accounts.find((a) => a.id === "hdfc")!.openingBalanceMinor).toBe(100_000);
-    expect(restoreDefaultAccounts(restored, NOW)).toBe(restored); // nothing missing: no change
   });
 });

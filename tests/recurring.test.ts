@@ -187,7 +187,8 @@ describe("what a real year of statements looked like", () => {
       { date: "2026-10-05", description: "Razorpay Pv", amount: 6468, category: "other" },
     ]);
     expect(found).toHaveLength(1);
-    expect(found[0]).toMatchObject({ kind: "subscription", via: "pattern", occurrences: 5 });
+    // Named as the bank printed it most recently.
+    expect(found[0]).toMatchObject({ name: "Razorpay Pv", kind: "subscription", via: "pattern", occurrences: 5 });
   });
 });
 

@@ -736,7 +736,7 @@ export async function rereadBank(data: Uint8Array, filename: string, pdfjs: Pdfj
   return pages ? readBank(buildLines(pages).map((l) => l.text)) : undefined;
 }
 
-const PLACEHOLDER_NAME: Record<string, string> = { "account-netbanking": "Net banking", "account-debit": "Debit card" };
+const PLACEHOLDER_NAME: Record<string, string> = { "account-netbanking": "Net banking" };
 
 /**
  * Puts right the bank an earlier import read wrongly: the record, the remembered account number, and an

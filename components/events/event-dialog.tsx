@@ -167,6 +167,10 @@ function Picker({ onPick }: { onPick: (type: EventType) => void }) {
             <span className="line-clamp-2 break-words">{o.label}</span>
           </button>
         ))}
+        {/* Empty tiles to finish the last row, so the hairlines stay square. */}
+        {Array.from({ length: (3 - (EVENT_OPTIONS.length % 3)) % 3 }, (_, i) => (
+          <div key={`filler-${i}`} className="bg-background" />
+        ))}
       </div>
     </>
   );

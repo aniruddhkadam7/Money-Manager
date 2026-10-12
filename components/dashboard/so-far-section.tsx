@@ -114,7 +114,16 @@ export function SoFarSection() {
         />
       </div>
       <div className="mt-3 grid gap-5 lg:mt-6 lg:grid-cols-2">
-        <Breakdown className={cn(side !== "out" && "max-lg:hidden")} tone="out" title="Where you spent" rows={spent} getCategory={getCategory} hrefFor={(id) => activityHref({ group: "spending", category: id, from, to })} slotOf={(id) => slots.spent.get(id)} />
+        <Breakdown
+          className={cn(side !== "out" && "max-lg:hidden")}
+          tone="out"
+          title="Where you spent"
+          rows={spent}
+          net={{ minor: r.expensesMinor, href: activityHref({ group: "moneyback", from, to }) }}
+          getCategory={getCategory}
+          hrefFor={(id) => activityHref({ group: "spending", category: id, from, to })}
+          slotOf={(id) => slots.spent.get(id)}
+        />
         <Breakdown className={cn(side !== "in" && "max-lg:hidden")} tone="in" title="Where you earned from" rows={earned} getCategory={getCategory} hrefFor={(id) => activityHref({ type: "income", category: id, from, to })} slotOf={(id) => slots.earned.get(id)} />
       </div>
     </section>
@@ -177,6 +186,7 @@ function Breakdown({
   tone,
   title,
   rows,
+  net,
   getCategory,
   hrefFor,
   slotOf,
@@ -185,6 +195,12 @@ function Breakdown({
   tone: keyof typeof TONES;
   title: string;
   rows: Row[];
+  /**
+   * Spending: the "Spent" total, after refunds that aren't taken off a category in this period (no matching
+   * purchase, or the purchase was in an earlier period). The difference is listed as its own line so the
+   * list adds up to the same total as the strip above.
+   */
+  net?: { minor: number; href: string };
   getCategory: ReturnType<typeof useFinance>["getCategory"];
   hrefFor: (id: string) => string;
   slotOf: (id: string) => number | undefined;
@@ -193,6 +209,8 @@ function Breakdown({
   // Phones list the top few; the rest open on request.
   const [all, setAll] = useState(false);
   const total = rows.reduce((t, r) => t + r.amountMinor, 0);
+  const shownTotal = net?.minor ?? total;
+  const moneyBack = total - shownTotal;
   const hasOwn = (id: string) => (slotOf(id) ?? SLOTS.length) < SLOTS.length;
   const colorOf = (id: string) => (hasOwn(id) ? SLOTS[slotOf(id)!][0] : REST_COLOR);
 
@@ -224,7 +242,7 @@ function Breakdown({
           <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{t.kicker}</div>
           <h3 className="text-sm font-semibold">{title}</h3>
         </div>
-        <span className={cn("shrink-0 text-lg font-semibold tabular-nums", t.amount)}>{rupees(total)}</span>
+        <span className={cn("shrink-0 text-lg font-semibold tabular-nums", t.amount)}>{rupees(shownTotal)}</span>
       </div>
       <div className="sm:p-4">
         {rows.length === 0 ? (
@@ -233,7 +251,7 @@ function Breakdown({
           <>
             {/* Phones: the donut alone; the list below has each colour and share, so the legend is for wider screens. */}
             <div className="flex flex-col items-center gap-4 max-sm:mb-3 sm:flex-row">
-              <Donut slices={slices} total={total} active={activeSlice} onHover={setHover} />
+              <Donut slices={slices} total={total} centerMinor={shownTotal} active={activeSlice} onHover={setHover} />
               <ul className="grid w-full flex-1 grid-cols-2 gap-x-4 gap-y-1 text-xs max-sm:hidden" aria-label={`${title}: legend`}>
                 {slices.map((s) => (
                   <li
@@ -270,17 +288,25 @@ function Breakdown({
                       onMouseLeave={() => setHover(null)}
                       className={cn("flex items-center gap-3 px-3 py-2 text-sm hover:bg-muted/60", hover === c.categoryId && "bg-muted/60")}
                     >
-                      <span className="flex w-14 shrink-0 items-center gap-1.5 rounded-md bg-muted px-1.5 py-0.5 text-xs font-semibold tabular-nums">
-                        <span className="size-2 shrink-0 rounded-full" style={{ background: colorOf(c.categoryId) }} />
-                        {pctText(c.amountMinor, total)}
-                      </span>
                       <CategoryIcon category={cat} />
                       <span className="min-w-0 flex-1 truncate">{cat.name}</span>
-                      <span className="shrink-0 font-medium tabular-nums">{rupees(c.amountMinor)}</span>
+                      <span className="flex w-14 shrink-0 items-center gap-1.5 rounded-md bg-muted px-1.5 py-0.5 text-xs font-semibold tabular-nums">
+                        <span className="size-2 shrink-0 rounded-full" style={{ background: colorOf(c.categoryId) }} />
+                        <span className="flex-1 text-center">{pctText(c.amountMinor, total)}</span>
+                      </span>
+                      <span className="min-w-0 flex-1 text-right font-medium tabular-nums">{rupees(c.amountMinor)}</span>
                     </Link>
                   </li>
                 );
               })}
+              {moneyBack > 0 && net && (
+                <li>
+                  <Link href={net.href} className="flex items-center gap-3 px-3 py-2 text-sm text-muted-foreground hover:bg-muted/60" data-testid="money-back-row">
+                    <span className="min-w-0 flex-1 truncate">Refunds & money back</span>
+                    <span className="min-w-0 flex-1 text-right font-medium tabular-nums">{rupees(-moneyBack)}</span>
+                  </Link>
+                </li>
+              )}
             </ul>
             {rows.length > PHONE_ROWS && (
               <button type="button" onClick={() => setAll((v) => !v)} className="mt-2 text-xs font-medium text-emerald-700 hover:underline sm:hidden">
@@ -295,7 +321,7 @@ function Breakdown({
 }
 
 /** Donut with a 2px card-coloured gap between slices; the pointed-at slice pulls out a little. Total in the hole. */
-function Donut({ slices, total, active, onHover }: { slices: Slice[]; total: number; active: string | null; onHover: (id: string | null) => void }) {
+function Donut({ slices, total, centerMinor, active, onHover }: { slices: Slice[]; total: number; /** The total printed in the hole. */ centerMinor: number; active: string | null; onHover: (id: string | null) => void }) {
   const size = 176;
   const outer = 76;
   const inner = 48;
@@ -339,7 +365,7 @@ function Donut({ slices, total, active, onHover }: { slices: Slice[]; total: num
         Total
       </text>
       <text x={c} y={c + 12} textAnchor="middle" fontSize="14" fontWeight={600} className="fill-foreground">
-        {rupees(total)}
+        {rupees(centerMinor)}
       </text>
     </svg>
   );

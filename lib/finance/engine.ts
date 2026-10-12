@@ -188,6 +188,40 @@ export function buildLedger(book: Book): Ledger {
         };
       }
 
+      case "loan_taken": {
+        const a = amount(e.amountMinor);
+        const loan = account(e.fromAccountId, ["loan"], "Loan");
+        const into = account(e.toAccountId, moneyAccounts, "Received in");
+        // Borrowed money, not income: the account gains it and the loan owes the same.
+        return {
+          flow: "borrowing",
+          postings: [
+            { ledger: ledgerIds.account(into.id), amountMinor: a },
+            { ledger: ledgerIds.account(loan.id), amountMinor: -a },
+          ],
+        };
+      }
+
+      case "emi_payment": {
+        const a = amount(e.amountMinor, "EMI");
+        const from = account(e.fromAccountId, moneyAccounts, "Paid from");
+        const loan = account(e.toAccountId, ["loan"], "Loan");
+        const interest = e.interestMinor;
+        if (!isWholeMoney(interest) || interest < 0) fail("invalid_amount", "Interest can't be less than zero.");
+        if (interest > a) fail("interest_exceeds_emi", "Interest can't be more than the whole EMI.");
+        if (interest > 0 && !e.categoryId) fail("missing_category", "Choose a category.");
+        const principal = a - interest;
+        // The principal pays the loan down (not spending); only the interest is a cost.
+        return {
+          flow: "debt_payment",
+          postings: [
+            ...(principal > 0 ? [{ ledger: ledgerIds.account(loan.id), amountMinor: principal }] : []),
+            ...(interest > 0 ? [{ ledger: ledgerIds.expense(e.categoryId), amountMinor: interest }] : []),
+            { ledger: ledgerIds.account(from.id), amountMinor: -a },
+          ],
+        };
+      }
+
       case "lend": {
         const a = amount(e.amountMinor);
         person(e.personId);

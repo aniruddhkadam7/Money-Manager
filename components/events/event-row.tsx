@@ -18,12 +18,14 @@ export function headline(e: FinancialEvent): { amountMinor: number; tone: "in" |
     case "reimbursable_expense":
     case "lend":
     case "repayment_made":
+    case "emi_payment":
       return { amountMinor: e.amountMinor, tone: "out" };
     case "split_expense":
       return { amountMinor: e.totalMinor, tone: "out" };
     case "income":
     case "borrow":
     case "repayment_received":
+    case "loan_taken":
       return { amountMinor: e.amountMinor, tone: "in" };
     case "sell_investment":
       return { amountMinor: e.proceedsMinor, tone: "in" };

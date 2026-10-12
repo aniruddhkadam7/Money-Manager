@@ -19,7 +19,7 @@ import { RangeTabs } from "../charts/primitives";
 import { PageTitle } from "../page-title";
 import { PictureIcon } from "../picture-icon";
 import { statementMatches, useStatementChecks, type StatementCheck } from "../statements/use-statement-checks";
-import { ACCOUNT_TYPE_INFO, AccountDialog } from "./account-dialog";
+import { ACCOUNT_TYPE_INFO, AccountDialog, type AddableAccountType } from "./account-dialog";
 import { PeopleList } from "./manage-lists";
 
 /** Phones show the page a part at a time, like a phone app's tabs; wider screens show it all. (Categories and
@@ -32,9 +32,14 @@ const TABS: { value: Tab; label: string }[] = [
 /** Which tab a /money#section link lands on. */
 const TAB_OF: Record<string, Tab> = { owed: "people", owe: "people" };
 
-const SECTIONS: { id: string; title: string; types: AccountType[] }[] = [
-  { id: "accounts", title: "Bank & cash", types: ["bank", "cash"] },
-  { id: "cards-loans", title: "Cards & loans", types: ["credit_card", "loan"] },
+const SECTIONS: { id: string; title: string; types: AccountType[]; add: { type: AddableAccountType; label: string }[] }[] = [
+  { id: "accounts", title: "Bank & cash", types: ["bank", "cash"], add: [{ type: "bank", label: "Add bank" }] },
+  {
+    id: "cards-loans",
+    title: "Cards & loans",
+    types: ["credit_card", "loan"],
+    add: [{ type: "credit_card", label: "Add card" }],
+  },
 ];
 
 /** Phones: the section's add button reads as a plain green link, like a phone app's list header. */
@@ -54,12 +59,12 @@ function SectionHead({ title, total, action }: { title: string; total?: string; 
 }
 
 export function MoneyView() {
-  const { status, state, missingStandardAccounts, restoreStandardAccounts } = useFinance();
+  const { status, state } = useFinance();
   const statements = useStatementChecks();
   const bankOf = useBankHints();
   const { openAdd } = useEventDialog();
   const theyPaidMe = useQuickRepaymentReceived();
-  const [dialog, setDialog] = useState<{ open: boolean; editing: Account | null }>({ open: false, editing: null });
+  const [dialog, setDialog] = useState<{ open: boolean; editing: Account | null; adding?: AddableAccountType }>({ open: false, editing: null });
   const [tab, setTab] = useState<Tab>("accounts");
   const hide = (t: Tab) => (tab !== t ? "max-sm:hidden" : undefined);
 
@@ -80,20 +85,7 @@ export function MoneyView() {
 
   return (
     <div className="mx-auto grid w-full max-w-[1400px] grid-cols-1 gap-4 sm:gap-6">
-      <PageTitle
-        actions={
-          missingStandardAccounts.length > 0 && (
-            <Button variant="outline" size="sm" className="h-auto max-w-full whitespace-normal py-1.5 text-left" onClick={restoreStandardAccounts}>
-              <span className="max-sm:hidden">Restore {missingStandardAccounts.map((a) => a.name).join(", ")}</span>
-              <span className="sm:hidden" title={missingStandardAccounts.map((a) => a.name).join(", ")}>
-                Restore {missingStandardAccounts.length} default {missingStandardAccounts.length === 1 ? "account" : "accounts"}
-              </span>
-            </Button>
-          )
-        }
-      >
-        Money
-      </PageTitle>
+      <PageTitle>Money</PageTitle>
 
       <div className="sm:hidden">
         <RangeTabs label="Show" value={tab} options={TABS} onChange={setTab} />
@@ -109,11 +101,13 @@ export function MoneyView() {
               title={section.title}
               total={rows.length > 0 ? formatRupees(rows.reduce((t, a) => t + a.balanceMinor, 0)) : undefined}
               action={
-                section.id === "cards-loans" && (
-                  <Button size="sm" variant="outline" className={ACTION} onClick={() => setDialog({ open: true, editing: null })}>
-                    <Plus /> Add loan
-                  </Button>
-                )
+                <div className="flex gap-2 max-sm:gap-0">
+                  {section.add.map((a) => (
+                    <Button key={a.type} size="sm" variant="outline" className={ACTION} onClick={() => setDialog({ open: true, editing: null, adding: a.type })}>
+                      <Plus /> {a.label}
+                    </Button>
+                  ))}
+                </div>
               }
             />
             {rows.length === 0 ? (
@@ -282,6 +276,7 @@ export function MoneyView() {
       <AccountDialog
         open={dialog.open}
         editing={dialog.editing}
+        adding={dialog.adding}
         onOpenChange={(open) => setDialog((d) => ({ ...d, open }))}
       />
     </div>

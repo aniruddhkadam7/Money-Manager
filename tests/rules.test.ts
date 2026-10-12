@@ -28,7 +28,7 @@ export const row = (desc: string, dir: "debit" | "credit", amountRupees: number)
         },
       ],
     },
-    { importId: "i", accountId: "account-debit", newId: () => `r${n++}` },
+    { importId: "i", accountId: "account-upi", newId: () => `r${n++}` },
   )[0];
 
 const ctx = (over: Partial<RuleContext> = {}): RuleContext => ({
@@ -102,7 +102,7 @@ describe("rule classification", () => {
     let book: Book = { accounts: defaultAccounts("2026-01-01"), people: [], events: [] };
     const p = ensurePerson(book, "Rahul Sharma")!;
     book = p.book;
-    const r = addEvent(book, { type: "lend", date: "2026-08-01", personId: p.person.id, accountId: "account-debit", amountMinor: 200000 });
+    const r = addEvent(book, { type: "lend", date: "2026-08-01", personId: p.person.id, accountId: "account-upi", amountMinor: 200000 });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     const rels = relationships(r.value, buildLedger(r.value));

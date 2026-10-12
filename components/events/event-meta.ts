@@ -11,6 +11,8 @@ export const EVENT_OPTIONS: { type: EventType; label: string; hint: string; pict
   { type: "borrow", label: "Borrow money", hint: "Someone gave me money", picture: "borrow" },
   { type: "repayment_received", label: "Got paid back", hint: "Someone repaid me", picture: "repay" },
   { type: "repayment_made", label: "Paid someone back", hint: "I repaid what I owe", picture: "repay" },
+  { type: "loan_taken", label: "Take a loan", hint: "A bank loan was paid into my account", picture: "loan" },
+  { type: "emi_payment", label: "Pay EMI", hint: "I paid an instalment on a loan", picture: "emi" },
   { type: "split_expense", label: "Split expense", hint: "I paid, others owe me a share", picture: "split" },
   { type: "reimbursable_expense", label: "Reimbursement", hint: "I paid, someone will pay me back", picture: "reimburse" },
   { type: "invest", label: "Invest", hint: "I put money into an investment", picture: "invest" },
@@ -50,6 +52,9 @@ export type FieldKey =
   | "holdingName"
   | "holdingSelect"
   | "soldValue"
+  | "loanName"
+  | "loanSelect"
+  | "interest"
   | "shares"
   | "date";
 
@@ -102,6 +107,16 @@ export const FORM_SPEC: Record<EventType, FormSpec> = {
   repayment_made: {
     fields: ["person", "amount", "account", "date"],
     labels: { person: "Who did you pay back?", account: "Paid from" },
+    accountTypes: MONEY,
+  },
+  loan_taken: {
+    fields: ["loanName", "amount", "account", "date"],
+    labels: { loanName: "Which loan?", amount: "Loan amount", account: "Received in" },
+    accountTypes: MONEY,
+  },
+  emi_payment: {
+    fields: ["loanSelect", "amount", "interest", "account", "date"],
+    labels: { loanSelect: "Which loan?", amount: "EMI amount", account: "Paid from" },
     accountTypes: MONEY,
   },
   split_expense: {

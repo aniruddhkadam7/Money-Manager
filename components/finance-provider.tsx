@@ -18,7 +18,7 @@ import type { AccountInput, Result } from "@/lib/finance/book-ops";
 import type { BookRepository } from "@/lib/finance/book-storage";
 import { makeDescriber, type Describer } from "@/lib/finance/describe";
 import { buildLedger } from "@/lib/finance/engine";
-import { bookFromLegacyExpenses, missingDefaultAccounts, restoreDefaultAccounts, withDefaultAccounts, withMoneyBackCategories } from "@/lib/finance/migrate";
+import { bookFromLegacyExpenses, withDefaultAccounts, withMoneyBackCategories } from "@/lib/finance/migrate";
 import { deriveState, periodReport, type FinancialState, type PeriodReport } from "@/lib/finance/state";
 import type { Account, Book, EventDraft, EventIssue, FinancialEvent, Ledger } from "@/lib/finance/types";
 
@@ -56,11 +56,9 @@ interface FinanceContextValue {
   resolvePerson: (name: string) => string | null;
   /** Finds an investment by name or creates it. */
   resolveInvestment: (name: string) => string | null;
+  /** Finds a loan by name or creates it (opened on `openedOn`). Null if the name belongs to another kind of account. */
+  resolveLoan: (name: string, openedOn: string) => string | null;
   addAccount: (input: AccountInput) => Result<Account>;
-  /** Standard accounts (Cash, UPI...) that are currently missing. */
-  missingStandardAccounts: Account[];
-  /** Puts back any missing standard accounts. */
-  restoreStandardAccounts: () => void;
   updateAccount: (id: string, changes: Partial<Pick<Account, "name" | "openingBalanceMinor" | "openedOn">>) => Result<null>;
   deleteAccount: (id: string, choice?: ops.DeleteAccountChoice) => Result<null>;
   addCategory: (name: string) => Promise<Category>;
@@ -256,11 +254,13 @@ export function FinanceProvider({
         return r.account.id;
       },
 
-      missingStandardAccounts: missingDefaultAccounts(book, ""),
-      restoreStandardAccounts: () => {
-        const next = restoreDefaultAccounts(bookRef.current, new Date().toISOString());
-        if (next !== bookRef.current) commit(next);
+      resolveLoan: (name, openedOn) => {
+        const r = ops.ensureLoan(bookRef.current, name, openedOn);
+        if (!r) return null;
+        if (r.book !== bookRef.current) commit(r.book);
+        return r.account.id;
       },
+
       addAccount: (input) => {
         const r = ops.addAccount(bookRef.current, input);
         if (!r.ok) return r;

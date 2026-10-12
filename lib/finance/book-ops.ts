@@ -124,6 +124,8 @@ export function updateAccount(
 export function accountIdsUsedBy(e: FinancialEvent): string[] {
   switch (e.type) {
     case "transfer":
+    case "loan_taken":
+    case "emi_payment":
       return [e.fromAccountId, e.toAccountId];
     case "invest":
       return [e.fromAccountId, e.holdingId];
@@ -290,6 +292,18 @@ export function deletePerson(book: Book, id: string): Result<Book> {
     return invalid("This person has entries. Delete or edit those first.", "in_use");
   }
   return { ok: true, value: { ...book, people: book.people.filter((p) => p.id !== id) } };
+}
+
+/** Finds a loan by name or creates it (nothing owed yet; a "Take a loan" entry adds what is borrowed). */
+export function ensureLoan(book: Book, name: string, openedOn: string, clock: Clock = systemClock): { book: Book; account: Account } | null {
+  const clean = cleanName(name);
+  if (!clean) return null;
+  const existing = book.accounts.find((a) => a.type === "loan" && a.name.toLowerCase() === clean.toLowerCase());
+  if (existing) return { book, account: existing };
+  // Account names are unique across types: "HDFC" the bank account can't also be "HDFC" the loan.
+  if (book.accounts.some((a) => a.name.toLowerCase() === clean.toLowerCase())) return null;
+  const account: Account = { id: clock.newId(), name: clean, type: "loan", openingBalanceMinor: 0, openedOn, createdAt: clock.now() };
+  return { book: { ...book, accounts: [...book.accounts, account] }, account };
 }
 
 /** Finds an investment by name or creates it (empty, with no opening value). */
