@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode, type TouchEvent } from "react";
-import { ChevronRight, Plus, RefreshCw } from "lucide-react";
+import { ChevronRight, Plus, RefreshCw, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EconomySection, ScoreTable, SCORE_SORTS } from "./economy-health";
 import { CATALOG, COMMODITIES, CURRENCY, INDIA, SECTORS, WORLD, YIELDS, type CatalogItem } from "@/lib/market/catalog";
@@ -18,8 +18,10 @@ import { SectorCompare } from "./sector-compare";
 import { SectorSheet } from "./sector-sheet";
 import { PRICE_SORTS, QUOTE_SORTS, sortItems, SortSelect, useSort, type QuoteSort, type SortOption } from "./sort";
 import { Sparkline } from "./sparkline";
-import { NewsView } from "./news-view";
-import { useEconomy, useNews, useOverview, useWatchlistQuotes } from "./use-market";
+import type { NewsTopic } from "@/lib/market/news";
+import { useToast } from "../toast";
+import { NewsTopics, NewsView } from "./news-view";
+import { fetchQuote, useEconomy, useNews, useOverview, useWatchlistQuotes } from "./use-market";
 
 /**
  * Three views, kept apart: Markets (prices that move every day, with the 1D … 1Y period), Economy
@@ -41,6 +43,25 @@ const TABS: { value: Tab; label: string }[] = [
   { value: "money", label: "Commodities & FX" },
   { value: "watchlist", label: "Watchlist" },
 ];
+/** Phones show the economy a part at a time, like the market sections; wider screens show it all. */
+type EcoTab = "india" | "world" | "rates" | "compare";
+const ECO_TABS: { value: EcoTab; label: string }[] = [
+  { value: "india", label: "India" },
+  { value: "world", label: "World" },
+  { value: "rates", label: "Central banks" },
+  { value: "compare", label: "Compare" },
+];
+
+/** A section tab: on phones text with a bar under the current one, as in a market app; wider, a pill. */
+const tabClass = (active: boolean) =>
+  cn(
+    "shrink-0 text-sm font-medium transition-colors",
+    "max-sm:relative max-sm:select-none max-sm:py-2 max-sm:text-sm max-sm:after:absolute max-sm:after:inset-x-0 max-sm:after:bottom-0 max-sm:after:h-[3px] max-sm:after:rounded-full max-sm:after:transition-colors",
+    active ? "max-sm:text-slate-900 max-sm:after:bg-primary max-sm:font-semibold" : "max-sm:text-slate-500 max-sm:after:bg-transparent",
+    "sm:rounded-full sm:border sm:px-3.5 sm:py-1.5",
+    active ? "sm:border-transparent sm:bg-primary sm:text-primary-foreground" : "sm:bg-[var(--glass)] sm:text-slate-600 sm:hover:text-slate-900",
+  );
+
 /** The view, tab and period last chosen, kept in this browser only. */
 const VIEW_KEY = "mm-market-view";
 
@@ -86,6 +107,10 @@ const returnTone = (v: number | null) => (v === null ? "text-slate-400" : v > 0 
 export function MarketView() {
   const [mode, setMode] = useState<Mode>("markets");
   const [tab, setTab] = useState<Tab>("india");
+  const [ecoTab, setEcoTab] = useState<EcoTab>("india");
+  const [newsTopic, setNewsTopic] = useState<NewsTopic | "all">("all");
+  const [searching, setSearching] = useState(false);
+  const toast = useToast();
   const [period, setPeriod] = useState<Period>("1m");
   useEffect(() => {
     try {
@@ -132,22 +157,44 @@ export function MarketView() {
     const dx = t.clientX - start.x;
     const dy = t.clientY - start.y;
     if (Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx) * 0.5 || Date.now() - start.at > 700) return;
-    const i = TABS.findIndex((x) => x.value === tab);
-    const next = TABS[i + (dx < 0 ? 1 : -1)];
+    const step = dx < 0 ? 1 : -1;
+    if (mode === "economy") {
+      const next = ECO_TABS[ECO_TABS.findIndex((x) => x.value === ecoTab) + step];
+      if (next) chooseEcoTab(next.value);
+      return;
+    }
+    const next = TABS[TABS.findIndex((x) => x.value === tab) + step];
     if (next) chooseTab(next.value);
+  };
+
+  /** Back to the section's top, just under the pinned bar, if the page had scrolled past it. */
+  const toSectionTop = () => {
+    const anchor = anchorRef.current;
+    const bar = barRef.current;
+    if (!anchor || !bar) return;
+    const offset = parseFloat(getComputedStyle(bar).top) || 0;
+    const gap = anchor.getBoundingClientRect().top - offset;
+    if (gap < 0) scrollPage({ top: (document.body.scrollTop || window.scrollY) + gap });
+  };
+  const chooseEcoTab = (next: EcoTab) => {
+    if (next === ecoTab) return;
+    toSectionTop();
+    const order = (t: EcoTab) => ECO_TABS.findIndex((x) => x.value === t);
+    setEnterFrom(order(next) > order(ecoTab) ? "right" : "left");
+    setEcoTab(next);
+  };
+  /** A search result: its price and chart open as soon as its quote arrives. */
+  const openSymbol = async (symbol: string) => {
+    setSearching(false);
+    const q = await fetchQuote(symbol);
+    if (q) setSelected(q);
+    else toast.show({ message: "Couldn't get a price for that just now. Try again in a minute.", duration: 4000 });
   };
 
   const chooseTab = (next: Tab) => {
     if (next === tab) return;
-    // A new section starts at its top, just under the stuck bar, if the page had scrolled past it.
-    const anchor = anchorRef.current;
-    const bar = barRef.current;
-    if (anchor && bar) {
-      // Stuck, the bar sits at its sticky offset (the header's height); unstuck, nothing needs to move.
-      const offset = parseFloat(getComputedStyle(bar).top) || 0;
-      const gap = anchor.getBoundingClientRect().top - offset;
-      if (gap < 0) scrollPage({ top: (document.body.scrollTop || window.scrollY) + gap });
-    }
+    // A new section starts at its top, just under the pinned bar.
+    toSectionTop();
     // The new section slides in from the side it sits on, like a phone app's pages.
     const order = (t: Tab) => TABS.findIndex((x) => x.value === t);
     setEnterFrom(order(next) > order(tab) ? "right" : "left");
@@ -210,45 +257,48 @@ export function MarketView() {
     // grid-cols-1 is minmax(0, 1fr): the page never grows wider than the screen to fit a wide child; wide rows scroll inside.
     <div className="grid grid-cols-1 gap-4 sm:gap-5">
       <h1 className="sr-only">Markets and economy</h1>
-      {/* The page's top: which half (a segmented switch, like a phone app's), when it's from, and refresh. */}
-      <div className="flex items-center justify-between gap-3">
-        <div role="tablist" aria-label="View" className="inline-flex rounded-full bg-slate-100 p-1 max-sm:flex-1">
-          {MODES.map((m) => (
-            <button
-              key={m.value}
-              role="tab"
-              type="button"
-              aria-selected={mode === m.value}
-              onClick={() => chooseMode(m.value)}
-              className={cn(
-                "rounded-full px-5 py-1.5 text-sm font-semibold transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:flex-1",
-                mode === m.value ? "bg-card text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800",
-              )}
-            >
-              {m.label}
-            </button>
-          ))}
+      <div ref={anchorRef} aria-hidden className="-mb-4 h-0 sm:-mb-5" />
+      {/* The page's top, as in a phone market app: which half (a segmented switch), search and refresh, then that
+          half's own sections. Phones keep it pinned under the header while the page scrolls. */}
+      <div
+        ref={barRef}
+        className={cn(
+          "grid grid-cols-1 gap-3",
+          // Solid, so the list scrolling underneath doesn't show through the tabs.
+          "max-sm:sticky max-sm:top-[calc(env(safe-area-inset-top)+3.0625rem)] max-sm:z-30 max-sm:-mx-4 max-sm:-mt-2 max-sm:gap-1.5 max-sm:border-b max-sm:bg-[var(--glass-solid)] max-sm:px-4 max-sm:pb-2 max-sm:pt-2 max-sm:shadow-sm",
+        )}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <div role="tablist" aria-label="View" className="inline-flex rounded-full bg-slate-100 p-1 max-sm:flex-1">
+            {MODES.map((m) => (
+              <button
+                key={m.value}
+                role="tab"
+                type="button"
+                aria-selected={mode === m.value}
+                onClick={() => chooseMode(m.value)}
+                className={cn(
+                  "select-none rounded-full px-5 py-1.5 text-sm font-semibold transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:flex-1 max-sm:px-2 max-sm:py-1",
+                  mode === m.value ? "bg-card text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800",
+                )}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1 text-xs text-slate-500">
+            {asOf && <span className="mr-1 max-sm:hidden">{mode === "markets" ? "Prices as of" : "Updated"} {updatedAt(asOf / 1000)}</span>}
+            <Button variant="ghost" size="icon" className="size-9" onClick={() => setSearching(true)} aria-label="Search shares, funds and indices" title="Search">
+              <Search className="size-[18px]" />
+            </Button>
+            <Button variant="ghost" size="icon" className="size-9" onClick={refresh} disabled={refreshing} aria-label="Refresh" title="Refresh">
+              <RefreshCw className={cn(refreshing && "animate-spin")} />
+            </Button>
+          </div>
         </div>
-        <div className="flex items-center gap-2 text-xs text-slate-500">
-          {asOf && <span className="max-sm:hidden">{mode === "markets" ? "Prices as of" : "Updated"} {updatedAt(asOf / 1000)}</span>}
-          <Button variant="ghost" size="icon" onClick={refresh} disabled={refreshing} aria-label="Refresh" title="Refresh">
-            <RefreshCw className={cn(refreshing && "animate-spin")} />
-          </Button>
-        </div>
-      </div>
 
-      {mode === "markets" ? (
-        <>
-          {/* Phones: a market app's top bar, stuck under the header: sections as underlined tabs, then the period
-              across the full width. Wider screens: pills and the period on one line. */}
-          <div ref={anchorRef} aria-hidden className="-mb-4 h-0 sm:-mb-5" />
-          <div
-            ref={barRef}
-            className={cn(
-              "flex flex-wrap items-center justify-between gap-3",
-              "max-sm:sticky max-sm:bg-[var(--glass-bar)] max-sm:backdrop-blur-xl max-sm:backdrop-saturate-150 max-sm:top-[calc(env(safe-area-inset-top)+3.0625rem)] max-sm:z-30 max-sm:-mx-4 max-sm:-mt-2 max-sm:gap-1 max-sm:border-b max-sm:px-4 max-sm:pb-2",
-            )}
-          >
+        {mode === "markets" && (
+          <div className="flex flex-wrap items-center justify-between gap-3 max-sm:gap-1.5">
             <div
               role="tablist"
               aria-label="Section"
@@ -263,15 +313,7 @@ export function MarketView() {
                   type="button"
                   aria-selected={tab === t.value}
                   onClick={() => chooseTab(t.value)}
-                  className={cn(
-                    "shrink-0 text-sm font-medium transition-colors",
-                    // Phones: text with a bar under the current one.
-                    "max-sm:relative max-sm:select-none max-sm:py-2.5 max-sm:text-sm max-sm:after:absolute max-sm:after:inset-x-0 max-sm:after:bottom-0.5 max-sm:after:h-[3px] max-sm:after:rounded-full max-sm:after:transition-colors",
-                    tab === t.value ? "max-sm:text-slate-900 max-sm:after:bg-primary max-sm:font-semibold" : "max-sm:text-slate-500 max-sm:after:bg-transparent",
-                    // Tablets and up: pills.
-                    "sm:rounded-full sm:border sm:px-3.5 sm:py-1.5",
-                    tab === t.value ? "sm:border-transparent sm:bg-primary sm:text-primary-foreground" : "sm:bg-[var(--glass)] sm:text-slate-600 sm:hover:text-slate-900",
-                  )}
+                  className={tabClass(tab === t.value)}
                 >
                   {t.label}
                 </button>
@@ -283,7 +325,24 @@ export function MarketView() {
               <RangeTabs label="Returns over" value={period} options={PERIODS} onChange={choosePeriod} />
             </div>
           </div>
+        )}
 
+        {/* Phones only: the economy a part at a time (wider screens show it all at once). */}
+        {mode === "economy" && (
+          <div role="tablist" aria-label="Economy section" data-swipe-ignore className="-mx-4 flex gap-5 overflow-x-auto px-4 [scrollbar-width:none] sm:hidden">
+            {ECO_TABS.map((t) => (
+              <button key={t.value} role="tab" type="button" aria-selected={ecoTab === t.value} onClick={() => chooseEcoTab(t.value)} className={tabClass(ecoTab === t.value)}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {mode === "news" && <NewsTopics data={news.data} topic={newsTopic} onTopic={setNewsTopic} />}
+      </div>
+
+      {mode === "markets" ? (
+        <>
           {/* Phones: swipe sideways for the next or previous section, as in a market app. */}
           <div
             key={tab}
@@ -363,18 +422,33 @@ export function MarketView() {
         </>
       ) : mode === "economy" ? (
         <>
-          {/* Economy: three slow-moving pictures on one page; no tabs and no period to choose. */}
-          <div className={cn("grid grid-cols-1 items-start gap-4 sm:gap-5 lg:grid-cols-2 [&>*]:min-w-0", enterFrom && "animate-in fade-in-0 duration-300", enterFrom === "right" && "slide-in-from-right-8")}>
-            <div className="lg:col-span-2">
+          {/* Economy: slow-moving pictures, no period to choose. Wider screens show them all; phones one tab at a time,
+              swiped between like the market sections. */}
+          <div
+            key={ecoTab}
+            onTouchStart={onSwipeStart}
+            onTouchEnd={onSwipeEnd}
+            className={cn(
+              "grid grid-cols-1 items-start gap-4 sm:gap-5 lg:grid-cols-2 [&>*]:min-w-0",
+              enterFrom && "animate-in fade-in-0 duration-300",
+              enterFrom === "right" && "slide-in-from-right-8",
+              enterFrom === "left" && "slide-in-from-left-8",
+            )}
+          >
+            <div className={cn("lg:col-span-2", ecoTab !== "india" && "max-sm:hidden")}>
               <EconomySection title="How India is doing" economy={india} world={world} status={economy.status} />
             </div>
-            <div className="lg:col-span-2">
+            <div className={cn("lg:col-span-2", ecoTab !== "world" && "max-sm:hidden")}>
               <EconomySection title="How the world is doing" economy={world} status={economy.status} />
             </div>
-            <ChartCard title="Central bank rates" action={<SortSelect label="Sort central banks" value={rateSort} options={RATE_SORTS} onChange={setRateSort} />}>
-              <PolicyRates economies={economies} status={economy.status} sort={rateSort} />
-            </ChartCard>
-            <ScoreTable economies={economies} status={economy.status} sort={scoreSort} onSort={setScoreSort} />
+            <div className={cn("[&>section]:h-full", ecoTab !== "rates" && "max-sm:hidden")}>
+              <ChartCard title="Central bank rates" action={<SortSelect label="Sort central banks" value={rateSort} options={RATE_SORTS} onChange={setRateSort} />}>
+                <PolicyRates economies={economies} status={economy.status} sort={rateSort} />
+              </ChartCard>
+            </div>
+            <div className={cn(ecoTab !== "compare" && "max-sm:hidden")}>
+              <ScoreTable economies={economies} status={economy.status} sort={scoreSort} onSort={setScoreSort} />
+            </div>
           </div>
           <p className="text-center text-xs leading-relaxed text-slate-500">
             Verdicts are about the latest year that has actually happened, never a forecast, and each card shows the rule it was judged by. The rules are common rules of thumb, judged differently for developing and mature economies; they describe, they don't predict. Sources: IMF World Economic Outlook (the current year is its estimate), BIS, World Bank.
@@ -385,7 +459,7 @@ export function MarketView() {
         </>
       ) : (
         <div className={cn(enterFrom && "animate-in fade-in-0 duration-300", enterFrom === "right" && "slide-in-from-right-8", enterFrom === "left" && "slide-in-from-left-8")}>
-          <NewsView data={news.data} status={news.status} onRetry={news.refresh} />
+          <NewsView data={news.data} status={news.status} onRetry={news.refresh} topic={newsTopic} />
         </div>
       )}
 
@@ -393,6 +467,7 @@ export function MarketView() {
       {/* After the sector sheet, so a stock opened from it shows on top. */}
       <QuoteDetail quote={selected} onClose={() => setSelected(null)} />
       <AddSymbolDialog open={adding} onOpenChange={setAdding} />
+      <AddSymbolDialog open={searching} onOpenChange={setSearching} onPick={openSymbol} />
     </div>
   );
 }
@@ -558,7 +633,8 @@ function SectorBars({
             type="button"
             disabled={!q}
             onClick={() => q && onOpen(q)}
-            className="grid w-full grid-cols-[7.5rem_1fr_3.75rem] items-center gap-3 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-slate-100/70 disabled:hover:bg-transparent sm:grid-cols-[10rem_1fr_4.5rem]"
+            // Phones: the name gets half the row, so "Public sector banks" fits whole; the bar takes the rest.
+            className="grid w-full grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_3.5rem] items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-slate-100/70 active:bg-slate-100 disabled:hover:bg-transparent sm:grid-cols-[10rem_1fr_4.5rem] sm:gap-3"
           >
             <span className="truncate text-sm font-medium text-slate-900">{item.name}</span>
             <span className="relative h-5">

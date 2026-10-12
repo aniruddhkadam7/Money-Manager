@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { BadgeCheck, ExternalLink, Newspaper } from "lucide-react";
 import { NEWS_TOPICS, type NewsResponse, type NewsStory, type NewsTopic } from "@/lib/market/news";
 import { cn } from "@/lib/utils";
@@ -54,14 +54,48 @@ function Story({ story }: { story: NewsStory }) {
   );
 }
 
+/** The topic chips: only topics with stories today. */
+export function NewsTopics({ data, topic, onTopic }: { data: NewsResponse | null; topic: NewsTopic | "all"; onTopic: (t: NewsTopic | "all") => void }) {
+  const stories = data?.stories ?? [];
+  if (!stories.length) return null;
+  const present = NEWS_TOPICS.filter((t) => stories.some((s) => s.topic === t.value));
+  return (
+    <div data-swipe-ignore className="-mx-4 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0">
+      {[{ value: "all" as const, label: "All" }, ...present].map((t) => (
+        <button
+          key={t.value}
+          type="button"
+          onClick={() => onTopic(t.value)}
+          className={cn(
+            "shrink-0 select-none rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+            topic === t.value ? "border-transparent bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900" : "text-slate-600 hover:text-slate-900",
+          )}
+        >
+          {t.label}
+        </button>
+      ))}
+      <span aria-hidden className="w-px shrink-0 sm:hidden" />
+    </div>
+  );
+}
+
 /**
  * Important finance and economy news: only stories about money or the economy, kept when an RBI policy
  * release, when two or more outlets cover them, or when they're about the big levers. Filter by topic.
  */
-export function NewsView({ data, status, onRetry }: { data: NewsResponse | null; status: "loading" | "ready" | "error"; onRetry: () => void }) {
-  const [topic, setTopic] = useState<NewsTopic | "all">("all");
+export function NewsView({
+  data,
+  status,
+  onRetry,
+  topic,
+}: {
+  data: NewsResponse | null;
+  status: "loading" | "ready" | "error";
+  onRetry: () => void;
+  /** Chosen with NewsTopics, which sits in the page's pinned bar. */
+  topic: NewsTopic | "all";
+}) {
   const stories = useMemo(() => data?.stories ?? [], [data]);
-  const present = NEWS_TOPICS.filter((t) => stories.some((s) => s.topic === t.value));
   const shown = topic === "all" ? stories : stories.filter((s) => s.topic === topic);
 
   if (!data && status === "error")
@@ -84,24 +118,6 @@ export function NewsView({ data, status, onRetry }: { data: NewsResponse | null;
 
   return (
     <div className="grid grid-cols-1 gap-3">
-      {/* Topics: only those with stories today. */}
-      <div data-swipe-ignore className="-mx-4 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0">
-        {[{ value: "all" as const, label: "All" }, ...present].map((t) => (
-          <button
-            key={t.value}
-            type="button"
-            onClick={() => setTopic(t.value)}
-            className={cn(
-              "shrink-0 select-none rounded-full border px-3 py-1 text-xs font-medium transition-colors",
-              topic === t.value ? "border-transparent bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900" : "text-slate-600 hover:text-slate-900",
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-        <span aria-hidden className="w-px shrink-0 sm:hidden" />
-      </div>
-
       {shown.length === 0 ? (
         <p className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500">
           <Newspaper className="size-4" /> Nothing important on this right now.

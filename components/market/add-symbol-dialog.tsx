@@ -20,8 +20,19 @@ const KIND_LABEL: Record<MarketKind, string> = {
   yield: "Bond yield",
 };
 
-/** Find a share, ETF, index, fund or coin by name or symbol, and follow it. */
-export function AddSymbolDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+/**
+ * Find a share, ETF, index, fund or coin by name or symbol. With `onPick` it's the page's search: tapping a result
+ * opens it, and the + beside it follows it. Without, it's "Add to watchlist": tapping follows it.
+ */
+export function AddSymbolDialog({
+  open,
+  onOpenChange,
+  onPick,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onPick?: (symbol: string) => void;
+}) {
   const [q, setQ] = useState("");
   const { hits, searching, error } = useSearch(q);
   const watchlist = useWatchlist();
@@ -36,7 +47,7 @@ export function AddSymbolDialog({ open, onOpenChange }: { open: boolean; onOpenC
     >
       <DialogContent className="sm:max-w-lg [&>*]:min-w-0">
         <DialogHeader>
-          <DialogTitle>Add to watchlist</DialogTitle>
+          <DialogTitle>{onPick ? "Search" : "Add to watchlist"}</DialogTitle>
           <DialogDescription>Indian and foreign shares, ETFs, indices, mutual funds and crypto.</DialogDescription>
         </DialogHeader>
         <div className="relative">
@@ -56,6 +67,45 @@ export function AddSymbolDialog({ open, onOpenChange }: { open: boolean; onOpenC
             <ul>
               {hits.map((h) => {
                 const added = watchlist.includes(h.symbol);
+                const star = (
+                  <span
+                    className={cn(
+                      "flex size-8 shrink-0 items-center justify-center rounded-full",
+                      added ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-700",
+                    )}
+                    aria-label={added ? "Added" : "Add"}
+                  >
+                    {added ? <Check className="size-4" /> : <Plus className="size-4" />}
+                  </span>
+                );
+                if (onPick)
+                  return (
+                    <li key={h.symbol} className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => onPick(h.symbol)}
+                        className="flex min-w-0 flex-1 items-center rounded-xl px-2 py-2.5 text-left transition-colors hover:bg-slate-100 active:bg-slate-100"
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium text-slate-900">{h.name}</span>
+                          <span className="block truncate text-xs text-slate-500">
+                            {KIND_LABEL[h.kind]}
+                            {h.kind !== "fund" && ` · ${h.symbol}`}
+                            {h.exchange && h.kind !== "fund" && ` · ${h.exchange}`}
+                          </span>
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={added}
+                        onClick={() => addToWatchlist(h.symbol)}
+                        className="rounded-full p-1.5"
+                        title={added ? "In your watchlist" : "Add to watchlist"}
+                      >
+                        {star}
+                      </button>
+                    </li>
+                  );
                 return (
                   <li key={h.symbol}>
                     <button
@@ -72,15 +122,7 @@ export function AddSymbolDialog({ open, onOpenChange }: { open: boolean; onOpenC
                           {h.exchange && h.kind !== "fund" && ` · ${h.exchange}`}
                         </span>
                       </span>
-                      <span
-                        className={cn(
-                          "flex size-8 shrink-0 items-center justify-center rounded-full",
-                          added ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-700",
-                        )}
-                        aria-label={added ? "Added" : "Add"}
-                      >
-                        {added ? <Check className="size-4" /> : <Plus className="size-4" />}
-                      </span>
+                      {star}
                     </button>
                   </li>
                 );

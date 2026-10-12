@@ -240,7 +240,8 @@ export function ScoreTable({ economies, status, sort, onSort }: { economies: Eco
             <table className="w-full min-w-[30rem] text-[13px] sm:text-sm">
               <thead>
                 <tr className="text-left text-[11px] font-medium text-slate-500">
-                  <th className="px-1 pb-2 font-medium">{year ? `${year}, actual` : "Latest"}</th>
+                  {/* The country column stays put while the figures scroll sideways on a phone. */}
+                  <th className="sticky left-0 z-10 bg-[var(--glass-solid)] px-1 pb-2 font-medium">{year ? `${year}, actual` : "Latest"}</th>
                   {COLUMNS.map((c) => (
                     <th key={c.key} className="px-1 pb-2 text-right font-medium">
                       {c.label}
@@ -251,7 +252,7 @@ export function ScoreTable({ economies, status, sort, onSort }: { economies: Eco
               <tbody className="divide-y divide-slate-100">
                 {sorted.map(({ e, by }) => (
                   <tr key={e.code} className={cn(e.code === "IND" && "bg-slate-50")}>
-                    <td className={cn("px-1 py-2 text-slate-900", e.code === "IND" && "font-semibold")}>{e.name}</td>
+                    <td className={cn("sticky left-0 z-10 px-1 py-2 text-slate-900", e.code === "IND" ? "bg-slate-50 font-semibold dark:bg-slate-800" : "bg-[var(--glass-solid)]")}>{e.name}</td>
                     {COLUMNS.map((c) => {
                       const item = by[c.key] as Indicator | undefined;
                       const v = item?.verdict ? VERDICT[item.verdict] : null;

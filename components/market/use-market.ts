@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { NewsResponse } from "@/lib/market/news";
-import type { ChartData, EconomyResponse, MarketRange, QuotesResponse, SearchHit, SectorResponse } from "@/lib/market/types";
+import type { ChartData, EconomyResponse, MarketRange, Quote, QuotesResponse, SearchHit, SectorResponse } from "@/lib/market/types";
 
 /**
  * Market data isn't for trading here, so nothing polls. A page shows what this browser last fetched
@@ -168,4 +168,16 @@ export function useSearch(q: string) {
 
   const current = state.q === query;
   return { hits: current ? state.hits : [], searching: query.length >= 2 && !current, error: current && state.error };
+}
+
+/** One instrument's quote, to open it from search; null when it can't be priced. */
+export async function fetchQuote(symbol: string): Promise<Quote | null> {
+  try {
+    const res = await fetch(`/api/market/quotes?symbols=${encodeURIComponent(symbol)}`);
+    if (!res.ok) return null;
+    const body = (await res.json()) as QuotesResponse;
+    return body.quotes[0] ?? null;
+  } catch {
+    return null;
+  }
 }
