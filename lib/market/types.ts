@@ -143,6 +143,8 @@ export interface EconomyResponse {
   fetchedAt: number;
   /** False when a source was down and some figures are missing: worth asking again soon. */
   complete: boolean;
+  /** Figures the World Bank supplied because the IMF refused (actual years only, no forecasts). */
+  fromWorldBank?: (keyof EconomyIndicators)[];
 }
 
 export interface SectorStock extends Quote {

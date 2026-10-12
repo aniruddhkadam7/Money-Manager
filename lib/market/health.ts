@@ -222,7 +222,17 @@ export function indicators(e: Economy): Indicator[] {
     // Describes rather than judges: no zones, so no verdict, but its trend still shows.
     indicator("income", "Income per person", list(e.gdpPerCapita), [], "GDP per person, in US dollars", "up", (v) => `$${Math.round(v).toLocaleString("en-US")}`, 1),
   ];
-  return out.filter((i): i is Indicator => i !== null);
+  const items = out.filter((i): i is Indicator => i !== null);
+  // A figure much older than the rest (a source that has stopped updating it) is shown but not judged as today's.
+  const newest = Math.max(0, ...items.map((i) => i.latest?.year ?? 0));
+  for (const i of items) {
+    if (i.latest && i.latest.year < newest - 1 && i.verdict) {
+      i.verdict = null;
+      i.trend = null;
+      i.caveat = `The latest figure is from ${i.latest.year}: too old to judge today`;
+    }
+  }
+  return items;
 }
 
 /** Reserves come as one recent figure (World Bank), judged only for economies whose currency others don't hold. */

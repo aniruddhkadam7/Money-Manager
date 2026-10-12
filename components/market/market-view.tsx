@@ -378,6 +378,9 @@ export function MarketView() {
           </div>
           <p className="text-center text-xs leading-relaxed text-slate-500">
             Verdicts are about the latest year that has actually happened, never a forecast, and each card shows the rule it was judged by. The rules are common rules of thumb, judged differently for developing and mature economies; they describe, they don't predict. Sources: IMF World Economic Outlook (the current year is its estimate), BIS, World Bank.
+            {economy.data?.fromWorldBank?.length
+              ? " The IMF couldn't be reached this time, so these figures are the World Bank's: actual years only, no forecasts, and no debt or budget figures where it has none."
+              : ""}
           </p>
         </>
       ) : (

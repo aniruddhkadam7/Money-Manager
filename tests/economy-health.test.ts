@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseReserves, rankBySize } from "@/lib/market/economy";
+import { parseReserves, parseWorldBank, rankBySize, rankByWorldBank } from "@/lib/market/economy";
 import { indicators, ordinal, reservesVerdict, tally } from "@/lib/market/health";
 import type { Economy, YearValue } from "@/lib/market/types";
 
@@ -60,6 +60,13 @@ describe("economy indicators", () => {
     expect(jobs.repeatedFrom).toBe(2023);
   });
 
+  it("doesn't judge a figure years older than the rest", () => {
+    const budget = byKey(economy({ fiscalBalance: [{ year: 2022, value: -5.3, forecast: false }] })).deficit;
+    expect(budget).toMatchObject({ verdict: null, trend: null, caveat: "The latest figure is from 2022: too old to judge today" });
+    // A year behind the rest is still fine (some figures come out later).
+    expect(byKey(economy({ fiscalBalance: run(-8.4, -7.9, -7.4, -7.4).slice(0, 2) })).deficit.verdict).toBe("weak");
+  });
+
   it("holds mature economies to their own ranges, and doesn't judge their reserves", () => {
     const us = economy({ code: "USA", group: "advanced", gdpGrowth: run(2.9, 2.8, 2.1, 2.3), inflation: run(4.1, 3.0, 2.7, 3.2), debt: run(120, 122, 124, 126), reserves: { year: 2025, months: 2.8 } });
     const c = byKey(us);
@@ -95,6 +102,31 @@ describe("economy sources", () => {
     const json = { values: { NGDPD: { USA: { "2025": 30000 }, WEOWORLD: { "2025": 118000 }, EURO: { "2025": 18000 }, CHN: { "2025": 19600 }, IND: { "2025": 3916 }, DEU: { "2025": 4800 }, "": null } } };
     const ranks = rankBySize(json, new Set(["USA", "CHN", "IND", "DEU"]), ["IND", "USA", "WEOWORLD"], 2025);
     expect(ranks).toEqual({ USA: 1, IND: 4 });
+  });
+
+  it("reads a World Bank series as actual years, keyed by IMF code, in the IMF's units", () => {
+    const json = [
+      { page: 1 },
+      [
+        { countryiso3code: "IND", date: "2025", value: 3916312000000 },
+        { countryiso3code: "IND", date: "2024", value: 3760814000000 },
+        { countryiso3code: "IND", date: "2017", value: 2600000000000 },
+        { countryiso3code: "WLD", date: "2025", value: null },
+        { countryiso3code: "XXX", date: "2025", value: 1 },
+      ],
+    ];
+    expect(parseWorldBank(json, { IND: "IND", WLD: "WEOWORLD" }, 2019, 1e-9)).toEqual({
+      IND: [
+        { year: 2024, value: 3760.81, forecast: false },
+        { year: 2025, value: 3916.31, forecast: false },
+      ],
+    });
+  });
+
+  it("ranks by the World Bank's GDP among real countries, not regions", () => {
+    const countries = [{ page: 1 }, [{ id: "USA", region: { id: "NAC" } }, { id: "IND", region: { id: "SAS" } }, { id: "WLD", region: { id: "NA" } }, { id: "DEU", region: { id: "ECS" } }]];
+    const gdp = [{ page: 1 }, [{ countryiso3code: "WLD", value: 118e12 }, { countryiso3code: "USA", value: 30e12 }, { countryiso3code: "DEU", value: 4.8e12 }, { countryiso3code: "IND", value: 3.9e12 }]];
+    expect(rankByWorldBank(countries, gdp, { IND: "IND", USA: "USA", WLD: "WEOWORLD" })).toEqual({ USA: 1, IND: 3 });
   });
 
   it("reads the World Bank's reserves, latest year each", () => {

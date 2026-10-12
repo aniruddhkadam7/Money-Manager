@@ -109,23 +109,85 @@ export function parseBis(csv: string, banks: Record<string, string>): Record<str
   return out;
 }
 
-/** Tries once more after a short pause: the IMF's big answers sometimes time out. */
+/** Tries once more after a short pause: the IMF's big answers sometimes time out. A refusal (403) isn't retried. */
 async function twice<T>(fn: () => Promise<T>): Promise<T> {
   try {
     return await fn();
-  } catch {
+  } catch (err) {
+    if (err instanceof Error && / 403$/.test(err.message)) throw err;
     await new Promise((r) => setTimeout(r, 1500));
     return fn();
   }
 }
 
+/**
+ * The World Bank's versions of the IMF's figures, used when the IMF turns a request away (it refuses
+ * many cloud servers). Actual years only: the World Bank publishes no forecasts. Debt and the budget
+ * balance are sparse there (none for India), so those may simply be missing.
+ */
+export const WB_INDICATORS: Record<keyof EconomyIndicators, { code: string; scale?: number }> = {
+  gdpGrowth: { code: "NY.GDP.MKTP.KD.ZG" },
+  inflation: { code: "FP.CPI.TOTL.ZG" },
+  unemployment: { code: "SL.UEM.TOTL.ZS" },
+  debt: { code: "GC.DOD.TOTL.GD.ZS" },
+  currentAccount: { code: "BN.CAB.XOKA.GD.ZS" },
+  fiscalBalance: { code: "GC.NLD.TOTL.GD.ZS" },
+  gdpPerCapita: { code: "NY.GDP.PCAP.CD" },
+  // The IMF's size is in billions of dollars; the World Bank's in dollars.
+  gdpSize: { code: "NY.GDP.MKTP.CD", scale: 1e-9 },
+};
+
+const WbSeries = z.tuple([z.unknown(), z.array(z.object({ countryiso3code: z.string(), date: z.string(), value: z.number().nullable() })).nullable()]);
+
+/** A World Bank indicator for the chosen economies (keyed by IMF code), oldest year first, all actual. */
+export function parseWorldBank(json: unknown, imfOf: Record<string, string>, fromYear: number, scale = 1): Record<string, YearValue[]> {
+  const out: Record<string, YearValue[]> = {};
+  for (const r of WbSeries.parse(json)[1] ?? []) {
+    const code = imfOf[r.countryiso3code];
+    const year = Number(r.date);
+    if (!code || r.value === null || !Number.isFinite(year) || year < fromYear) continue;
+    (out[code] ??= []).push({ year, value: Math.round(r.value * scale * 100) / 100, forecast: false });
+  }
+  for (const list of Object.values(out)) list.sort((a, b) => a.year - b.year);
+  return out;
+}
+
+const WbCountries = z.tuple([z.unknown(), z.array(z.object({ id: z.string(), region: z.object({ id: z.string() }) })).nullable()]);
+const WbAll = z.tuple([z.unknown(), z.array(z.object({ countryiso3code: z.string(), value: z.number().nullable() })).nullable()]);
+
+/** GDP rank among real countries (the World Bank lists regions and income groups too, under region "NA"). */
+export function rankByWorldBank(countriesJson: unknown, gdpJson: unknown, imfOf: Record<string, string>): Record<string, number> {
+  const real = new Set((WbCountries.parse(countriesJson)[1] ?? []).filter((c) => c.region.id !== "NA").map((c) => c.id));
+  const sizes = (WbAll.parse(gdpJson)[1] ?? []).filter((r) => r.value !== null && real.has(r.countryiso3code)).sort((a, b) => b.value! - a.value!);
+  const out: Record<string, number> = {};
+  sizes.forEach((r, i) => {
+    const code = imfOf[r.countryiso3code];
+    if (code) out[code] = i + 1;
+  });
+  return out;
+}
+
+const BROWSER_HEADERS = {
+  "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36",
+  accept: "application/json, text/plain, */*",
+  "accept-language": "en-IN,en;q=0.9",
+  referer: "https://www.imf.org/external/datamapper/",
+};
+
 async function get(url: string): Promise<Response> {
-  const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(20_000), headers: { "user-agent": "MoneyManager/1.0" } });
+  // Browser-like headers: the IMF's firewall turns away requests that don't look like one.
+  const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(20_000), headers: BROWSER_HEADERS });
   if (!res.ok) throw new Error(`${new URL(url).host} answered ${res.status}`);
   return res;
 }
 
-export async function fetchEconomies(now = new Date()): Promise<Economy[]> {
+export interface EconomiesResult {
+  economies: Economy[];
+  /** The figures that came from the World Bank because the IMF refused or failed (actual years only). */
+  fromWorldBank: (keyof EconomyIndicators)[];
+}
+
+export async function fetchEconomies(now = new Date()): Promise<EconomiesResult> {
   const thisYear = now.getUTCFullYear();
   const codes = ECONOMIES.map((e) => e.code);
   const bisCodes = ECONOMIES.filter((e) => e.bis);
@@ -145,13 +207,45 @@ export async function fetchEconomies(now = new Date()): Promise<Economy[]> {
       .then(async (r) => new Set(Object.keys(((await r.json()) as { countries?: Record<string, unknown> }).countries ?? {})))
       .catch(() => new Set<string>()),
   ]);
-  const imf = raw.map((r, i) => (r.status === "fulfilled" ? parseImf(r.value, INDICATORS[keys[i]], codes, thisYear) : null));
-  if (imf.every((r) => r === null) && !Object.keys(bis).length) throw new Error("No economic data");
-  const sizeJson = raw[keys.indexOf("gdpSize")];
-  const ranks = sizeJson.status === "fulfilled" && countries.size ? rankBySize(sizeJson.value, countries, codes, thisYear - 1) : {};
+  // A source that fails is left out of the page, but the reason goes to the server log so it can be fixed.
+  raw.forEach((r, i) => r.status === "rejected" && console.error(`IMF ${INDICATORS[keys[i]]} failed:`, r.reason instanceof Error ? `${r.reason.name}: ${r.reason.message}` : r.reason));
+  const series: (Record<string, YearValue[]> | null)[] = raw.map((r, i) => (r.status === "fulfilled" ? parseImf(r.value, INDICATORS[keys[i]], codes, thisYear) : null));
 
-  return ECONOMIES.map((e) => {
-    const indicators = Object.fromEntries(keys.map((k, i) => [k, imf[i]?.[e.code] ?? []])) as unknown as EconomyIndicators;
+  // What the IMF wouldn't give, the World Bank fills in (actual years only).
+  const imfOf = Object.fromEntries(ECONOMIES.map((e) => [e.wb, e.code]));
+  const missing = keys.filter((_, i) => series[i] === null);
+  const sizeJson = raw[keys.indexOf("gdpSize")];
+  const [wb, wbRanks] = await Promise.all([
+    Promise.all(
+      missing.map((k) =>
+        twice(async () => {
+          const { code, scale } = WB_INDICATORS[k];
+          const json = await (await get(`${WORLD_BANK}/${wbCodes}/indicator/${code}?format=json&date=${thisYear - 7}:${thisYear}&per_page=200`)).json();
+          return parseWorldBank(json, imfOf, thisYear - 7, scale);
+        }).catch((err) => {
+          console.error(`World Bank ${WB_INDICATORS[k].code} failed:`, err instanceof Error ? err.message : err);
+          return null;
+        }),
+      ),
+    ),
+    sizeJson.status === "fulfilled"
+      ? Promise.resolve(null)
+      : Promise.all([get(`${WORLD_BANK}?format=json&per_page=400`).then((r) => r.json()), get(`${WORLD_BANK}/all/indicator/NY.GDP.MKTP.CD?format=json&date=${thisYear - 1}&per_page=400`).then((r) => r.json())])
+          .then(([list, gdp]) => rankByWorldBank(list, gdp, imfOf))
+          .catch(() => null),
+  ]);
+  const fromWorldBank: (keyof EconomyIndicators)[] = [];
+  missing.forEach((k, j) => {
+    if (wb[j]) {
+      series[keys.indexOf(k)] = wb[j];
+      fromWorldBank.push(k);
+    }
+  });
+  if (series.every((r) => r === null) && !Object.keys(bis).length) throw new Error("No economic data");
+  const ranks = sizeJson.status === "fulfilled" && countries.size ? rankBySize(sizeJson.value, countries, codes, thisYear - 1) : (wbRanks ?? {});
+
+  const economies = ECONOMIES.map((e) => {
+    const indicators = Object.fromEntries(keys.map((k, i) => [k, series[i]?.[e.code] ?? []])) as unknown as EconomyIndicators;
     return {
       code: e.code,
       name: e.name,
@@ -162,4 +256,5 @@ export async function fetchEconomies(now = new Date()): Promise<Economy[]> {
       sizeRank: ranks[e.code] ?? null,
     };
   });
+  return { economies, fromWorldBank };
 }

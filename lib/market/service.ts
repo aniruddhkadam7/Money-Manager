@@ -4,7 +4,7 @@ import { fetchEconomies } from "./economy";
 import { fetchNews, type NewsResponse } from "./news";
 import { fetchFundHistory, fundChart, fundQuote, isFund, searchFunds } from "./funds";
 import { dailySpark, memberIndex, performance, prevCloseFromDaily } from "./perf";
-import type { ChartData, Economy, MarketRange, PricePoint, Quote, QuotesResponse, SearchHit, SectorResponse } from "./types";
+import type { ChartData, Economy, EconomyResponse, MarketRange, PricePoint, Quote, QuotesResponse, SearchHit, SectorResponse } from "./types";
 import { fetchShares, fetchYahooChart, searchYahoo, type ParsedChart } from "./yahoo";
 
 /**
@@ -271,13 +271,13 @@ export function getSector(symbol: string): Promise<SectorResponse> {
 /** Whether every economy has its main figures; if a source was down, the answer is kept only a few minutes. */
 export const isComplete = (economies: Economy[]) => economies.every((e) => e.gdpGrowth.length > 0 && (e.code === "WEOWORLD" || e.policy));
 
-export function getEconomy(): Promise<{ economies: Economy[]; fetchedAt: number; complete: boolean }> {
+export function getEconomy(): Promise<EconomyResponse> {
   return cached(
     "economy",
     (v) => (v.complete ? ECONOMY_TTL_S * 1000 : 10 * MINUTE),
     async () => {
-      const economies = await fetchEconomies();
-      return { economies, fetchedAt: Date.now(), complete: isComplete(economies) };
+      const { economies, fromWorldBank } = await fetchEconomies();
+      return { economies, fetchedAt: Date.now(), complete: isComplete(economies), fromWorldBank };
     },
   );
 }
