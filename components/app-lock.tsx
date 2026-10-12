@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type MouseEvent, type PointerEvent } from "react";
 import { Delete, Eye, EyeOff, Loader2, Lock } from "lucide-react";
 import { useAnimate } from "motion/react";
 import type { User } from "@supabase/supabase-js";
@@ -53,22 +53,38 @@ export function PasscodePad({
   const [dots, animate] = useAnimate<HTMLDivElement>();
   const off = disabled || busy;
 
+  // The digits so far and whether a check is running, kept in refs too: fast taps can land before React
+  // re-renders, and reading the rendered `code` would drop one of them.
+  const codeRef = useRef("");
+  const busyRef = useRef(false);
+  const setDigits = (c: string) => {
+    codeRef.current = c;
+    setCode(c);
+  };
+
   const press = (digit: string) => {
-    if (off || code.length >= length) return;
-    const next = code + digit;
-    setCode(next);
+    if (disabled || busyRef.current || codeRef.current.length >= length) return;
+    const next = codeRef.current + digit;
+    setDigits(next);
     if (next.length < length) return;
+    busyRef.current = true;
     setBusy(true);
     Promise.resolve(onComplete(next))
       .then((keep) => {
         if (keep === false) {
           animate(dots.current, { x: [0, -8, 8, -5, 5, 0] }, { duration: 0.35 });
-          setCode("");
+          setDigits("");
         }
       })
-      .finally(() => setBusy(false));
+      .finally(() => {
+        busyRef.current = false;
+        setBusy(false);
+      });
   };
-  const back = () => !off && setCode((c) => c.slice(0, -1));
+  const back = () => {
+    if (disabled || busyRef.current) return;
+    setDigits(codeRef.current.slice(0, -1));
+  };
 
   // Typing on a keyboard: the latest press/back are read through a ref so the listener is added once.
   const keys = useRef({ press, back });
@@ -96,16 +112,16 @@ export function PasscodePad({
       </div>
       <div className="grid grid-cols-3 gap-x-[min(1.75rem,7cqi)] gap-y-[min(1.1rem,4.5cqi)]">
         {KEYS.map(([digit, letters]) => (
-          <PadKey key={digit} digit={digit} letters={letters} onClick={() => press(digit)} disabled={off} />
+          <PadKey key={digit} digit={digit} letters={letters} onPress={() => press(digit)} disabled={off} />
         ))}
         <span />
-        <PadKey digit="0" onClick={() => press("0")} disabled={off} />
+        <PadKey digit="0" onPress={() => press("0")} disabled={off} />
         <button
           type="button"
-          onClick={back}
+          {...tapHandlers(back)}
           disabled={off || !code}
           aria-label="Delete last digit"
-          className="flex size-[min(5.25rem,26cqi)] items-center justify-center rounded-full text-foreground/80 transition-opacity duration-300 select-none [-webkit-tap-highlight-color:transparent] active:opacity-40 active:duration-0 disabled:opacity-0"
+          className="flex size-[min(5.25rem,26cqi)] touch-manipulation items-center justify-center rounded-full text-foreground/80 transition-opacity duration-300 select-none [-webkit-tap-highlight-color:transparent] active:opacity-40 active:duration-0 disabled:opacity-0"
         >
           {busy ? <Loader2 className="size-6 animate-spin" /> : <Delete className="size-8" strokeWidth={1.6} />}
         </button>
@@ -115,23 +131,47 @@ export function PasscodePad({
 }
 
 /**
+ * A key counts the moment a finger or the mouse goes down, like the iPhone's keypad, rather than on click:
+ * a click is lost when the finger slides a little between down and up. Enter or Space on a focused key
+ * still works, through the click those fire (detail 0, no pointer).
+ */
+function tapHandlers(onPress: () => void) {
+  return {
+    onPointerDown: (e: PointerEvent) => {
+      if (e.button !== 0) return;
+      // No focus ring or text selection from the tap.
+      e.preventDefault();
+      onPress();
+    },
+    onClick: (e: MouseEvent) => {
+      if (e.detail === 0) onPress();
+    },
+  };
+}
+
+/**
  * One round glass key, like the app's other liquid glass buttons: the digit, and its letters underneath.
  * Pressed, it lights up at once and fades back slowly on release, like the iPhone's keypad.
  */
-function PadKey({ digit, letters, onClick, disabled }: { digit: string; letters?: string; onClick: () => void; disabled?: boolean }) {
+function PadKey({ digit, letters, onPress, disabled }: { digit: string; letters?: string; onPress: () => void; disabled?: boolean }) {
   const [pressed, setPressed] = useState(false);
   const release = () => setPressed(false);
+  const tap = tapHandlers(onPress);
   return (
     <LiquidButton
       size="icon"
-      onClick={onClick}
-      onPointerDown={() => !disabled && setPressed(true)}
+      onClick={tap.onClick}
+      onPointerDown={(e) => {
+        if (!disabled && e.button === 0) setPressed(true);
+        tap.onPointerDown(e);
+      }}
       onPointerUp={release}
       onPointerLeave={release}
       onPointerCancel={release}
       disabled={disabled}
       aria-label={digit}
-      className="size-[min(5.25rem,26cqi)] rounded-full bg-card/55 text-foreground shadow-sm select-none [-webkit-tap-highlight-color:transparent] hover:scale-100"
+      // touch-manipulation: no double-tap zoom, so tapping the same digit twice quickly counts twice.
+      className="size-[min(5.25rem,26cqi)] touch-manipulation rounded-full bg-card/55 text-foreground shadow-sm select-none [-webkit-tap-highlight-color:transparent] hover:scale-100"
     >
       <span
         aria-hidden
