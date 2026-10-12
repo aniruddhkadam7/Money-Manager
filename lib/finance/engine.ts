@@ -11,6 +11,7 @@ import {
   type LedgerEntry,
   type Posting,
 } from "./types";
+import { fill, type Lot } from "./fifo";
 
 /* ---------------- Ledger account ids ---------------- */
 
@@ -70,6 +71,8 @@ interface Posted {
   flow: FlowKind;
   postings: Posting[];
   costDelta?: { accountId: string; deltaMinor: number };
+  /** A stock order: the holding's open lots once it's applied. */
+  lots?: { holdingId: string; lots: Lot[] };
 }
 
 interface ReplayState {
@@ -77,7 +80,12 @@ interface ReplayState {
   balance: Map<string, number>;
   /** Cost basis of each investment account. */
   cost: Map<string, number>;
+  /** A stock holding's open lots, oldest first. */
+  lots: Map<string, Lot[]>;
 }
+
+/** A stock holding (its name is the symbol, its style the product) is traded share by share, never by amount. */
+const isStock = (a: Account) => a.type === "investment" && !!a.style;
 
 const money = (n: number) => `₹${(n / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 
@@ -92,7 +100,7 @@ const money = (n: number) => `₹${(n / 100).toLocaleString("en-IN", { maximumFr
 export function buildLedger(book: Book): Ledger {
   const accounts = new Map<string, Account>(book.accounts.map((a) => [a.id, a]));
   const people = new Set(book.people.map((p) => p.id));
-  const state: ReplayState = { balance: new Map(), cost: new Map() };
+  const state: ReplayState = { balance: new Map(), cost: new Map(), lots: new Map() };
   const entries: LedgerEntry[] = [];
   const issues: EventIssue[] = [];
 
@@ -109,8 +117,12 @@ export function buildLedger(book: Book): Ledger {
     if (a.date !== b.date) return a.date < b.date ? -1 : 1;
     if (a.kind !== b.kind) return a.kind === "opening" ? -1 : 1; // opening balances first
     if (a.kind === "event" && b.kind === "event") {
+      // Within a day, by time where there is one (stock orders), then in the order they were entered.
+      const at = (e: FinancialEvent) => (e.type === "trade" ? (e.time ?? "") : "");
       return (
-        a.event.createdAt.localeCompare(b.event.createdAt) || a.event.id.localeCompare(b.event.id)
+        at(a.event).localeCompare(at(b.event)) ||
+        a.event.createdAt.localeCompare(b.event.createdAt) ||
+        a.event.id.localeCompare(b.event.id)
       );
     }
     return 0;
@@ -138,6 +150,9 @@ export function buildLedger(book: Book): Ledger {
   };
 
   const moneyAccounts: AccountType[] = CASH_ACCOUNT_TYPES;
+
+  const notStock = (a: Account): Account =>
+    isStock(a) ? fail("stock_holding", `“${a.name}” is a stock: record it as a Buy or Sell order with shares and price.`) : a;
   const spendAccounts: AccountType[] = ["bank", "cash", "credit_card"];
 
   /* --- one rule per event type: what changes, and how --- */
@@ -361,7 +376,7 @@ export function buildLedger(book: Book): Ledger {
       case "invest": {
         const a = amount(e.amountMinor);
         const from = account(e.fromAccountId, moneyAccounts, "Paid from");
-        const holding = account(e.holdingId, ["investment"], "Invest in");
+        const holding = notStock(account(e.holdingId, ["investment"], "Invest in"));
         return {
           flow: "investment",
           postings: [
@@ -373,7 +388,7 @@ export function buildLedger(book: Book): Ledger {
       }
 
       case "update_valuation": {
-        const holding = account(e.holdingId, ["investment"], "Investment");
+        const holding = notStock(account(e.holdingId, ["investment"], "Investment"));
         const value = e.valueMinor;
         if (!isWholeMoney(value) || value < 0 || value > MAX_MINOR) {
           fail("invalid_amount", "Enter the current value (zero or more).");
@@ -395,7 +410,7 @@ export function buildLedger(book: Book): Ledger {
       case "sell_investment": {
         const proceeds = amount(e.proceedsMinor, "Sale amount");
         const to = account(e.toAccountId, moneyAccounts, "Received in");
-        const holding = account(e.holdingId, ["investment"], "Investment");
+        const holding = notStock(account(e.holdingId, ["investment"], "Investment"));
         const ledgerId = ledgerIds.account(holding.id);
         const value = bal(ledgerId);
         const cost = state.cost.get(holding.id) ?? 0;
@@ -421,6 +436,44 @@ export function buildLedger(book: Book): Ledger {
             { ledger: ledgerIds.UNREALIZED_GAIN, amountMinor: alreadyRecorded },
           ].filter((p) => p.amountMinor !== 0),
           costDelta: { accountId: holding.id, deltaMinor: -costSold },
+        };
+      }
+
+      case "trade": {
+        const holding = account(e.holdingId, ["investment"], "Stock");
+        if (!isStock(holding)) fail("not_a_stock", `“${holding.name}” isn't a stock holding.`);
+        const buy = e.side === "buy";
+        if (!buy && e.side !== "sell") fail("invalid_side", "Choose Buy or Sell.");
+        const cash = account(e.accountId, moneyAccounts, buy ? "Paid from" : "Received in");
+        if (!Number.isSafeInteger(e.quantity) || e.quantity <= 0) fail("invalid_quantity", "Quantity must be a whole number of shares.");
+        const price = amount(e.priceMinor, "Price");
+        const charges = e.chargesMinor ?? 0;
+        if (!isWholeMoney(charges) || charges < 0 || charges > MAX_MINOR) fail("invalid_amount", "Charges must be zero or more.");
+        const value = e.quantity * price;
+        if (value > MAX_MINOR) fail("invalid_amount", "That order is too large.");
+        if (e.time !== undefined && !/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(e.time)) fail("invalid_time", "The time isn't valid.");
+
+        const side = buy ? 1 : -1;
+        const lots = state.lots.get(holding.id) ?? [];
+        const f = fill(lots, side, e.quantity, price);
+        // Delivery (CNC) can't be sold before it's bought; only intraday (MIS) can go short.
+        if (!buy && f.openedQuantity > 0 && holding.style === "delivery") {
+          const held = f.closedQuantity;
+          fail("sell_exceeds_holding", held > 0 ? `You hold only ${held} ${holding.name} (CNC) at that time.` : `You don't hold any ${holding.name} (CNC) at that time.`);
+        }
+        // The holding is carried at what its open shares cost: new shares at this price, closed ones at theirs.
+        const holdingDelta = side * (f.openedQuantity * price + f.closedCostMinor);
+        // The profit on closed shares, less this order's charges, is the trade's realized gain (a credit).
+        const gain = f.grossMinor - charges;
+        return {
+          flow: "investment",
+          postings: [
+            { ledger: ledgerIds.account(cash.id), amountMinor: buy ? -(value + charges) : value - charges },
+            { ledger: ledgerIds.account(holding.id), amountMinor: holdingDelta },
+            { ledger: ledgerIds.REALIZED_GAIN, amountMinor: -gain },
+          ].filter((p) => p.amountMinor !== 0),
+          costDelta: { accountId: holding.id, deltaMinor: holdingDelta },
+          lots: { holdingId: holding.id, lots: f.lots },
         };
       }
     }
@@ -449,6 +502,7 @@ export function buildLedger(book: Book): Ledger {
           fail("invalid_amount", `“${a.name}” has an invalid starting balance.`);
         }
         if (a.openingBalanceMinor === 0) continue;
+        if (isStock(a)) fail("stock_holding", `“${a.name}” is a stock: its shares come from its Buy and Sell orders.`);
         const o = a.openingBalanceMinor;
         const asset = isAssetAccount(a.type);
         record({
@@ -471,8 +525,9 @@ export function buildLedger(book: Book): Ledger {
 
     const e = item.event;
     try {
-      const posted = post(e);
+      const { lots, ...posted } = post(e);
       record({ sourceId: e.id, kind: e.type, date: e.date, ...posted });
+      if (lots) state.lots.set(lots.holdingId, lots.lots);
     } catch (err) {
       if (!(err instanceof EngineError)) throw err;
       issues.push({ eventId: e.id, code: err.code, message: err.message });

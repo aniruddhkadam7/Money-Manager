@@ -2,7 +2,7 @@ import { addAccount, addEvent, ensureInvestment, ensurePerson, emptyBook, type C
 import { buildLedger } from "@/lib/finance/engine";
 import { deriveState, periodReport } from "@/lib/finance/state";
 import type { AccountInput } from "@/lib/finance/book-ops";
-import type { Book, EventDraft } from "@/lib/finance/types";
+import type { Book, EventDraft, TradeStyle } from "@/lib/finance/types";
 
 /** Rupees to paise. */
 export const rs = (n: number) => Math.round(n * 100);
@@ -38,8 +38,8 @@ export class Scenario {
     return r.person;
   }
 
-  investment(name: string) {
-    const r = ensureInvestment(this.book, name, "2026-01-01", this.clock)!;
+  investment(name: string, style?: TradeStyle) {
+    const r = ensureInvestment(this.book, name, "2026-01-01", this.clock, style)!;
     this.book = r.book;
     return r.account;
   }

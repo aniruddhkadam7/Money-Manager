@@ -77,6 +77,10 @@ export function makeDescriber(book: Book, categoryName: (id: string) => string):
         return `Sold ${acct(e.holdingId)}`;
       case "update_valuation":
         return `${acct(e.holdingId)} value updated`;
+      case "trade": {
+        const product = accounts.get(e.holdingId)?.style === "intraday" ? "MIS" : "CNC";
+        return `${e.side === "buy" ? "Bought" : "Sold"} ${e.quantity} ${acct(e.holdingId)} · ${product}`;
+      }
     }
   };
 
@@ -112,6 +116,10 @@ export function makeDescriber(book: Book, categoryName: (id: string) => string):
         return `Into ${acct(e.toAccountId)}`;
       case "update_valuation":
         return `Now worth ${formatRupees(e.valueMinor)}`;
+      case "trade": {
+        const charges = e.chargesMinor > 0 ? ` · charges ${formatRupees(e.chargesMinor)}` : "";
+        return `${e.quantity} × ${formatPrice(e.priceMinor)}${charges} · ${e.side === "buy" ? "from" : "into"} ${acct(e.accountId)}`;
+      }
     }
   };
 
@@ -144,12 +152,20 @@ export function makeDescriber(book: Book, categoryName: (id: string) => string):
         netWorthDelta -= p.amountMinor; // opening-balance equity
       }
     }
-    if (gain !== 0) out.push({ kind: "gain", label: gain > 0 ? "Investment gain" : "Investment loss", deltaMinor: gain });
+    // A stock order's gain is what it booked on closed shares, less its charges.
+    const label = entry.kind === "trade" ? (gain > 0 ? "Booked profit (after charges)" : "Charges & booked loss") : gain > 0 ? "Investment gain" : "Investment loss";
+    if (gain !== 0) out.push({ kind: "gain", label, deltaMinor: gain });
 
     return { effects: out, netWorthDeltaMinor: netWorthDelta };
   };
 
   return { title, subtitle, effects };
+}
+
+/** A share price, always with paise as brokers show it: ₹2,850.00. */
+export function formatPrice(minor: number): string {
+  const text = `₹${(Math.abs(minor) / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return minor < 0 ? `−${text}` : text;
 }
 
 export function formatRupees(minor: number): string {

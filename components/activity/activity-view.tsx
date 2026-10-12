@@ -51,7 +51,7 @@ const GROUPS: { id: string; label: string; types: EventType[] }[] = [
   { id: "people", label: "Lent & borrowed", types: ["lend", "borrow", "repayment_received", "repayment_made"] },
   { id: "borrowed", label: "Money I borrowed", types: ["borrow", "repayment_made"] },
   { id: "lent", label: "Money I lent", types: ["lend", "repayment_received"] },
-  { id: "investments", label: "Investments", types: ["invest", "sell_investment", "update_valuation"] },
+  { id: "investments", label: "Investments", types: ["invest", "sell_investment", "update_valuation", "trade"] },
   { id: "loans", label: "Loans & EMIs", types: ["loan_taken", "emi_payment"] },
   { id: "transfers", label: "Transfers & payments", types: ["transfer"] },
 ];

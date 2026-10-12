@@ -34,6 +34,11 @@ export function headline(e: FinancialEvent): { amountMinor: number; tone: "in" |
       return { amountMinor: e.amountMinor, tone: "neutral" };
     case "update_valuation":
       return { amountMinor: e.valueMinor, tone: "neutral" };
+    case "trade": {
+      // What actually left or reached the account: the order's value, with its charges.
+      const value = e.quantity * e.priceMinor;
+      return e.side === "buy" ? { amountMinor: value + e.chargesMinor, tone: "neutral" } : { amountMinor: value - e.chargesMinor, tone: "in" };
+    }
   }
 }
 

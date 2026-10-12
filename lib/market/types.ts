@@ -79,6 +79,12 @@ export interface SearchHit {
   kind: MarketKind;
 }
 
+/** Last traded prices by Yahoo symbol (RELIANCE.NS). */
+export interface LtpResponse {
+  prices: Record<string, { price: number; prevClose: number | null; time: number }>;
+  fetchedAt: number;
+}
+
 export interface QuotesResponse {
   quotes: Quote[];
   /** Symbols that couldn't be fetched this time. */

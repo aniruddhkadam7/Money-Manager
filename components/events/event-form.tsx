@@ -18,12 +18,15 @@ import { accountPicture, BankMark } from "../account-logo";
 import { CategoryIcon } from "../category-icon";
 import { FileTypeIcon } from "../statements/file-type-icon";
 import { useFinance } from "../finance-provider";
+import type { TradePreset } from "../investments/trade-form";
 import { PictureIcon } from "../picture-icon";
 import { EVENT_OPTIONS, eventOption, FORM_SPEC, type FieldKey } from "./event-meta";
 
 export interface FormPreset {
   person?: string;
   holdingId?: string;
+  /** A stock order: side, stock and quantity already chosen (Exit on a position, say). */
+  trade?: TradePreset;
   /** A new entry's date (say, the day picked on the calendar) instead of today. */
   date?: string;
 }
@@ -99,7 +102,8 @@ export function EventForm({
   const accountsFor = (types: AccountType[]) => f.book.accounts.filter((a) => types.includes(a.type));
   const mainAccounts = accountsFor(spec.accountTypes);
   const toAccounts = accountsFor(["bank", "cash", "credit_card", "loan"]);
-  const investments = accountsFor(["investment"]);
+  // Stocks are bought and sold share by share in their own order window, not by amount here.
+  const investments = accountsFor(["investment"]).filter((a) => !a.style);
   const loans = accountsFor(["loan"]);
   const owedOnLoan = (id: string) => f.state.accounts.find((a) => a.account.id === id)?.balanceMinor ?? 0;
 
@@ -194,6 +198,9 @@ export function EventForm({
         };
       case "update_valuation":
         return { ...base, amount: minorToInputString(e.valueMinor), holdingId: e.holdingId };
+      case "trade":
+        // Stock orders have their own form; nothing carries over into another kind of entry.
+        return base;
       case "loan_taken":
         return { ...base, amount: minorToInputString(e.amountMinor), accountId: e.toAccountId, loanName: accountName(e.fromAccountId) };
       case "emi_payment":
@@ -501,6 +508,8 @@ export function EventForm({
       }
       case "update_valuation":
         return { type, date, holdingId: values.holdingId, valueMinor: amount };
+      case "trade":
+        return null;
       case "loan_taken": {
         const loanId = f.resolveLoan(values.loanName, date);
         return loanId ? { type, date, fromAccountId: loanId, toAccountId: values.accountId, amountMinor: amount } : null;
@@ -905,7 +914,8 @@ export function EventForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {EVENT_OPTIONS.filter((o) => o.type !== "update_valuation" || type === "update_valuation").map((o) => (
+              {/* Stock trades have their own order window, so an entry can't be switched into one here. */}
+              {EVENT_OPTIONS.filter((o) => (o.type !== "update_valuation" || type === "update_valuation") && o.type !== "trade").map((o) => (
                 <SelectItem key={o.type} value={o.type}>
                   {o.label} — {o.hint}
                 </SelectItem>
@@ -957,7 +967,7 @@ function Field({ id, label, error, children }: { id: string; label: string; erro
   );
 }
 
-function AccountField({
+export function AccountField({
   id,
   label,
   value,

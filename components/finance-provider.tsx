@@ -20,7 +20,7 @@ import { makeDescriber, type Describer } from "@/lib/finance/describe";
 import { buildLedger } from "@/lib/finance/engine";
 import { bookFromLegacyExpenses, withDefaultAccounts, withMoneyBackCategories } from "@/lib/finance/migrate";
 import { deriveState, periodReport, type FinancialState, type PeriodReport } from "@/lib/finance/state";
-import type { Account, Book, EventDraft, EventIssue, FinancialEvent, Ledger } from "@/lib/finance/types";
+import type { Account, Book, EventDraft, EventIssue, FinancialEvent, Ledger, TradeStyle } from "@/lib/finance/types";
 
 type Status = "loading" | "ready" | "error";
 
@@ -55,11 +55,12 @@ interface FinanceContextValue {
   /** Finds a person by name or creates them. */
   resolvePerson: (name: string) => string | null;
   /** Finds an investment by name or creates it. */
-  resolveInvestment: (name: string) => string | null;
+  /** Finds an investment by name (and, for a stock trade, its style) or creates it. */
+  resolveInvestment: (name: string, style?: TradeStyle) => string | null;
   /** Finds a loan by name or creates it (opened on `openedOn`). Null if the name belongs to another kind of account. */
   resolveLoan: (name: string, openedOn: string) => string | null;
   addAccount: (input: AccountInput) => Result<Account>;
-  updateAccount: (id: string, changes: Partial<Pick<Account, "name" | "openingBalanceMinor" | "openedOn">>) => Result<null>;
+  updateAccount: (id: string, changes: Partial<Pick<Account, "name" | "openingBalanceMinor" | "openedOn" | "style">>) => Result<null>;
   deleteAccount: (id: string, choice?: ops.DeleteAccountChoice) => Result<null>;
   addCategory: (name: string) => Promise<Category>;
   saveError: string | null;
@@ -247,8 +248,8 @@ export function FinanceProvider({
         if (r.book !== bookRef.current) commit(r.book);
         return r.person.id;
       },
-      resolveInvestment: (name) => {
-        const r = ops.ensureInvestment(bookRef.current, name, todayISO());
+      resolveInvestment: (name, style) => {
+        const r = ops.ensureInvestment(bookRef.current, name, todayISO(), undefined, style);
         if (!r) return null;
         if (r.book !== bookRef.current) commit(r.book);
         return r.account.id;

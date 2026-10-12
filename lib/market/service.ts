@@ -4,7 +4,7 @@ import { fetchEconomies } from "./economy";
 import { fetchNews, type NewsResponse } from "./news";
 import { fetchFundHistory, fundChart, fundQuote, isFund, searchFunds } from "./funds";
 import { dailySpark, memberIndex, performance, prevCloseFromDaily } from "./perf";
-import type { ChartData, Economy, EconomyResponse, MarketRange, PricePoint, Quote, QuotesResponse, SearchHit, SectorResponse } from "./types";
+import type { ChartData, Economy, EconomyResponse, LtpResponse, MarketRange, PricePoint, Quote, QuotesResponse, SearchHit, SectorResponse } from "./types";
 import { fetchShares, fetchYahooChart, searchYahoo, type ParsedChart } from "./yahoo";
 
 /**
@@ -233,6 +233,17 @@ export async function getQuotes(symbols: string[]): Promise<QuotesResponse> {
   const results = await mapLimited(symbols, 6, getQuote);
   const body: QuotesResponse = { quotes: [], failed: [], fetchedAt: Date.now() };
   results.forEach((r, i) => (r.status === "fulfilled" ? body.quotes.push(r.value) : body.failed.push(symbols[i])));
+  return body;
+}
+
+/** Last traded prices for open stock positions: kept only seconds, since a scalper's P&L moves tick by tick. */
+export const LTP_TTL_S = 15;
+export async function getLtp(symbols: string[]): Promise<LtpResponse> {
+  const results = await mapLimited(symbols, 6, (s) => cached(`ltp:${s}`, LTP_TTL_S * 1000, () => fetchYahooChart(s, "1d")));
+  const body: LtpResponse = { prices: {}, fetchedAt: Date.now() };
+  results.forEach((r, i) => {
+    if (r.status === "fulfilled") body.prices[symbols[i]] = { price: r.value.price, prevClose: r.value.chartPrevClose, time: r.value.time };
+  });
   return body;
 }
 

@@ -1,6 +1,6 @@
 import { newId } from "@/lib/domain/id";
 import { buildLedger } from "./engine";
-import type { Account, AccountType, Book, EventDraft, EventIssue, EventSource, FinancialEvent, Person } from "./types";
+import type { Account, AccountType, Book, EventDraft, EventIssue, EventSource, FinancialEvent, Person, TradeStyle } from "./types";
 
 /**
  * Pure, validated changes to a Book. Every change is applied to a copy and the
@@ -108,13 +108,15 @@ export function addAccount(book: Book, input: AccountInput, clock: Clock = syste
 export function updateAccount(
   book: Book,
   id: string,
-  changes: Partial<Pick<Account, "name" | "openingBalanceMinor" | "openedOn">>,
+  changes: Partial<Pick<Account, "name" | "openingBalanceMinor" | "openedOn" | "style">>,
 ): Result<Book> {
   const existing = book.accounts.find((a) => a.id === id);
   if (!existing) return invalid("That account no longer exists.", "not_found");
   const next = { ...existing, ...changes, name: changes.name === undefined ? existing.name : cleanName(changes.name) };
   if (!next.name) return invalid("Give the account a name.");
-  if (book.accounts.some((a) => a.id !== id && a.name.toLowerCase() === next.name.toLowerCase())) {
+  // Two holdings of one stock can share its name when they're traded differently (intraday, long term...).
+  const clash = (a: Account) => !(a.type === "investment" && next.type === "investment" && a.style !== next.style);
+  if (book.accounts.some((a) => a.id !== id && a.name.toLowerCase() === next.name.toLowerCase() && clash(a))) {
     return invalid(`You already have an account called “${next.name}”.`, "duplicate_name");
   }
   return accept(book, { ...book, accounts: book.accounts.map((a) => (a.id === id ? next : a)) });
@@ -133,6 +135,8 @@ export function accountIdsUsedBy(e: FinancialEvent): string[] {
       return [e.holdingId, e.toAccountId];
     case "update_valuation":
       return [e.holdingId];
+    case "trade":
+      return [e.holdingId, e.accountId];
     default:
       return [e.accountId];
   }
@@ -307,10 +311,18 @@ export function ensureLoan(book: Book, name: string, openedOn: string, clock: Cl
 }
 
 /** Finds an investment by name or creates it (empty, with no opening value). */
-export function ensureInvestment(book: Book, name: string, today: string, clock: Clock = systemClock): { book: Book; account: Account } | null {
+export function ensureInvestment(
+  book: Book,
+  name: string,
+  today: string,
+  clock: Clock = systemClock,
+  style?: TradeStyle,
+): { book: Book; account: Account } | null {
   const clean = cleanName(name);
   if (!clean) return null;
-  const existing = book.accounts.find((a) => a.type === "investment" && a.name.toLowerCase() === clean.toLowerCase());
+  // A stock bought intraday and the same stock held long term are separate holdings.
+  const named = book.accounts.filter((a) => a.type === "investment" && a.name.toLowerCase() === clean.toLowerCase());
+  const existing = style ? named.find((a) => a.style === style) : (named.find((a) => !a.style) ?? named[0]);
   if (existing) return { book, account: existing };
   const account: Account = {
     id: clock.newId(),
@@ -318,6 +330,7 @@ export function ensureInvestment(book: Book, name: string, today: string, clock:
     type: "investment",
     openingBalanceMinor: 0,
     openedOn: today,
+    ...(style ? { style } : {}),
     createdAt: clock.now(),
   };
   return { book: { ...book, accounts: [...book.accounts, account] }, account };

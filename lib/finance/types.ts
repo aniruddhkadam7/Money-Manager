@@ -23,8 +23,13 @@ export interface Account {
   openingBalanceMinor: number;
   /** The day the opening balance counts from (`YYYY-MM-DD`). */
   openedOn: string;
+  /** Stock trades only (an investment with a style is a stock): how it's traded. Each company + style is its own holding. */
+  style?: TradeStyle;
   createdAt: string;
 }
+
+/** Zerodha's products: MIS (intraday, squared off the same day) or CNC (delivery, held). */
+export type TradeStyle = "intraday" | "delivery";
 
 export interface Person {
   id: string;
@@ -199,6 +204,31 @@ export interface SellInvestmentEvent extends EventBase {
   soldValueMinor?: number;
 }
 
+/**
+ * A stock order, as in a broker's tradebook: so many shares of a stock bought or sold at a price. Buys and sells of
+ * one holding (a stock + product) are matched first in, first out; MIS can sell first (short) and buy back later.
+ */
+export interface TradeEvent extends EventBase {
+  type: "trade";
+  /** The stock: an investment account named by its symbol, whose style is the product (MIS or CNC). */
+  holdingId: string;
+  side: TradeSide;
+  /** Whole shares. */
+  quantity: number;
+  /** Price per share, in paise. */
+  priceMinor: number;
+  /** Brokerage, STT, exchange and other charges on this order, in paise (0 or more). */
+  chargesMinor: number;
+  /** The bank or cash account the money comes from (buy) or goes to (sell). */
+  accountId: string;
+  /** Time of the order ("HH:MM" or "HH:MM:SS"): orders on one day are matched in this order. */
+  time?: string;
+  /** Where it was traded; decides the exchange charge. NSE when missing. */
+  exchange?: "NSE" | "BSE";
+}
+
+export type TradeSide = "buy" | "sell";
+
 /** An investment is now worth this much (sets the value; the engine records the gain/loss). */
 export interface UpdateValuationEvent extends EventBase {
   type: "update_valuation";
@@ -220,7 +250,8 @@ export type FinancialEvent =
   | ReimbursableExpenseEvent
   | InvestEvent
   | SellInvestmentEvent
-  | UpdateValuationEvent;
+  | UpdateValuationEvent
+  | TradeEvent;
 
 export type EventType = FinancialEvent["type"];
 

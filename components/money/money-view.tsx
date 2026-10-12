@@ -80,6 +80,11 @@ export function MoneyView() {
 
   if (status === "loading") return <div className="h-64 animate-pulse rounded-2xl bg-muted" aria-busy />;
 
+  // Stocks are traded share by share on the Investments page; here, what's held by amount (funds, gold…).
+  const holdings = state.investments.holdings.filter((h) => !h.account.style);
+  const sum = (f: (h: (typeof holdings)[number]) => number) => holdings.reduce((t, h) => t + f(h), 0);
+  const stocks = state.investments.holdings.length - holdings.length;
+
   const owedToMe = state.people.filter((p) => p.owedToMe.originalMinor > 0 || p.owedToMe.outstandingMinor > 0);
   const iOwe = state.people.filter((p) => p.iOwe.originalMinor > 0 || p.iOwe.outstandingMinor > 0);
 
@@ -136,21 +141,28 @@ export function MoneyView() {
       <Card id="investments" className={cn("scroll-mt-24", hide("accounts"))}>
         <SectionHead
           title="Investments"
-          total={state.investments.holdings.length > 0 ? formatRupees(state.investments.valueMinor) : undefined}
+          total={holdings.length > 0 ? formatRupees(sum((h) => h.valueMinor)) : undefined}
           action={
             <Button size="sm" variant="outline" className={ACTION} onClick={() => openAdd("invest")}>
               <Plus /> Invest
             </Button>
           }
         />
-        {state.investments.holdings.length === 0 ? (
+        {stocks > 0 && (
+          <Link href="/investments" className="mx-4 mb-1 block rounded-lg bg-muted/60 px-3 py-2 text-sm text-muted-foreground hover:text-foreground sm:mx-5">
+            Stocks ({stocks}) are on the <span className="font-medium text-primary">Investments</span> page, with positions and P&amp;L.
+          </Link>
+        )}
+        {holdings.length === 0 ? (
+          stocks === 0 && (
           <CardContent className="py-6 text-sm text-muted-foreground">
             Nothing invested yet. Use “Invest” to add one.
           </CardContent>
+          )
         ) : (
           <>
             <ul className="divide-y py-2">
-              {state.investments.holdings.map((h) => (
+              {holdings.map((h) => (
                 <li key={h.account.id} className="flex items-center gap-3 px-4 py-3 sm:px-5">
                   <PictureIcon name="invest" tile />
                   <div className="min-w-0 flex-1">
@@ -183,8 +195,8 @@ export function MoneyView() {
             </ul>
             {/* Phones: the header already has the total. */}
             <p className="border-t px-5 py-3 text-sm text-muted-foreground max-sm:hidden">
-              Total {formatRupees(state.investments.valueMinor)} · put in {formatRupees(state.investments.costBasisMinor)} ·{" "}
-              {state.investments.gainMinor >= 0 ? "gain" : "loss"} {formatRupees(Math.abs(state.investments.gainMinor))}
+              Total {formatRupees(sum((h) => h.valueMinor))} · put in {formatRupees(sum((h) => h.costBasisMinor))} ·{" "}
+              {sum((h) => h.gainMinor) >= 0 ? "gain" : "loss"} {formatRupees(Math.abs(sum((h) => h.gainMinor)))}
             </p>
           </>
         )}

@@ -9,8 +9,10 @@ import { todayISO } from "@/lib/domain/dates";
 import { BANK_BRANDS } from "@/lib/finance/bank-logos";
 import { accountIdsUsedBy } from "@/lib/finance/book-ops";
 import { minorToInputString, parseAmountToMinor } from "@/lib/domain/money";
-import type { Account, AccountType } from "@/lib/finance/types";
+import type { Account, AccountType, TradeStyle } from "@/lib/finance/types";
+import { cn } from "@/lib/utils";
 import { useFinance } from "../finance-provider";
+import { StylePicker } from "../investments/style-picker";
 import { type PictureName } from "../picture-icon";
 
 export const ACCOUNT_TYPE_INFO: Record<AccountType, { label: string; picture: PictureName; balanceLabel: string }> = {
@@ -99,6 +101,7 @@ function AccountForm({ editing, adding, onDone }: { editing: Account | null; add
   const [name, setName] = useState(editing?.name ?? "");
   const [balance, setBalance] = useState(editing ? minorToInputString(editing.openingBalanceMinor) : "");
   const [openedOn, setOpenedOn] = useState(editing?.openedOn ?? todayISO());
+  const [style, setStyle] = useState<TradeStyle | "">(editing?.style ?? "");
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const entryCount = editing ? f.book.events.filter((e) => accountIdsUsedBy(e).includes(editing.id)).length : 0;
@@ -113,7 +116,7 @@ function AccountForm({ editing, adding, onDone }: { editing: Account | null; add
     if (!openedOn) return setError("Pick a start date.");
 
     const result = editing
-      ? f.updateAccount(editing.id, { name, openingBalanceMinor, openedOn })
+      ? f.updateAccount(editing.id, { name, openingBalanceMinor, openedOn, ...(style ? { style } : {}) })
       : f.addAccount({ name, type, openingBalanceMinor, openedOn });
     if (!result.ok) return setError(result.issues[0]?.message ?? "Couldn't save that.");
     onDone();
@@ -157,7 +160,16 @@ function AccountForm({ editing, adding, onDone }: { editing: Account | null; add
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      {/* A stock can be moved to the other product (an intraday buy kept for delivery, say). */}
+      {editing?.style && (
+        <div className="grid gap-1.5">
+          <Label>Product</Label>
+          <StylePicker value={style} onChange={setStyle} />
+        </div>
+      )}
+
+      {/* A stock's shares come from its orders, so it has no starting balance to set. */}
+      <div className={cn("grid grid-cols-2 gap-4", editing?.style && "hidden")}>
         <div className="grid content-start gap-1.5">
           <Label htmlFor="acc-balance">{info.balanceLabel}</Label>
           <div className="relative">

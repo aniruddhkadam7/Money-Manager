@@ -1,5 +1,6 @@
 import {
   ArrowLeftRight,
+  ChartCandlestick,
   BadgeIndianRupee,
   BadgePercent,
   Banknote,
@@ -80,6 +81,7 @@ const PICTURES = {
   invest: { Icon: TrendingUp, color: "#4f46e5" },
   sell: { Icon: Banknote, color: "#059669" },
   valuation: { Icon: ChartColumn, color: "#9333ea" },
+  stocks: { Icon: ChartCandlestick, color: "#4f46e5" },
   // Accounts
   bank: { Icon: Landmark, color: "#0369a1" },
   cash: { Icon: Wallet, color: "#16a34a" },
@@ -91,6 +93,9 @@ const PICTURES = {
 } satisfies Record<string, { Icon: LucideIcon; color: string }>;
 
 export type PictureName = keyof typeof PICTURES;
+
+/** A picture's own colour (for a chart or bar that matches its icon). */
+export const pictureColor = (name: PictureName) => PICTURES[name].color;
 
 export const isPictureName = (name: string | undefined): name is PictureName => !!name && name in PICTURES;
 

@@ -22,7 +22,10 @@ export interface HoldingSummary {
   account: Account;
   valueMinor: number;
   costBasisMinor: number;
+  /** Gain still held: value less cost. */
   gainMinor: number;
+  /** Profit (or loss, below zero) booked by selling, all sales added up. */
+  realizedMinor: number;
 }
 
 export interface PersonSummary {
@@ -59,6 +62,7 @@ export interface FinancialState {
 export function deriveState(book: Book, ledger: Ledger, asOf: string): FinancialState {
   const balance = new Map<string, number>();
   const cost = new Map<string, number>();
+  const realized = new Map<string, number>();
   const validIds = new Set<string>();
 
   for (const entry of ledger.entries) {
@@ -67,6 +71,9 @@ export function deriveState(book: Book, ledger: Ledger, asOf: string): Financial
     for (const p of entry.postings) balance.set(p.ledger, (balance.get(p.ledger) ?? 0) + p.amountMinor);
     if (entry.costDelta) {
       cost.set(entry.costDelta.accountId, (cost.get(entry.costDelta.accountId) ?? 0) + entry.costDelta.deltaMinor);
+      // A sale: the realized gain posting is the profit on that holding (credit side, so negated).
+      const gain = entry.postings.find((p) => p.ledger === ledgerIds.REALIZED_GAIN);
+      if (gain) realized.set(entry.costDelta.accountId, (realized.get(entry.costDelta.accountId) ?? 0) - gain.amountMinor);
     }
   }
   const bal = (id: string) => balance.get(id) ?? 0;
@@ -138,6 +145,7 @@ export function deriveState(book: Book, ledger: Ledger, asOf: string): Financial
         valueMinor: a.balanceMinor,
         costBasisMinor,
         gainMinor: a.balanceMinor - costBasisMinor,
+        realizedMinor: realized.get(a.account.id) ?? 0,
       };
     });
 

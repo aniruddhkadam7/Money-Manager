@@ -15,6 +15,7 @@ import { EventLogo } from "./event-logo";
 import { useToast } from "../toast";
 import { EffectsPanel } from "./effects-panel";
 import { EventForm, type FormPreset } from "./event-form";
+import { TradeForm } from "../investments/trade-form";
 import { EVENT_OPTIONS, eventOption } from "./event-meta";
 
 interface EventDialogApi {
@@ -107,7 +108,22 @@ export function EventDialogProvider({ children }: { children: ReactNode }) {
         <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
           {view.kind === "pick" && <Picker onPick={(type) => setView({ kind: "form", type, preset: view.preset, fromPicker: true })} />}
 
-          {view.kind === "form" && (
+          {view.kind === "form" && view.type === "trade" && (
+            <TradeForm
+              key={`trade-${view.editing?.id ?? view.template?.id ?? "new"}`}
+              editing={view.editing?.type === "trade" ? view.editing : undefined}
+              template={view.template?.type === "trade" ? view.template : undefined}
+              preset={view.preset?.trade}
+              onBack={view.fromPicker ? () => setView({ kind: "pick", preset: view.preset }) : undefined}
+              onSaved={(eventId, wasEdit) => {
+                if (wasEdit) return setView({ kind: "detail", eventId });
+                // Orders come quickly when trading: just close; the order shows in Positions and Orders.
+                close();
+              }}
+            />
+          )}
+
+          {view.kind === "form" && view.type !== "trade" && (
             <EventForm
               key={`${view.type}-${view.editing?.id ?? view.template?.id ?? "new"}`}
               type={view.type}

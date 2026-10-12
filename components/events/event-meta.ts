@@ -18,6 +18,7 @@ export const EVENT_OPTIONS: { type: EventType; label: string; hint: string; pict
   { type: "invest", label: "Invest", hint: "I put money into an investment", picture: "invest" },
   { type: "sell_investment", label: "Sell investment", hint: "I cashed out an investment", picture: "sell" },
   { type: "update_valuation", label: "Update value", hint: "An investment is worth a different amount now", picture: "valuation" },
+  { type: "trade", label: "Stock trade", hint: "Bought or sold shares, intraday (MIS) or delivery (CNC)", picture: "stocks" },
 ];
 
 export const eventOption = (type: EventType) => EVENT_OPTIONS.find((o) => o.type === type)!;
@@ -148,4 +149,6 @@ export const FORM_SPEC: Record<EventType, FormSpec> = {
     labels: { holdingSelect: "Which investment?", amount: "It is now worth" },
     accountTypes: MONEY,
   },
+  // Stock orders have their own order window (TradeForm); this is only for the shared lookups.
+  trade: { fields: [], labels: {}, accountTypes: MONEY },
 };
