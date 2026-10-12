@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { CalendarDays, FileUp, LayoutDashboard, Plus, RefreshCw, Wallet } from "lucide-react";
+import { CalendarDays, FileUp, LayoutDashboard, Plus, RefreshCw, TrendingUp, Wallet } from "lucide-react";
 import { flush } from "@/lib/cloud/sync";
 import { Button } from "@/components/ui/button";
 import { LiquidButton, LiquidGlass } from "@/components/ui/liquid-glass-button";
@@ -17,6 +17,7 @@ const NAV = [
   { href: "/activity", label: "Activity" },
   { href: "/calendar", label: "Calendar" },
   { href: "/money", label: "Money" },
+  { href: "/market", label: "Market" },
 ];
 
 /**
@@ -88,6 +89,7 @@ const TABS = [
   // Activity opens on its calendar; the list is its other view (Calendar / Statement), so the tab stays lit on it too.
   { href: "/calendar", label: "Calendar", icon: CalendarDays, also: "/activity" },
   { href: "/money", label: "Money", icon: Wallet },
+  { href: "/market", label: "Market", icon: TrendingUp },
   { href: "/import", label: "Import", icon: FileUp },
 ];
 
@@ -125,8 +127,8 @@ function useCompactOnScroll(pathname: string) {
 /** An iOS-like glide: quick to start, long soft settle. */
 const EASE = "duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none";
 
-/** The bar's five places, left to right: two tabs, the + button, two tabs. */
-const SLOTS = [TABS[0], TABS[1], null, TABS[2], TABS[3]] as const;
+/** The bar's places, left to right: two tabs, the + button (null), three tabs. */
+const SLOTS = [TABS[0], TABS[1], null, TABS[2], TABS[3], TABS[4]] as const;
 const GLIDE = "cubic-bezier(0.32, 0.72, 0, 1)";
 
 /**
@@ -263,7 +265,7 @@ function MobileNav({ pathname, onAdd }: { pathname: string; onAdd: () => void })
         {/* Shrunk, the name fades and the icon slides down to the middle (a transform, so it stays smooth). */}
         <span
           className={cn(
-            "flex flex-col items-center gap-0.5 px-2 py-1.5 transition-transform will-change-transform",
+            "flex flex-col items-center gap-0.5 px-1 py-1.5 transition-transform will-change-transform",
             EASE,
             compact && "translate-y-2",
             lit && "font-semibold",
@@ -316,21 +318,24 @@ function MobileNav({ pathname, onAdd }: { pathname: string; onAdd: () => void })
             current < 0 && !dragging && "opacity-0",
           )}
         />
-        {tab(TABS[0], 0)}
-        {tab(TABS[1], 1)}
-        <div ref={(el) => void (slotRefs.current[2] = el)} className="flex flex-1 items-center justify-center">
-          {/* White liquid glass, a shade lighter than the bar, centred in it; the green + marks the main action. */}
-          <LiquidButton
-            size="icon"
-            onClick={onAdd}
-            aria-label="Add an entry"
-            className="z-20 size-12 rounded-full bg-card/85 text-primary shadow-lg shadow-slate-900/15 hover:scale-100 active:scale-95"
-          >
-            <Plus className="size-7" strokeWidth={2.6} />
-          </LiquidButton>
-        </div>
-        {tab(TABS[2], 3)}
-        {tab(TABS[3], 4)}
+        {SLOTS.map((t, slot) =>
+          t ? (
+            tab(t, slot)
+          ) : (
+            // Narrower than a tab (it's only the button), so six places still fit a small phone.
+            <div key="add" ref={(el) => void (slotRefs.current[slot] = el)} className="flex w-14 shrink-0 items-center justify-center">
+              {/* White liquid glass, a shade lighter than the bar, centred in it; the green + marks the main action. */}
+              <LiquidButton
+                size="icon"
+                onClick={onAdd}
+                aria-label="Add an entry"
+                className="z-20 size-12 rounded-full bg-card/85 text-primary shadow-lg shadow-slate-900/15 hover:scale-100 active:scale-95"
+              >
+                <Plus className="size-7" strokeWidth={2.6} />
+              </LiquidButton>
+            </div>
+          ),
+        )}
       </LiquidGlass>
     </nav>
   );
