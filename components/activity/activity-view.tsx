@@ -136,8 +136,9 @@ function ActivityContent() {
   // Tapping an entry narrows the list to everything with the same shop, company or name.
   const [party, setParty] = useState<{ key: string; label: string } | null>(null);
   const [owed, setOwed] = useState<string | null>(params.get("owed"));
+  const [manualOnly, setManualOnly] = useState(false);
   // Phones: the detailed filters fold away behind the filter button, whose badge counts the ones set (a dashboard link sets dates).
-  const detailFilters = [entryType !== ALL, categoryId !== ALL, accountId !== ALL, personId !== ALL, from !== "", to !== ""].filter(Boolean).length;
+  const detailFilters = [entryType !== ALL, categoryId !== ALL, accountId !== ALL, personId !== ALL, from !== "", to !== "", manualOnly].filter(Boolean).length;
   const [moreOpen, setMoreOpen] = useState(false);
 
   const owedPeople = useMemo(() => {
@@ -161,7 +162,8 @@ function ActivityContent() {
           (!party || partyNameOf(e, describer.title(e)) === party.key) &&
           (categoryId === ALL || categoryOf(e) === categoryId) &&
           (!from || e.date >= from) &&
-          (!to || e.date <= to),
+          (!to || e.date <= to) &&
+          (!manualOnly || !(e.sources ?? []).some((s) => s.kind === "statement")),
       )
       .sort((a, b) => {
         const byDate = oldestFirst(b, a);
@@ -217,6 +219,7 @@ function ActivityContent() {
     setQuery("");
     setOwed(null);
     setParty(null);
+    setManualOnly(false);
   };
 
   /** Everything with this entry's person, or else with the same shop / company / name, across all dates. */
@@ -388,19 +391,19 @@ function ActivityContent() {
               {/* Phones: sorting sits beside Show instead of taking its own line under the card. */}
               <div className="flex-1 sm:hidden">{sortMenu}</div>
             </div>
-            <div className={cn("grid gap-1.5", !moreOpen && "max-sm:hidden")}>
+            <div className={cn("grid min-w-0 gap-1.5", !moreOpen && "max-sm:hidden")}>
               <Label htmlFor="filter-type">Type</Label>
               <SearchableSelect id="filter-type" value={entryType} onValueChange={setEntryType} options={typeOptions} placeholder="Search types…" />
             </div>
-            <div className={cn("grid gap-1.5", !moreOpen && "max-sm:hidden")}>
+            <div className={cn("grid min-w-0 gap-1.5", !moreOpen && "max-sm:hidden")}>
               <Label htmlFor="filter-category">Category</Label>
               <SearchableSelect id="filter-category" value={categoryId} onValueChange={setCategoryId} options={categoryOptions} placeholder="Search categories…" />
             </div>
-            <div className={cn("grid gap-1.5", !moreOpen && "max-sm:hidden")}>
+            <div className={cn("grid min-w-0 gap-1.5", !moreOpen && "max-sm:hidden")}>
               <Label htmlFor="filter-account">Account</Label>
               <SearchableSelect id="filter-account" value={accountId} onValueChange={setAccountId} options={accountOptions} placeholder="Search accounts…" />
             </div>
-            <div className={cn("grid gap-1.5", !moreOpen && "max-sm:hidden")}>
+            <div className={cn("grid min-w-0 gap-1.5", !moreOpen && "max-sm:hidden")}>
               <Label htmlFor="filter-person">Person</Label>
               <SearchableSelect id="filter-person" value={personId} onValueChange={setPersonId} options={personOptions} placeholder="Search people…" />
             </div>
@@ -413,6 +416,10 @@ function ActivityContent() {
               <Input id="filter-to" type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
             </div>
           </div>
+          <label className={cn("flex cursor-pointer select-none items-center gap-2 text-sm", !moreOpen && "max-sm:hidden")}>
+            <input type="checkbox" className="accent-primary" checked={manualOnly} onChange={(e) => setManualOnly(e.target.checked)} />
+            <span>Manual entries only <span className="text-muted-foreground">(not confirmed by a bank statement)</span></span>
+          </label>
         </CardContent>
       </Card>
 

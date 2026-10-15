@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { Check, ChevronDown, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +19,9 @@ export type SearchableOption = {
 /**
  * A dropdown with a search box on top, for lists long enough that scrolling
  * through them is a chore (categories, accounts, people).
+ *
+ * The dropdown renders via a React portal to escape any CSS stacking context
+ * (isolation, z-index, backdrop-filter) on ancestor elements.
  */
 export function SearchableSelect({
   id,
@@ -37,10 +41,14 @@ export function SearchableSelect({
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const [active, setActive] = React.useState(0);
-  const rootRef = React.useRef<HTMLDivElement>(null);
+  const [anchor, setAnchor] = React.useState<DOMRect | null>(null);
+  const [mounted, setMounted] = React.useState(false);
   const triggerRef = React.useRef<HTMLButtonElement>(null);
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
   const listRef = React.useRef<HTMLUListElement>(null);
   const listId = React.useId();
+
+  React.useEffect(() => { setMounted(true); }, []);
 
   const selected = options.find((o) => o.value === value);
   const q = query.trim().toLowerCase();
@@ -56,13 +64,28 @@ export function SearchableSelect({
     close();
   };
 
+  // Close when clicking outside both the trigger and the portal dropdown.
   React.useEffect(() => {
     if (!open) return;
     const onDown = (e: PointerEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) close(false);
+      if (triggerRef.current?.contains(e.target as Node)) return;
+      if (dropdownRef.current?.contains(e.target as Node)) return;
+      close(false);
     };
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
+  }, [open]);
+
+  // Close (not refocus) on any scroll or resize so the popup doesn't drift from the trigger.
+  React.useEffect(() => {
+    if (!open) return;
+    const dismiss = () => close(false);
+    window.addEventListener("scroll", dismiss, true);
+    window.addEventListener("resize", dismiss);
+    return () => {
+      window.removeEventListener("scroll", dismiss, true);
+      window.removeEventListener("resize", dismiss);
+    };
   }, [open]);
 
   React.useEffect(() => {
@@ -87,8 +110,81 @@ export function SearchableSelect({
     }
   };
 
+  const handleOpen = () => {
+    if (open) return close();
+    setAnchor(triggerRef.current?.getBoundingClientRect() ?? null);
+    setActive(Math.max(0, options.findIndex((o) => o.value === value)));
+    setOpen(true);
+  };
+
+  // Desktop: fixed, anchored under the trigger. Mobile (< 640 px): centred panel near the top.
+  const isMobile = mounted && typeof window !== "undefined" && window.innerWidth < 640;
+  const dropdownStyle: React.CSSProperties | undefined =
+    anchor && !isMobile
+      ? { top: anchor.bottom + 4, left: anchor.left, width: Math.max(anchor.width, 224) }
+      : undefined;
+
+  const dropdownContent = open && (
+    <div
+      ref={dropdownRef}
+      style={dropdownStyle}
+      className={cn(
+        "fixed z-[9999] overflow-hidden rounded-xl border glass-pop shadow-lg animate-in fade-in-0 zoom-in-95",
+        !dropdownStyle && "inset-x-4 top-20 w-auto shadow-2xl",
+      )}
+    >
+      <div className="relative border-b">
+        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <input
+          autoFocus
+          type="text"
+          autoComplete="off"
+          role="searchbox"
+          aria-controls={listId}
+          aria-activedescendant={shown[active] ? `${listId}-${active}` : undefined}
+          placeholder={placeholder}
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setActive(0);
+          }}
+          onKeyDown={onKeyDown}
+          className="h-11 w-full bg-transparent pl-9 pr-3 text-base outline-none placeholder:text-muted-foreground sm:h-10 sm:text-sm"
+        />
+      </div>
+      <ul ref={listRef} id={listId} role="listbox" className="max-h-72 overflow-y-auto p-1">
+        {shown.length === 0 && <li className="px-2.5 py-6 text-center text-sm text-muted-foreground">No matches</li>}
+        {shown.map((o, i) => (
+          <React.Fragment key={o.value}>
+            {o.group && o.group !== shown[i - 1]?.group && (
+              <li role="presentation" className="px-2.5 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {o.group}
+              </li>
+            )}
+            <li
+              id={`${listId}-${i}`}
+              data-index={i}
+              role="option"
+              aria-selected={o.value === value}
+              onPointerMove={() => setActive(i)}
+              onClick={() => choose(o)}
+              className={cn(
+                "relative flex cursor-pointer select-none items-center gap-2 rounded-lg py-2 pl-2.5 pr-8 text-sm",
+                i === active && "bg-muted",
+              )}
+            >
+              {o.icon}
+              <span className="truncate">{o.label}</span>
+              {o.value === value && <Check className="absolute right-2 size-4" />}
+            </li>
+          </React.Fragment>
+        ))}
+      </ul>
+    </div>
+  );
+
   return (
-    <div ref={rootRef} className={cn("relative", className)}>
+    <div className={cn("relative min-w-0", className)}>
       <button
         ref={triggerRef}
         id={id}
@@ -97,11 +193,7 @@ export function SearchableSelect({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listId}
-        onClick={() => {
-          if (open) return close();
-          setActive(Math.max(0, options.findIndex((o) => o.value === value)));
-          setOpen(true);
-        }}
+        onClick={handleOpen}
         className="flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-input bg-card px-3 text-left text-sm outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-ring"
       >
         <span className="flex min-w-0 items-center gap-2">
@@ -111,59 +203,7 @@ export function SearchableSelect({
         <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
       </button>
 
-      {open && (
-        // Phones: a narrow grid column would squeeze the list, so it spans the screen near the top (above the keyboard).
-        <div className="absolute left-0 top-full z-[60] mt-1 w-full min-w-[14rem] overflow-hidden rounded-xl border glass-pop shadow-lg animate-in fade-in-0 zoom-in-95 max-sm:fixed max-sm:inset-x-4 max-sm:top-20 max-sm:mt-0 max-sm:w-auto max-sm:min-w-0 max-sm:shadow-2xl">
-          <div className="relative border-b">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              autoFocus
-              type="text"
-              autoComplete="off"
-              role="searchbox"
-              aria-controls={listId}
-              aria-activedescendant={shown[active] ? `${listId}-${active}` : undefined}
-              placeholder={placeholder}
-              value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setActive(0);
-              }}
-              onKeyDown={onKeyDown}
-              // 16px on phones so iOS doesn't zoom in.
-              className="h-11 w-full bg-transparent pl-9 pr-3 text-base outline-none placeholder:text-muted-foreground sm:h-10 sm:text-sm"
-            />
-          </div>
-          <ul ref={listRef} id={listId} role="listbox" className="max-h-72 overflow-y-auto p-1">
-            {shown.length === 0 && <li className="px-2.5 py-6 text-center text-sm text-muted-foreground">No matches</li>}
-            {shown.map((o, i) => (
-              <React.Fragment key={o.value}>
-                {o.group && o.group !== shown[i - 1]?.group && (
-                  <li role="presentation" className="px-2.5 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    {o.group}
-                  </li>
-                )}
-                <li
-                  id={`${listId}-${i}`}
-                  data-index={i}
-                  role="option"
-                  aria-selected={o.value === value}
-                  onPointerMove={() => setActive(i)}
-                  onClick={() => choose(o)}
-                  className={cn(
-                    "relative flex cursor-pointer select-none items-center gap-2 rounded-lg py-2 pl-2.5 pr-8 text-sm",
-                    i === active && "bg-muted",
-                  )}
-                >
-                  {o.icon}
-                  <span className="truncate">{o.label}</span>
-                  {o.value === value && <Check className="absolute right-2 size-4" />}
-                </li>
-              </React.Fragment>
-            ))}
-          </ul>
-        </div>
-      )}
+      {mounted && createPortal(dropdownContent, document.body)}
     </div>
   );
 }

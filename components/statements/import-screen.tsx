@@ -48,7 +48,10 @@ function Screen() {
             {[...statements.imports].sort((x, y) => whenOf(y) - whenOf(x)).map((i) => {
               const account = finance.book.accounts.find((a) => a.id === i.accountId);
               const failed = i.status === "FAILED";
-              const count = i.status === "IMPORTED" ? `${i.counts.imported} transactions` : i.counts.review ? `${i.counts.review} to review` : "";
+              const alreadyThere = i.counts.matchedExisting + i.counts.alreadyImported;
+              const count = i.status === "IMPORTED"
+                ? (i.counts.imported > 0 ? `${i.counts.imported} transaction${i.counts.imported === 1 ? "" : "s"}` : alreadyThere > 0 ? `${alreadyThere} already recorded` : "0 transactions")
+                : i.counts.review ? `${i.counts.review} to review` : "";
               const mask = i.accountMask;
               const row = (
                 <>

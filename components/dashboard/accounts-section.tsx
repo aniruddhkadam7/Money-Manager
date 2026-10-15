@@ -53,11 +53,11 @@ export function AccountsSection({ book, state }: { book: Book; state: FinancialS
             </Link>
             <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between sm:gap-2">
               <span className="flex items-center gap-1 text-xs text-slate-500">
-                {card ? "To pay" : "Available"}
-                <AccountBalanceHow account={account} />
+                {check && !card ? `Statement ${formatDisplayDate(check.date)}` : card ? "To pay" : "Available"}
+                {(!check || card) && <AccountBalanceHow account={account} />}
               </span>
-              <span className={cn("text-base font-semibold tabular-nums sm:text-lg", (card ? balanceMinor > 0 : balanceMinor < 0) ? "text-red-700" : "text-slate-900")}>
-                {formatExactINR(card ? Math.max(balanceMinor, 0) : balanceMinor)}
+              <span className={cn("text-base font-semibold tabular-nums sm:text-lg", (card ? balanceMinor > 0 : (check ? check.closingMinor : balanceMinor) < 0) ? "text-red-700" : "text-slate-900")}>
+                {check && !card ? formatExactINR(check.closingMinor) : formatExactINR(card ? Math.max(balanceMinor, 0) : balanceMinor)}
               </span>
             </div>
           </div>

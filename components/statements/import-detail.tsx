@@ -10,6 +10,7 @@ import { formatDisplayDate, formatWeekdayDate } from "@/lib/domain/dates";
 import { formatRupees } from "@/lib/finance/describe";
 import { statementDirection } from "@/lib/finance/order";
 import { looksLikeCardStatement, needsDecision } from "@/lib/statements/pipeline";
+import { deriveState } from "@/lib/finance/state";
 import type { StatementRow } from "@/lib/statements/types";
 import { cn, scrollPage } from "@/lib/utils";
 import { useEventDialog } from "../events/event-dialog";
@@ -264,7 +265,13 @@ export function ImportDetail({ importId, onBack }: { importId: string; onBack: (
 
   const accountNow = finance.state.accounts.find((a) => a.account.id === record.accountId);
   const closing = record.closingBalanceMinor;
-  const gap = imported && accountNow && closing !== undefined ? closing - accountNow.balanceMinor : undefined;
+  // Gap must be computed against the balance as of the statement's end date, not today's balance.
+  // Using today's balance would include post-statement transactions and produce a wrong gap.
+  const accountAtClose = useMemo(() => {
+    if (!record.periodEnd) return accountNow;
+    return deriveState(finance.book, finance.ledger, record.periodEnd).accounts.find((a) => a.account.id === record.accountId);
+  }, [finance.book, finance.ledger, record.periodEnd, record.accountId, accountNow]);
+  const gap = imported && accountAtClose && closing !== undefined ? closing - accountAtClose.balanceMinor : undefined;
 
   const pick = (key: TileKey, label: string) => ({ active: tile?.key === key, onClick: () => setTile(tile?.key === key ? null : { key, label }) });
   const tileRows = tile ? sortRows(rows.filter(TILE_ROWS[tile.key]), rowSort) : [];
@@ -436,28 +443,43 @@ export function ImportDetail({ importId, onBack }: { importId: string; onBack: (
             {record.counts.matchedExisting ? `, ${record.counts.matchedExisting} linked to entries you already had` : ""}
             {record.counts.alreadyImported ? `, ${record.counts.alreadyImported} already imported before` : ""}.
           </p>
-          {accountNow && (
+          {accountAtClose && (
             <p className="mt-2 text-sm" data-testid="ledger-check">
-              {account?.name} now shows <strong>{formatRupees(accountNow.balanceMinor)}</strong>
-              {closing !== undefined && (gap === 0 ? <> — matches the statement's closing balance. ✓</> : <> — the statement says {formatRupees(closing)}.</>)}
+              {account?.name}{record.periodEnd ? ` on ${formatDisplayDate(record.periodEnd)}` : ""} showed{" "}
+              <strong>{formatRupees(accountAtClose.balanceMinor)}</strong>
+              {closing !== undefined && (gap === 0 ? <> — matches the statement's closing balance. ✓</> : <> — the statement's closing balance is {formatRupees(closing)}.</>)}
             </p>
           )}
-          {gap !== undefined && gap !== 0 && account && account.openingBalanceMinor + gap >= 0 && (
+          {gap !== undefined && gap !== 0 && account && (
             <div className="mt-2 rounded-lg bg-card p-3 text-sm">
-              <p>
-                The {formatRupees(Math.abs(gap))} gap usually means a different starting balance. Correct it to match the bank:
-              </p>
-              <Button
-                size="sm"
-                className="mt-2"
-                onClick={() => {
-                  const r = finance.updateAccount(account.id, { openingBalanceMinor: account.openingBalanceMinor + gap });
-                  toast.show({ message: r.ok ? `Starting balance of ${account.name} corrected` : (r.issues[0]?.message ?? "Couldn't change it") });
-                }}
-                data-testid="fix-opening"
-              >
-                Set starting balance to {formatRupees(account.openingBalanceMinor + gap)}
-              </Button>
+              {record.counts.imported === 0 && record.counts.transactions > 0 ? (
+                <>
+                  <p>
+                    All {record.counts.transactions} {record.counts.transactions === 1 ? "transaction was" : "transactions were"} already in your records, but the balance is still{" "}
+                    <strong>{formatRupees(Math.abs(gap))}</strong> {gap > 0 ? "less" : "more"} than the statement. A transaction recorded in the app may not exist in this bank statement — find and delete it in Activity.
+                  </p>
+                  <Button asChild size="sm" variant="outline" className="mt-2">
+                    <Link href={`/activity?account=${account.id}`}>Check Activity</Link>
+                  </Button>
+                </>
+              ) : account.openingBalanceMinor + gap >= 0 ? (
+                <>
+                  <p>
+                    The {formatRupees(Math.abs(gap))} gap usually means a different starting balance. Correct it to match the bank:
+                  </p>
+                  <Button
+                    size="sm"
+                    className="mt-2"
+                    onClick={() => {
+                      const r = finance.updateAccount(account.id, { openingBalanceMinor: account.openingBalanceMinor + gap });
+                      toast.show({ message: r.ok ? `Starting balance of ${account.name} corrected` : (r.issues[0]?.message ?? "Couldn't change it") });
+                    }}
+                    data-testid="fix-opening"
+                  >
+                    Set starting balance to {formatRupees(account.openingBalanceMinor + gap)}
+                  </Button>
+                </>
+              ) : null}
             </div>
           )}
           <div className="mt-3 flex gap-2">
