@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { NewsResponse } from "@/lib/market/news";
-import type { ChartData, EconomyResponse, MarketRange, Quote, QuotesResponse, SearchHit, SectorResponse } from "@/lib/market/types";
+import type { ChartData, EconomyResponse, MarketRange, QuotesResponse, SearchHit, SectorResponse, ValuationResponse } from "@/lib/market/types";
 
 /**
  * Market data isn't for trading here, so nothing polls. A page shows what this browser last fetched
@@ -98,15 +97,13 @@ function useCachedJson<T>(url: string | null, maxAgeMs: number | ((data: T) => n
 
 export const useOverview = (enabled = true) => useCachedJson<QuotesResponse>(enabled ? "/api/market/overview" : null, PRICES_MAX_AGE);
 
-export const useWatchlistQuotes = (symbols: string[]) =>
-  useCachedJson<QuotesResponse>(symbols.length ? `/api/market/quotes?symbols=${encodeURIComponent([...symbols].sort().join(","))}` : null, PRICES_MAX_AGE);
-
-/** Important finance news, fetched only once the News view is opened; kept half an hour. */
-export const useNews = (enabled = true) => useCachedJson<NewsResponse>(enabled ? "/api/market/news" : null, PRICES_MAX_AGE);
-
 /** A sector's stocks, fetched only once the sector is opened. */
 export const useSector = (symbol: string | null) =>
   useCachedJson<SectorResponse>(symbol ? `/api/market/sector?symbol=${encodeURIComponent(symbol)}` : null, PRICES_MAX_AGE);
+
+/** PEs for indices, sectors and their stocks; an incomplete answer is asked for again sooner. */
+export const useValuation = (enabled = true) =>
+  useCachedJson<ValuationResponse>(enabled ? "/api/market/valuation" : null, (d: ValuationResponse) => (d.complete ? PRICES_MAX_AGE : 5 * 60_000));
 
 const economyMaxAge = (d: EconomyResponse) => (d.complete ? ECONOMY_MAX_AGE : 10 * 60_000);
 export const useEconomy = (enabled = true) => useCachedJson<EconomyResponse>(enabled ? "/api/market/economy" : null, economyMaxAge);
@@ -168,16 +165,4 @@ export function useSearch(q: string) {
 
   const current = state.q === query;
   return { hits: current ? state.hits : [], searching: query.length >= 2 && !current, error: current && state.error };
-}
-
-/** One instrument's quote, to open it from search; null when it can't be priced. */
-export async function fetchQuote(symbol: string): Promise<Quote | null> {
-  try {
-    const res = await fetch(`/api/market/quotes?symbols=${encodeURIComponent(symbol)}`);
-    if (!res.ok) return null;
-    const body = (await res.json()) as QuotesResponse;
-    return body.quotes[0] ?? null;
-  } catch {
-    return null;
-  }
 }

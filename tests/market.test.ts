@@ -7,6 +7,8 @@ import { formatChange, formatPct, formatPrice, formatReturn } from "@/lib/market
 import { dailySpark, inRupees, memberIndex, performance, prevCloseFromDaily, sparkFor } from "@/lib/market/perf";
 import { multiplySeries } from "@/lib/market/service";
 import type { Quote } from "@/lib/market/types";
+import { parseIbja, spliceHistory } from "@/lib/market/ibja";
+import { groupPe, parseNseIndices } from "@/lib/market/valuation";
 import { parseChart, parseSearch } from "@/lib/market/yahoo";
 
 const DAY = 86_400;
@@ -259,5 +261,70 @@ describe("inRupees", () => {
     expect(inRupees(10, 5)).toBeCloseTo(15.5, 9);
     expect(inRupees(-10, 5)).toBeCloseTo(-5.5, 9);
     expect(inRupees(10, null)).toBeNull();
+  });
+});
+
+describe("valuations", () => {
+  it("reads NSE's index figures, leaving out the ones it doesn't have", () => {
+    const { asOf, indices } = parseNseIndices({
+      timestamp: "15-Oct-2026 15:30",
+      data: [
+        { index: "NIFTY 50", pe: "19.65", pb: "2.82", dy: "1.49" },
+        { index: "INDIA VIX", pe: "0", pb: "0", dy: "-" },
+      ],
+    });
+    expect(asOf).toBe("15-Oct-2026 15:30");
+    expect(indices["NIFTY 50"]).toEqual({ pe: 19.65, pb: 2.82, dy: 1.49 });
+    expect(indices["INDIA VIX"]).toEqual({ pe: null, pb: null, dy: null });
+  });
+
+  it("works out a group's PE as total value over total earnings, losses counting against", () => {
+    const stock = (marketCap: number, eps: number, shares: number) => ({ marketCap, eps, shares, pe: null });
+    // Values 1000 + 500; earnings 50 + (−25): 1500 ÷ 25 = 60.
+    expect(groupPe([stock(1000, 5, 10), stock(500, -2.5, 10)])).toEqual({ pe: 60, count: 2, total: 2 });
+    // Stocks without figures are counted as missing, not as zero.
+    expect(groupPe([stock(1000, 5, 10), undefined])).toEqual({ pe: 20, count: 1, total: 2 });
+    // A group that lost money overall has no PE.
+    expect(groupPe([stock(1000, -5, 10)]).pe).toBeNull();
+  });
+});
+
+describe("IBJA bullion rates", () => {
+  const page = (goldPm: string, goldAm = "145564") => `
+    <span id="lblGold999_AM">${goldAm}</span><span id="lblGold999_PM">${goldPm}</span>
+    <span id="lblSilver999_AM">207098</span><span id="lblSilver999_PM">208275</span>
+    <input type="hidden" name="HdnGold" id="HdnGold" value="{&quot;labels&quot;:[&quot;14/10/2026&quot;,&quot;15/10/2026&quot;],&quot;purity999&quot;:[146064,145942],&quot;purity916&quot;:[1,2]}" />
+    <input type="hidden" name="HdnSilver" id="HdnSilver" value="{&quot;labels&quot;:[&quot;14/10/2026&quot;,&quot;15/10/2026&quot;],&quot;silverRate&quot;:[213822,208275]}" />`;
+
+  it("reads each day's rate, dated at 6 PM in India", () => {
+    const { gold999, silver999 } = parseIbja(page("145942"), 2_000_000_000);
+    expect(gold999.history).toEqual([
+      { t: Date.UTC(2026, 9, 14, 12, 30) / 1000, v: 146064 },
+      { t: Date.UTC(2026, 9, 15, 12, 30) / 1000, v: 145942 },
+    ]);
+    expect(gold999.session).toBe("PM");
+    expect(silver999.history.at(-1)?.v).toBe(208275);
+  });
+
+  it("adds today's rate when it's newer than the history, preferring the 6 PM one", () => {
+    expect(parseIbja(page("147000"), 2_000_000_000).gold999.history.at(-1)).toEqual({ t: 2_000_000_000, v: 147000 });
+    // Only the noon rate is out yet.
+    const noon = parseIbja(page("", "146500"), 2_000_000_000).gold999;
+    expect(noon.history.at(-1)).toEqual({ t: 2_000_000_000, v: 146500 });
+    expect(noon.session).toBe("AM");
+  });
+
+  it("joins older prices on, scaled to meet IBJA's first rate", () => {
+    const older = [
+      { t: 1, v: 50 },
+      { t: 2, v: 100 },
+      { t: 5, v: 999 },
+    ];
+    expect(spliceHistory(older, [{ t: 3, v: 120 }, { t: 4, v: 130 }])).toEqual([
+      { t: 1, v: 60 },
+      { t: 2, v: 120 },
+      { t: 3, v: 120 },
+      { t: 4, v: 130 },
+    ]);
   });
 });

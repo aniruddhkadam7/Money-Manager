@@ -1,47 +1,40 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode, type TouchEvent } from "react";
-import { ChevronRight, Plus, RefreshCw, Search } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EconomySection, ScoreTable, SCORE_SORTS } from "./economy-health";
 import { CATALOG, COMMODITIES, CURRENCY, INDIA, SECTORS, WORLD, YIELDS, type CatalogItem } from "@/lib/market/catalog";
-import { formatMonth, formatPoints, formatPrice, formatQuoteReturn, formatReturn, updatedAt } from "@/lib/market/format";
-import { PERIODS, type Economy, type Period, type Quote } from "@/lib/market/types";
+import { formatMonth, formatPe, formatPoints, formatPrice, formatQuoteReturn, formatReturn, updatedAt } from "@/lib/market/format";
+import { PERIODS, type Economy, type IndexValuation, type Period, type Quote } from "@/lib/market/types";
 import { sparkFor } from "@/lib/market/perf";
-import { useWatchlist } from "@/lib/market/watchlist";
 import { cn, scrollPage } from "@/lib/utils";
 import { ChartCard, RangeTabs } from "../charts/primitives";
 import { PageTitle } from "../page-title";
-import { AddSymbolDialog } from "./add-symbol-dialog";
 import { QuoteDetail } from "./quote-detail";
 import { SectorCompare } from "./sector-compare";
 import { SectorSheet } from "./sector-sheet";
-import { PRICE_SORTS, QUOTE_SORTS, sortItems, SortSelect, useSort, type QuoteSort, type SortOption } from "./sort";
+import { SectorValuations } from "./sector-valuations";
+import { QUOTE_SORTS, sortItems, SortSelect, useSort, type QuoteSort, type SortOption } from "./sort";
 import { Sparkline } from "./sparkline";
-import type { NewsTopic } from "@/lib/market/news";
-import { useToast } from "../toast";
-import { NewsTopics, NewsView } from "./news-view";
-import { fetchQuote, useEconomy, useNews, useOverview, useWatchlistQuotes } from "./use-market";
+import { useEconomy, useOverview, useValuation } from "./use-market";
 
 /**
- * Three views, kept apart: Markets (prices that move every day, with the 1D … 1Y period), Economy
- * (growth, inflation, jobs and interest rates, which change monthly or yearly and have no period), and
- * News (only the finance and economy stories that matter).
+ * Two views, kept apart: Markets (prices that move every day, with the 1D … 1Y period) and Economy
+ * (growth, inflation, jobs and interest rates, which change monthly or yearly and have no period).
  */
-type Mode = "markets" | "economy" | "news";
+type Mode = "markets" | "economy";
 const MODES: { value: Mode; label: string }[] = [
   { value: "markets", label: "Markets" },
   { value: "economy", label: "Economy" },
-  { value: "news", label: "News" },
 ];
 
-type Tab = "india" | "sectors" | "world" | "money" | "watchlist";
+type Tab = "india" | "sectors" | "world" | "money";
 const TABS: { value: Tab; label: string }[] = [
   { value: "india", label: "India" },
   { value: "sectors", label: "Sectors" },
   { value: "world", label: "World" },
   { value: "money", label: "Commodities & FX" },
-  { value: "watchlist", label: "Watchlist" },
 ];
 /** Phones show the economy a part at a time, like the market sections; wider screens show it all. */
 type EcoTab = "india" | "world" | "rates" | "compare";
@@ -56,7 +49,7 @@ const ECO_TABS: { value: EcoTab; label: string }[] = [
 const tabClass = (active: boolean) =>
   cn(
     "shrink-0 text-sm font-medium transition-colors",
-    "max-sm:relative max-sm:select-none max-sm:py-2 max-sm:text-sm max-sm:after:absolute max-sm:after:inset-x-0 max-sm:after:bottom-0 max-sm:after:h-[3px] max-sm:after:rounded-full max-sm:after:transition-colors",
+    "max-sm:relative max-sm:-mb-px max-sm:select-none max-sm:py-3 max-sm:text-[15px] max-sm:after:absolute max-sm:after:inset-x-0 max-sm:after:bottom-0 max-sm:after:h-[3px] max-sm:after:rounded-full max-sm:after:transition-colors",
     active ? "max-sm:text-slate-900 max-sm:after:bg-primary max-sm:font-semibold" : "max-sm:text-slate-500 max-sm:after:bg-transparent",
     "sm:rounded-full sm:border sm:px-3.5 sm:py-1.5",
     active ? "sm:border-transparent sm:bg-primary sm:text-primary-foreground" : "sm:bg-[var(--glass)] sm:text-slate-600 sm:hover:text-slate-900",
@@ -101,16 +94,13 @@ const returnTone = (v: number | null) => (v === null ? "text-slate-400" : v > 0 
 
 /**
  * How markets and economies are doing, for understanding rather than trading. Markets: India's indices,
- * its sectors (and against the world's), world markets, commodities and currencies, and the user's own
- * watchlist, all over one chosen period. Economy: India's figures, economies compared, central banks.
+ * its sectors (and against the world's), world markets, commodities and currencies, all over one
+ * chosen period. Economy: India's figures, economies compared, central banks.
  */
 export function MarketView() {
   const [mode, setMode] = useState<Mode>("markets");
   const [tab, setTab] = useState<Tab>("india");
   const [ecoTab, setEcoTab] = useState<EcoTab>("india");
-  const [newsTopic, setNewsTopic] = useState<NewsTopic | "all">("all");
-  const [searching, setSearching] = useState(false);
-  const toast = useToast();
   const [period, setPeriod] = useState<Period>("1m");
   useEffect(() => {
     try {
@@ -183,14 +173,6 @@ export function MarketView() {
     setEnterFrom(order(next) > order(ecoTab) ? "right" : "left");
     setEcoTab(next);
   };
-  /** A search result: its price and chart open as soon as its quote arrives. */
-  const openSymbol = async (symbol: string) => {
-    setSearching(false);
-    const q = await fetchQuote(symbol);
-    if (q) setSelected(q);
-    else toast.show({ message: "Couldn't get a price for that just now. Try again in a minute.", duration: 4000 });
-  };
-
   const chooseTab = (next: Tab) => {
     if (next === tab) return;
     // A new section starts at its top, just under the pinned bar.
@@ -216,56 +198,40 @@ export function MarketView() {
 
   // Each half fetches only its own data: the economy figures aren't asked for until Economy is opened.
   const overview = useOverview(mode === "markets");
-  const watchlist = useWatchlist();
-  const watched = useWatchlistQuotes(mode === "markets" && tab === "watchlist" ? watchlist : []);
+  const valuation = useValuation(mode === "markets" && (tab === "india" || tab === "sectors"));
   const economy = useEconomy(mode === "economy");
-  const news = useNews(mode === "news");
   const [selected, setSelected] = useState<Quote | null>(null);
   const [sector, setSector] = useState<Quote | null>(null);
-  const [adding, setAdding] = useState(false);
 
   const quotes = useMemo(() => {
     const map: Record<string, Quote> = {};
     for (const q of overview.data?.quotes ?? []) map[q.symbol] = q;
-    for (const q of watched.data?.quotes ?? []) map[q.symbol] = q;
     return map;
-  }, [overview.data, watched.data]);
-  const failed = useMemo(() => new Set([...(overview.data?.failed ?? []), ...(watched.data?.failed ?? [])]), [overview.data, watched.data]);
+  }, [overview.data]);
+  const failed = useMemo(() => new Set(overview.data?.failed ?? []), [overview.data]);
   const economies = economy.data?.economies ?? [];
   const india = economies.find((e) => e.code === "IND");
   const world = economies.find((e) => e.code === "WEOWORLD");
 
-  const asOf = mode === "markets" ? overview.data?.fetchedAt : mode === "economy" ? economy.data?.fetchedAt : news.data?.fetchedAt;
-  const refreshing = mode === "markets" ? overview.refreshing || watched.refreshing : mode === "economy" ? economy.refreshing : news.refreshing;
-  const refresh = () => {
-    if (mode === "economy") return economy.refresh();
-    if (mode === "news") return news.refresh();
-    overview.refresh();
-    if (tab === "watchlist") watched.refresh();
-  };
+  const asOf = mode === "markets" ? overview.data?.fetchedAt : economy.data?.fetchedAt;
   const shared = { quotes, failed, period, onOpen: setSelected };
   const [sectorSort, setSectorSort] = useSort("sectors", SECTOR_SORTS, "best");
   const [scoreSort, setScoreSort] = useSort("economies", SCORE_SORTS, "listed");
   const [rateSort, setRateSort] = useSort("rates", RATE_SORTS, "listed");
-  const addButton = (
-    <Button variant="outline" size="sm" onClick={() => setAdding(true)} className="rounded-full">
-      <Plus /> Add
-    </Button>
-  );
 
   return (
     // grid-cols-1 is minmax(0, 1fr): the page never grows wider than the screen to fit a wide child; wide rows scroll inside.
     <div className="grid grid-cols-1 gap-4 sm:gap-5">
       <h1 className="sr-only">Markets and economy</h1>
       <div ref={anchorRef} aria-hidden className="-mb-4 h-0 sm:-mb-5" />
-      {/* The page's top, as in a phone market app: which half (a segmented switch), search and refresh, then that
+      {/* The page's top, as in a phone market app: which half (a segmented switch) and when its figures are from, then that
           half's own sections. Phones keep it pinned under the header while the page scrolls. */}
       <div
         ref={barRef}
         className={cn(
           "grid grid-cols-1 gap-3",
           // Solid, so the list scrolling underneath doesn't show through the tabs.
-          "max-sm:sticky max-sm:top-[calc(env(safe-area-inset-top)+3.0625rem)] max-sm:z-30 max-sm:-mx-4 max-sm:-mt-2 max-sm:gap-1.5 max-sm:border-b max-sm:bg-[var(--glass-solid)] max-sm:px-4 max-sm:pb-2 max-sm:pt-2 max-sm:shadow-sm",
+          "max-sm:sticky max-sm:top-[calc(env(safe-area-inset-top)+3.0625rem)] max-sm:z-30 max-sm:-mx-4 max-sm:-mt-2 max-sm:gap-2 max-sm:border-b max-sm:bg-[var(--glass-solid)] max-sm:px-4 max-sm:pb-2.5 max-sm:pt-2 max-sm:shadow-sm",
         )}
       >
         <div className="flex items-center justify-between gap-2">
@@ -278,7 +244,7 @@ export function MarketView() {
                 aria-selected={mode === m.value}
                 onClick={() => chooseMode(m.value)}
                 className={cn(
-                  "select-none rounded-full px-5 py-1.5 text-sm font-semibold transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:flex-1 max-sm:px-2 max-sm:py-1",
+                  "select-none rounded-full px-5 py-1.5 text-sm font-semibold transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:flex-1 max-sm:px-2 max-sm:py-2 max-sm:text-[15px]",
                   mode === m.value ? "bg-card text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800",
                 )}
               >
@@ -286,24 +252,16 @@ export function MarketView() {
               </button>
             ))}
           </div>
-          <div className="flex items-center gap-1 text-xs text-slate-500">
-            {asOf && <span className="mr-1 max-sm:hidden">{mode === "markets" ? "Prices as of" : "Updated"} {updatedAt(asOf / 1000)}</span>}
-            <Button variant="ghost" size="icon" className="size-9" onClick={() => setSearching(true)} aria-label="Search shares, funds and indices" title="Search">
-              <Search className="size-[18px]" />
-            </Button>
-            <Button variant="ghost" size="icon" className="size-9" onClick={refresh} disabled={refreshing} aria-label="Refresh" title="Refresh">
-              <RefreshCw className={cn(refreshing && "animate-spin")} />
-            </Button>
-          </div>
+          {asOf && <span className="text-xs text-slate-500 max-sm:hidden">{mode === "markets" ? "Prices as of" : "Updated"} {updatedAt(asOf / 1000)}</span>}
         </div>
 
         {mode === "markets" && (
-          <div className="flex flex-wrap items-center justify-between gap-3 max-sm:gap-1.5">
+          <div className="flex flex-wrap items-center justify-between gap-3 max-sm:gap-2.5">
             <div
               role="tablist"
               aria-label="Section"
               data-swipe-ignore
-              className="-mx-4 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] max-sm:w-[calc(100%+2rem)] max-sm:gap-5 sm:mx-0 sm:px-0"
+              className="-mx-4 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] max-sm:w-[calc(100%+2rem)] max-sm:justify-between max-sm:gap-3 max-sm:border-b max-sm:border-slate-200 sm:mx-0 sm:px-0"
             >
               {TABS.map((t) => (
                 <button
@@ -318,10 +276,9 @@ export function MarketView() {
                   {t.label}
                 </button>
               ))}
-              <span aria-hidden className="-ml-1 w-px shrink-0 sm:hidden" />
             </div>
-            {/* Phones: a compact strip under the tabs, only as wide as its five buttons. */}
-            <div className="max-sm:[&>[role=tablist]]:p-0.5 max-sm:[&_button]:select-none max-sm:[&_button]:px-3 max-sm:[&_button]:py-[3px] max-sm:[&_button]:text-xs max-sm:[&_button]:font-semibold">
+            {/* Phones: a full-width strip under the tabs, five equal buttons big enough for a thumb. */}
+            <div className="max-sm:w-full max-sm:[&>[role=tablist]]:flex max-sm:[&>[role=tablist]]:w-full max-sm:[&_button]:flex-1 max-sm:[&_button]:select-none max-sm:[&_button]:py-1.5 max-sm:[&_button]:text-sm max-sm:[&_button]:font-semibold">
               <RangeTabs label="Returns over" value={period} options={PERIODS} onChange={choosePeriod} />
             </div>
           </div>
@@ -329,7 +286,7 @@ export function MarketView() {
 
         {/* Phones only: the economy a part at a time (wider screens show it all at once). */}
         {mode === "economy" && (
-          <div role="tablist" aria-label="Economy section" data-swipe-ignore className="-mx-4 flex gap-5 overflow-x-auto px-4 [scrollbar-width:none] sm:hidden">
+          <div role="tablist" aria-label="Economy section" data-swipe-ignore className="-mx-4 flex overflow-x-auto px-4 [scrollbar-width:none] max-sm:justify-between max-sm:gap-3 max-sm:border-b max-sm:border-slate-200 sm:hidden">
             {ECO_TABS.map((t) => (
               <button key={t.value} role="tab" type="button" aria-selected={ecoTab === t.value} onClick={() => chooseEcoTab(t.value)} className={tabClass(ecoTab === t.value)}>
                 {t.label}
@@ -337,8 +294,6 @@ export function MarketView() {
             ))}
           </div>
         )}
-
-        {mode === "news" && <NewsTopics data={news.data} topic={newsTopic} onTopic={setNewsTopic} />}
       </div>
 
       {mode === "markets" ? (
@@ -366,7 +321,7 @@ export function MarketView() {
                   className="max-sm:-mx-4 max-sm:flex max-sm:snap-x max-sm:snap-mandatory max-sm:scroll-px-4 max-sm:gap-3 max-sm:overflow-x-auto max-sm:px-4 max-sm:pb-1 max-sm:[scrollbar-width:none] sm:grid sm:grid-cols-3 sm:gap-3 xl:grid-cols-6"
                 >
                   {INDIA.map((c) => (
-                    <IndexTile key={c.symbol} item={c} quote={quotes[c.symbol]} failed={failed.has(c.symbol)} period={period} onOpen={setSelected} />
+                    <IndexTile key={c.symbol} item={c} quote={quotes[c.symbol]} value={valuation.data?.indices[c.symbol]} failed={failed.has(c.symbol)} period={period} onOpen={setSelected} />
                   ))}
                 </div>
                 <div className="grid grid-cols-1 items-start gap-4 sm:gap-5 lg:grid-cols-2">
@@ -386,32 +341,18 @@ export function MarketView() {
                   </p>
                 </ChartCard>
                 <SectorCompare quotes={quotes} period={period} onOpenSector={setSector} onOpenQuote={setSelected} />
+                <SectorValuations data={valuation.data} status={valuation.status} quotes={quotes} onOpenSector={setSector} onOpenQuote={setSelected} />
               </div>
             ) : tab === "world" ? (
               <div className="grid grid-cols-1 items-start gap-4 sm:gap-5 lg:grid-cols-2">
                 <QuoteCard id="world" title="World markets" items={WORLD} {...shared} />
                 <QuoteCard id="yields" title="Bond yields" items={YIELDS} {...shared} />
               </div>
-            ) : tab === "money" ? (
+            ) : (
               <div className="grid grid-cols-1 items-start gap-4 sm:gap-5 lg:grid-cols-2">
                 <QuoteCard id="commodities" title="Commodities & crypto" items={COMMODITIES} {...shared} />
                 <QuoteCard id="currency" title="Currencies" items={CURRENCY} {...shared} />
               </div>
-            ) : watchlist.length === 0 || (watched.status === "error" && !watched.data) ? (
-              <ChartCard title="Watchlist" action={addButton}>
-                <p className="py-6 text-center text-sm text-slate-500">
-                  {watchlist.length === 0 ? "Add shares and funds you want to follow." : "Couldn't load your watchlist. Try Refresh in a minute."}
-                </p>
-              </ChartCard>
-            ) : (
-              <QuoteCard
-                id="watchlist"
-                title="Watchlist"
-                items={watchlist.map((s) => CATALOG[s] ?? { symbol: s, name: shortSymbol(s) })}
-                withPrices
-                extra={addButton}
-                {...shared}
-              />
             )}
           </div>
 
@@ -420,7 +361,7 @@ export function MarketView() {
             Yahoo Finance and AMFI (mfapi.in), refreshed about every 30 minutes. For understanding, not trading.
           </p>
         </>
-      ) : mode === "economy" ? (
+      ) : (
         <>
           {/* Economy: slow-moving pictures, no period to choose. Wider screens show them all; phones one tab at a time,
               swiped between like the market sections. */}
@@ -457,17 +398,11 @@ export function MarketView() {
               : ""}
           </p>
         </>
-      ) : (
-        <div className={cn(enterFrom && "animate-in fade-in-0 duration-300", enterFrom === "right" && "slide-in-from-right-8", enterFrom === "left" && "slide-in-from-left-8")}>
-          <NewsView data={news.data} status={news.status} onRetry={news.refresh} topic={newsTopic} />
-        </div>
       )}
 
-      <SectorSheet sector={sector} period={period} onPeriod={choosePeriod} onClose={() => setSector(null)} onOpen={setSelected} />
+      <SectorSheet sector={sector} valuation={valuation.data} period={period} onPeriod={choosePeriod} onClose={() => setSector(null)} onOpen={setSelected} />
       {/* After the sector sheet, so a stock opened from it shows on top. */}
       <QuoteDetail quote={selected} onClose={() => setSelected(null)} />
-      <AddSymbolDialog open={adding} onOpenChange={setAdding} />
-      <AddSymbolDialog open={searching} onOpenChange={setSearching} onPick={openSymbol} />
     </div>
   );
 }
@@ -475,7 +410,22 @@ export function MarketView() {
 /** Phones: about two and a half tiles across, each snapping into place. */
 const TILE = "max-sm:w-[42%] max-sm:min-w-[9.5rem] max-sm:shrink-0 max-sm:snap-start";
 
-function IndexTile({ item, quote, failed, period, onOpen }: { item: CatalogItem; quote?: Quote; failed: boolean; period: Period; onOpen: (q: Quote) => void }) {
+function IndexTile({
+  item,
+  quote,
+  value,
+  failed,
+  period,
+  onOpen,
+}: {
+  item: CatalogItem;
+  quote?: Quote;
+  /** NSE's PE for the index; only Nifty indices have one. */
+  value?: IndexValuation;
+  failed: boolean;
+  period: Period;
+  onOpen: (q: Quote) => void;
+}) {
   if (!quote)
     return (
       <div className={cn(TILE, "rounded-2xl border glass p-3 sm:p-4")}>
@@ -499,6 +449,12 @@ function IndexTile({ item, quote, failed, period, onOpen }: { item: CatalogItem;
         <span className={cn("text-xs font-semibold tabular-nums", returnTone(r))}>{formatQuoteReturn(quote, r)}</span>
         <Sparkline values={sparkFor(quote.spark, period)} width={64} height={24} />
       </div>
+      {value?.pe != null && (
+        <p className="mt-1 text-[11px] tabular-nums text-slate-500" title="Price ÷ earnings, as NSE publishes it for the index">
+          PE {formatPe(value.pe)}
+          {value.pb != null && ` · PB ${value.pb.toFixed(1)}`}
+        </p>
+      )}
     </button>
   );
 }
@@ -508,33 +464,22 @@ function QuoteCard({
   id,
   title,
   items,
-  withPrices = false,
-  extra,
   ...list
 }: {
   id: string;
   title: string;
   items: CatalogItem[];
-  /** Offer price sorts too: only where the prices are in one currency and so comparable. */
-  withPrices?: boolean;
-  extra?: ReactNode;
   quotes: Record<string, Quote>;
   failed: Set<string>;
   period: Period;
   onOpen: (q: Quote) => void;
 }) {
-  const options = withPrices ? [...QUOTE_SORTS, ...PRICE_SORTS] : QUOTE_SORTS;
-  const [sort, setSort] = useSort(id, options, "listed");
+  const [sort, setSort] = useSort(id, QUOTE_SORTS, "listed");
   const sorted = sortItems(items, sort, list.period, (c) => list.quotes[c.symbol], (c) => list.quotes[c.symbol]?.name ?? c.name);
   return (
     <ChartCard
       title={title}
-      action={
-        <div className="flex items-center gap-2">
-          <SortSelect label={`Sort ${title.toLowerCase()}`} value={sort} options={options} onChange={setSort} />
-          {extra}
-        </div>
-      }
+      action={<SortSelect label={`Sort ${title.toLowerCase()}`} value={sort} options={QUOTE_SORTS} onChange={setSort} />}
     >
       <QuoteList items={sorted} {...list} />
     </ChartCard>

@@ -1,11 +1,12 @@
-import { CATALOG, DERIVED, OVERVIEW, UNITS } from "./catalog";
-import { fetchConstituents } from "./constituents";
+import { CATALOG, DERIVED, GLOBAL_SECTORS, INDIA, OVERVIEW, SECTORS, UNITS } from "./catalog";
+import { fetchConstituents, type Constituent } from "./constituents";
+import { fetchIbja, spliceHistory } from "./ibja";
 import { fetchEconomies } from "./economy";
-import { fetchNews, type NewsResponse } from "./news";
 import { fetchFundHistory, fundChart, fundQuote, isFund, searchFunds } from "./funds";
 import { dailySpark, memberIndex, performance, prevCloseFromDaily } from "./perf";
-import type { ChartData, Economy, EconomyResponse, LtpResponse, MarketRange, PricePoint, Quote, QuotesResponse, SearchHit, SectorResponse } from "./types";
-import { fetchShares, fetchYahooChart, searchYahoo, type ParsedChart } from "./yahoo";
+import type { ChartData, Economy, EconomyResponse, LtpResponse, MarketRange, PricePoint, Quote, QuotesResponse, SearchHit, SectorResponse, ValuationResponse } from "./types";
+import { fetchFundamentals, fetchShares, fetchYahooChart, searchYahoo, type ParsedChart } from "./yahoo";
+import { fetchNseIndices, groupPe } from "./valuation";
 
 /**
  * The server side of the Market page. This is a page for seeing how markets and economies are doing,
@@ -94,23 +95,42 @@ function quote(base: ParsedChart, over: Partial<Quote> & { price: number; prevCl
   };
 }
 
-async function derivedQuote(symbol: string): Promise<Quote> {
+/** IBJA's rates: published around noon and 6 PM on working days, so they're asked for as often as prices. */
+const ibja = () => cached("ibja", PRICE_TTL_S * 1000, fetchIbja);
+
+/**
+ * Gold or silver at India's rate: IBJA's daily rates, and before them (for a year's returns or a longer
+ * chart) the world price in rupees, scaled to meet IBJA's first rate.
+ */
+async function bullion(symbol: string, range: "1y" | "5y") {
   const d = DERIVED[symbol];
-  const [base, fx] = await Promise.all([yahoo(d.base, "1y"), yahoo(d.fx, "1y")]);
-  const price = base.price * fx.price * d.factor;
-  const prevClose = (dailyPrev(base) ?? base.price) * (dailyPrev(fx) ?? fx.price) * d.factor;
-  const scale = (v: number | null) => (v === null ? null : v * fx.price * d.factor);
+  const [rates, base, fx] = await Promise.all([ibja(), yahoo(d.base, range), yahoo(d.fx, range)]);
+  const own = rates[d.metal];
+  return { d, base, own, history: spliceHistory(multiplySeries(base.points, fx.points, d.factor), own.history) };
+}
+
+const IST_DATE = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short" });
+
+async function derivedQuote(symbol: string): Promise<Quote> {
+  const { d, base, own, history } = await bullion(symbol, "1y");
+  const latest = own.history.at(-1)!;
+  const year = history.filter((p) => p.t >= latest.t - 365 * 86_400).map((p) => p.v);
   return quote(base, {
     symbol,
     name: CATALOG[symbol]?.name ?? symbol,
+    kind: "commodity",
     currency: "INR",
     unit: d.unit,
-    note: d.note,
-    price,
-    prevClose,
-    yearHigh: scale(base.yearHigh),
-    yearLow: scale(base.yearLow),
-    history: multiplySeries(base.points, fx.points, d.factor),
+    exchange: "IBJA",
+    timezone: "Asia/Kolkata",
+    daily: true,
+    note: `IBJA's rate for ${d.what}, ${own.session === "AM" ? "noon" : "6 PM"} rate of ${IST_DATE.format(latest.t * 1000)}. Includes import duty; jewellers add 3% GST and making charges. Before ${IST_DATE.format(own.history[0].t * 1000)}, returns and the chart follow the world price, scaled to IBJA's.`,
+    price: latest.v,
+    prevClose: own.history.at(-2)!.v,
+    time: latest.t,
+    yearHigh: Math.max(...year),
+    yearLow: Math.min(...year),
+    history,
   });
 }
 
@@ -186,10 +206,11 @@ export async function getQuote(symbol: string): Promise<Quote> {
 
 export async function getChart(symbol: string, range: MarketRange): Promise<ChartData> {
   if (isFund(symbol)) return fundChart(symbol, range, await fund(symbol));
-  const d = DERIVED[symbol];
-  if (d) {
-    const [base, fx] = await Promise.all([yahoo(d.base, range), yahoo(d.fx, range)]);
-    return { symbol, range, timezone: base.timezone, points: multiplySeries(base.points, fx.points, d.factor), prevClose: null };
+  if (DERIVED[symbol]) {
+    const { history } = await bullion(symbol, range === "5y" ? "5y" : "1y");
+    const days = { "1d": 7, "5d": 7, "1mo": 31, "6mo": 183, "1y": 366, "5y": 5 * 366 }[range];
+    const from = (history.at(-1)?.t ?? 0) - days * 86_400;
+    return { symbol, range, timezone: "Asia/Kolkata", points: history.filter((p) => p.t >= from), prevClose: null };
   }
   const item = CATALOG[symbol];
   const proxy = item?.history;
@@ -247,7 +268,7 @@ export async function getLtp(symbols: string[]): Promise<LtpResponse> {
   return body;
 }
 
-/** Everything on the page but the watchlist, as one answer: the same for every visitor, so one copy serves all. */
+/** Everything on the page, as one answer: the same for every visitor, so one copy serves all. */
 export function getOverview(): Promise<QuotesResponse> {
   return cached("overview", PRICE_TTL_S * 1000, async () => {
     const body = await getQuotes(OVERVIEW.map((c) => c.symbol));
@@ -279,6 +300,55 @@ export function getSector(symbol: string): Promise<SectorResponse> {
   });
 }
 
+/**
+ * PEs for the page: NSE's own for every Nifty index; for each sector, the same worked out from its
+ * stocks and the closest world sector's; for each stock, its own and its industry's (across the Nifty
+ * 500). Prices move PEs, so they're kept as long as prices. A partial answer is kept only minutes.
+ */
+export function getValuation(): Promise<ValuationResponse> {
+  return cached(
+    "valuation",
+    (v) => (v.complete ? PRICE_TTL_S * 1000 : 5 * MINUTE),
+    async () => {
+      const sectors = SECTORS.filter((s) => s.constituents);
+      const [nse, broad, ...lists] = await Promise.allSettled([fetchNseIndices(), members("ind_nifty500list"), ...sectors.map((s) => members(s.constituents!))]);
+      const sectorStocks = lists.map((r) => (r.status === "fulfilled" ? r.value : null));
+      const universe: Constituent[] = [...(broad.status === "fulfilled" ? broad.value : []), ...sectorStocks.flatMap((l) => l ?? [])];
+      const industryOf = new Map(universe.map((c) => [c.symbol, c.industry]));
+      const symbols = [...new Set([...industryOf.keys(), ...GLOBAL_SECTORS.map((g) => g.symbol)])];
+      const fundamentals = await fetchFundamentals(symbols).catch(() => ({}) as Awaited<ReturnType<typeof fetchFundamentals>>);
+      const anyFundamentals = Object.keys(fundamentals).length > 0;
+
+      const body: ValuationResponse = { indices: {}, industries: {}, stocks: {}, nseAsOf: nse.status === "fulfilled" ? nse.value.asOf : null, fetchedAt: Date.now(), complete: false };
+      for (const item of [...INDIA, ...SECTORS]) {
+        const official = item.nse && nse.status === "fulfilled" ? nse.value.indices[item.nse] : undefined;
+        const i = sectors.indexOf(item);
+        const own = i >= 0 ? sectorStocks[i] : null;
+        const peer = item.global ? CATALOG[item.global] : undefined;
+        body.indices[item.symbol] = {
+          pe: official?.pe ?? null,
+          pb: official?.pb ?? null,
+          dy: official?.dy ?? null,
+          fromStocks: own && anyFundamentals ? groupPe(own.map((c) => fundamentals[c.symbol])) : null,
+          global: peer ? { symbol: peer.symbol, name: peer.name, pe: fundamentals[peer.symbol]?.pe ?? null } : null,
+        };
+      }
+      if (broad.status === "fulfilled" && anyFundamentals) {
+        const byIndustry = new Map<string, Constituent[]>();
+        for (const c of broad.value) if (c.industry) byIndustry.set(c.industry, [...(byIndustry.get(c.industry) ?? []), c]);
+        for (const [industry, list] of byIndustry) body.industries[industry] = groupPe(list.map((c) => fundamentals[c.symbol]));
+      }
+      for (const [symbol, industry] of industryOf) {
+        const f = fundamentals[symbol];
+        if (f) body.stocks[symbol] = { pe: f.pe, loss: f.eps !== null && f.eps < 0, industry };
+      }
+      body.complete = nse.status === "fulfilled" && broad.status === "fulfilled" && sectorStocks.every(Boolean) && anyFundamentals;
+      if (nse.status === "rejected" && !anyFundamentals) throw new Error("No valuations");
+      return body;
+    },
+  );
+}
+
 /** Whether every economy has its main figures; if a source was down, the answer is kept only a few minutes. */
 export const isComplete = (economies: Economy[]) => economies.every((e) => e.gdpGrowth.length > 0 && (e.code === "WEOWORLD" || e.policy));
 
@@ -291,12 +361,6 @@ export function getEconomy(): Promise<EconomyResponse> {
       return { economies, fetchedAt: Date.now(), complete: isComplete(economies), fromWorldBank };
     },
   );
-}
-
-/** The news page: the same for everyone, kept half an hour. */
-export const NEWS_TTL_S = 30 * 60;
-export function getNews(): Promise<NewsResponse> {
-  return cached("news", NEWS_TTL_S * 1000, fetchNews);
 }
 
 /** Shares, indices, ETFs, crypto… and Indian mutual funds, in one list. Either source may be down. */

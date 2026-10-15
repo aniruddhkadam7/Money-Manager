@@ -160,27 +160,62 @@ async function yahooSession(): Promise<{ cookie: string; crumb: string }> {
   return session;
 }
 
-const SharesJson = z.object({
-  quoteResponse: z.object({ result: z.array(z.object({ symbol: z.string(), sharesOutstanding: Num.nullish() })).nullish() }),
+const FundamentalsJson = z.object({
+  quoteResponse: z.object({
+    result: z
+      .array(
+        z.object({
+          symbol: z.string(),
+          sharesOutstanding: Num.nullish(),
+          marketCap: Num.nullish(),
+          trailingPE: Num.nullish(),
+          epsTrailingTwelveMonths: Num.nullish(),
+        }),
+      )
+      .nullish(),
+  }),
 });
 
-/** How many shares each company has, for weighting an index by company size. Missing ones are left out. */
-export async function fetchShares(symbols: string[]): Promise<Record<string, number>> {
+export interface Fundamentals {
+  shares: number | null;
+  /** Company (or fund) value in its own currency. */
+  marketCap: number | null;
+  /** Price ÷ the last four quarters' earnings per share, as Yahoo reports it; Yahoo leaves it out for loss-makers. */
+  pe: number | null;
+  /** The last four quarters' earnings per share; negative for a loss. */
+  eps: number | null;
+}
+
+/** Share counts, company values, PEs and earnings, 50 symbols a request. Symbols Yahoo doesn't know are left out. */
+export async function fetchFundamentals(symbols: string[]): Promise<Record<string, Fundamentals>> {
   const { cookie, crumb } = await yahooSession();
-  const out: Record<string, number> = {};
+  const out: Record<string, Fundamentals> = {};
+  const positive = (v: number | null | undefined) => (v && v > 0 ? v : null);
   for (let i = 0; i < symbols.length; i += 50) {
     const batch = symbols.slice(i, i + 50).map(encodeURIComponent).join(",");
-    const url = `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${batch}&fields=sharesOutstanding&crumb=${encodeURIComponent(crumb)}`;
+    const fields = "sharesOutstanding,marketCap,trailingPE,epsTrailingTwelveMonths";
+    const url = `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${batch}&fields=${fields}&crumb=${encodeURIComponent(crumb)}`;
     const res = await fetch(url, { headers: { ...HEADERS, cookie }, cache: "no-store", signal: AbortSignal.timeout(10_000) });
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) session = null;
       throw new Error(`Yahoo answered ${res.status}`);
     }
-    for (const q of SharesJson.parse(await res.json()).quoteResponse.result ?? []) {
-      if (q.sharesOutstanding && q.sharesOutstanding > 0) out[q.symbol] = q.sharesOutstanding;
+    for (const q of FundamentalsJson.parse(await res.json()).quoteResponse.result ?? []) {
+      out[q.symbol] = {
+        shares: positive(q.sharesOutstanding),
+        marketCap: positive(q.marketCap),
+        pe: positive(q.trailingPE),
+        eps: q.epsTrailingTwelveMonths ?? null,
+      };
     }
   }
   return out;
+}
+
+/** How many shares each company has, for weighting an index by company size. Missing ones are left out. */
+export async function fetchShares(symbols: string[]): Promise<Record<string, number>> {
+  const all = await fetchFundamentals(symbols);
+  return Object.fromEntries(Object.entries(all).flatMap(([s, f]) => (f.shares ? [[s, f.shares]] : [])));
 }
 
 export async function searchYahoo(q: string): Promise<SearchHit[]> {

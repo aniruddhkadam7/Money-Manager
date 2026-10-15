@@ -81,3 +81,6 @@ export function updatedAt(seconds: number, now = Date.now() / 1000): string {
   const sameDay = inZone(seconds, "Asia/Kolkata", { dateStyle: "short" }) === inZone(now, "Asia/Kolkata", { dateStyle: "short" });
   return inZone(seconds, "Asia/Kolkata", sameDay ? { hour: "numeric", minute: "2-digit" } : { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 }
+
+/** A PE as shown: one decimal, a dash when there's none. */
+export const formatPe = (pe: number | null | undefined) => (pe == null ? "—" : pe >= 100 ? pe.toFixed(0) : pe.toFixed(1));

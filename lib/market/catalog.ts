@@ -1,3 +1,4 @@
+import type { Metal } from "./ibja";
 import type { EconomyGroup } from "./types";
 
 /** What the Market page shows, section by section. Names here replace Yahoo's shouty ones. */
@@ -13,33 +14,37 @@ export interface CatalogItem {
   history?: string;
   /** NSE's list of the index's stocks: niftyindices.com/IndexConstituent/<this>.csv. */
   constituents?: string;
+  /** The index's name in NSE's list of all indices, which publishes its PE, PB and dividend yield. */
+  nse?: string;
+  /** The world sector it's valued against: an iShares global sector ETF in GLOBAL_SECTORS. */
+  global?: string;
 }
 
 export const INDIA: CatalogItem[] = [
-  { symbol: "^NSEI", name: "Nifty 50" },
+  { symbol: "^NSEI", name: "Nifty 50", nse: "NIFTY 50" },
   { symbol: "^BSESN", name: "Sensex" },
-  { symbol: "^NSMIDCP", name: "Nifty Next 50" },
-  { symbol: "^NSEMDCP50", name: "Nifty Midcap 50" },
-  { symbol: "^CNXSC", name: "Nifty Smallcap 100", history: "HDFCSML250.NS" },
+  { symbol: "^NSMIDCP", name: "Nifty Next 50", nse: "NIFTY NEXT 50" },
+  { symbol: "^NSEMDCP50", name: "Nifty Midcap 50", nse: "NIFTY MIDCAP 50" },
+  { symbol: "^CNXSC", name: "Nifty Smallcap 100", history: "HDFCSML250.NS", nse: "NIFTY SMALLCAP 100" },
   { symbol: "^INDIAVIX", name: "India VIX (fear gauge)" },
 ];
 
 export const SECTORS: CatalogItem[] = [
-  { symbol: "^NSEBANK", name: "Banks", constituents: "ind_niftybanklist" },
-  { symbol: "^CNXPSUBANK", name: "Public sector banks", history: "PSUBNKBEES.NS", constituents: "ind_niftypsubanklist" },
-  { symbol: "NIFTY_FIN_SERVICE.NS", name: "Financial services", history: "members", constituents: "ind_niftyfinancelist" },
-  { symbol: "^CNXIT", name: "IT", constituents: "ind_niftyitlist" },
-  { symbol: "^CNXPHARMA", name: "Pharma", constituents: "ind_niftypharmalist" },
-  { symbol: "NIFTY_HEALTHCARE.NS", name: "Healthcare", history: "HEALTHIETF.NS", constituents: "ind_niftyhealthcarelist" },
-  { symbol: "^CNXAUTO", name: "Auto", history: "AUTOBEES.NS", constituents: "ind_niftyautolist" },
-  { symbol: "^CNXFMCG", name: "FMCG", history: "FMCGIETF.NS", constituents: "ind_niftyfmcglist" },
-  { symbol: "^CNXCONSUM", name: "Consumption", history: "CONSUMBEES.NS", constituents: "ind_niftyconsumptionlist" },
-  { symbol: "^CNXMETAL", name: "Metals", history: "METALIETF.NS", constituents: "ind_niftymetallist" },
-  { symbol: "^CNXENERGY", name: "Energy", history: "members", constituents: "ind_niftyenergylist" },
-  { symbol: "NIFTY_OIL_AND_GAS.NS", name: "Oil & gas", history: "OILIETF.NS", constituents: "ind_niftyoilgaslist" },
-  { symbol: "^CNXINFRA", name: "Infrastructure", history: "INFRABEES.NS", constituents: "ind_niftyinfralist" },
-  { symbol: "^CNXREALTY", name: "Real estate", history: "MOREALTY.NS", constituents: "ind_niftyrealtylist" },
-  { symbol: "^CNXMEDIA", name: "Media", history: "members", constituents: "ind_niftymedialist" },
+  { symbol: "^NSEBANK", name: "Banks", constituents: "ind_niftybanklist", nse: "NIFTY BANK", global: "IXG" },
+  { symbol: "^CNXPSUBANK", name: "Public sector banks", history: "PSUBNKBEES.NS", constituents: "ind_niftypsubanklist", nse: "NIFTY PSU BANK", global: "IXG" },
+  { symbol: "NIFTY_FIN_SERVICE.NS", name: "Financial services", history: "members", constituents: "ind_niftyfinancelist", nse: "NIFTY FINANCIAL SERVICES", global: "IXG" },
+  { symbol: "^CNXIT", name: "IT", constituents: "ind_niftyitlist", nse: "NIFTY IT", global: "IXN" },
+  { symbol: "^CNXPHARMA", name: "Pharma", constituents: "ind_niftypharmalist", nse: "NIFTY PHARMA", global: "IXJ" },
+  { symbol: "NIFTY_HEALTHCARE.NS", name: "Healthcare", history: "HEALTHIETF.NS", constituents: "ind_niftyhealthcarelist", nse: "NIFTY HEALTHCARE INDEX", global: "IXJ" },
+  { symbol: "^CNXAUTO", name: "Auto", history: "AUTOBEES.NS", constituents: "ind_niftyautolist", nse: "NIFTY AUTO", global: "RXI" },
+  { symbol: "^CNXFMCG", name: "FMCG", history: "FMCGIETF.NS", constituents: "ind_niftyfmcglist", nse: "NIFTY FMCG", global: "KXI" },
+  { symbol: "^CNXCONSUM", name: "Consumption", history: "CONSUMBEES.NS", constituents: "ind_niftyconsumptionlist", nse: "NIFTY INDIA CONSUMPTION", global: "RXI" },
+  { symbol: "^CNXMETAL", name: "Metals", history: "METALIETF.NS", constituents: "ind_niftymetallist", nse: "NIFTY METAL", global: "MXI" },
+  { symbol: "^CNXENERGY", name: "Energy", history: "members", constituents: "ind_niftyenergylist", nse: "NIFTY ENERGY", global: "IXC" },
+  { symbol: "NIFTY_OIL_AND_GAS.NS", name: "Oil & gas", history: "OILIETF.NS", constituents: "ind_niftyoilgaslist", nse: "NIFTY OIL & GAS", global: "IXC" },
+  { symbol: "^CNXINFRA", name: "Infrastructure", history: "INFRABEES.NS", constituents: "ind_niftyinfralist", nse: "NIFTY INFRASTRUCTURE", global: "EXI" },
+  { symbol: "^CNXREALTY", name: "Real estate", history: "MOREALTY.NS", constituents: "ind_niftyrealtylist", nse: "NIFTY REALTY", global: "REET" },
+  { symbol: "^CNXMEDIA", name: "Media", history: "members", constituents: "ind_niftymedialist", nse: "NIFTY MEDIA", global: "IXP" },
 ];
 
 export const WORLD: CatalogItem[] = [
@@ -108,11 +113,8 @@ export const SECTOR_PAIRS: { label: string; india: string | null; world: string 
   { label: "Utilities", india: null, world: "JXI" },
 ];
 
-/** Everything on the page that isn't the user's own watchlist: one list, fetched and cached as one. */
+/** Everything on the page: one list, fetched and cached as one. */
 export const OVERVIEW: CatalogItem[] = [...INDIA, ...SECTORS, ...GLOBAL_SECTORS, ...WORLD, ...YIELDS, ...CURRENCY, ...COMMODITIES];
-
-/** A first watchlist, until the user makes their own. */
-export const DEFAULT_WATCHLIST = ["RELIANCE.NS", "HDFCBANK.NS", "TCS.NS", "INFY.NS", "ICICIBANK.NS", "SBIN.NS"];
 
 export const CATALOG: Record<string, CatalogItem> = Object.fromEntries(OVERVIEW.map((c) => [c.symbol, c]));
 
@@ -120,24 +122,12 @@ export const CATALOG: Record<string, CatalogItem> = Object.fromEntries(OVERVIEW.
 const OUNCE_G = 31.1034768;
 
 /**
- * Prices Yahoo doesn't quote but the app works out: gold and silver in rupees, from the world price
- * in dollars and the dollar's rate. Indian shops add import duty and GST on top, so they ask more.
+ * Gold and silver in rupees: India's own rate from IBJA, which includes import duty. Before IBJA's
+ * few months of history, returns follow the world price in dollars times the dollar's rate.
  */
-export const DERIVED: Record<string, { base: string; fx: string; factor: number; unit: string; note: string }> = {
-  "GOLD-INR": {
-    base: "GC=F",
-    fx: "USDINR=X",
-    factor: 10 / OUNCE_G,
-    unit: "10 g",
-    note: "World price in rupees, before import duty and GST (shops charge about 6–10% more)",
-  },
-  "SILVER-INR": {
-    base: "SI=F",
-    fx: "USDINR=X",
-    factor: 1000 / OUNCE_G,
-    unit: "kg",
-    note: "World price in rupees, before import duty and GST",
-  },
+export const DERIVED: Record<string, { metal: Metal; what: string; base: string; fx: string; factor: number; unit: string }> = {
+  "GOLD-INR": { metal: "gold999", what: "24-carat (999) gold", base: "GC=F", fx: "USDINR=X", factor: 10 / OUNCE_G, unit: "10 g" },
+  "SILVER-INR": { metal: "silver999", what: "999 silver", base: "SI=F", fx: "USDINR=X", factor: 1000 / OUNCE_G, unit: "kg" },
 };
 
 export const UNITS: Record<string, string> = { "BZ=F": "barrel", "NG=F": "MMBtu", "HG=F": "lb" };

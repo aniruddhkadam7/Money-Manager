@@ -1,14 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Star } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { isFund } from "@/lib/market/funds";
 import { axisTime, formatAxis, formatChange, formatPct, formatPrice, formatQuoteReturn, pointTime, toneOf, updatedAt } from "@/lib/market/format";
 import { FUND_RANGES, PERIODS, RANGES, type MarketRange, type Quote } from "@/lib/market/types";
 import { cn } from "@/lib/utils";
-import { addToWatchlist, removeFromWatchlist, useWatchlist } from "@/lib/market/watchlist";
 import { LineChart, type ChartSeries } from "../charts/line-chart";
 import { DeltaPill, EmptyChart, RangeTabs } from "../charts/primitives";
 import { TooltipCard, TooltipRow, TooltipTitle } from "../charts/tooltip";
@@ -17,7 +14,7 @@ import { useChart } from "./use-market";
 
 const RANGE_WORDS: Record<MarketRange, string> = { "1d": "today", "5d": "5 days", "1mo": "1 month", "6mo": "6 months", "1y": "1 year", "5y": "5 years" };
 
-/** One instrument up close: its price, a chart over a chosen range, the day's numbers, and a watchlist star. */
+/** One instrument up close: its price, a chart over a chosen range, and the day's numbers. */
 export function QuoteDetail({ quote, onClose }: { quote: Quote | null; onClose: () => void }) {
   return (
     <Dialog open={!!quote} onOpenChange={(open) => !open && onClose()}>
@@ -28,13 +25,13 @@ export function QuoteDetail({ quote, onClose }: { quote: Quote | null; onClose: 
 
 function Detail({ quote }: { quote: Quote }) {
   const fund = isFund(quote.symbol);
-  const ranges = fund ? FUND_RANGES : RANGES;
+  // One price a day (funds, IBJA's bullion rates): no chart through the day, dates without times.
+  const daily = fund || !!quote.daily;
+  const ranges = daily ? FUND_RANGES : RANGES;
   // Not for trading: the year shows how it's really been doing.
   const [range, setRange] = useState<MarketRange>("1y");
   const [hover, setHover] = useState<number | null>(null);
   const { data, loading, error } = useChart(quote.symbol, range);
-  const watchlist = useWatchlist();
-  const watched = watchlist.includes(quote.symbol);
 
   const points = useMemo(() => data?.points ?? [], [data]);
   const first = range === "1d" ? (data?.prevClose ?? quote.prevClose) : points[0]?.v;
@@ -55,7 +52,7 @@ function Detail({ quote }: { quote: Quote }) {
   const tz = data?.timezone ?? quote.timezone;
 
   const stats: [string, string][] = [
-    [fund ? "Previous NAV" : "Previous close", formatPrice(quote.prevClose, quote)],
+    [fund ? "Previous NAV" : quote.daily ? "Previous rate" : "Previous close", formatPrice(quote.prevClose, quote)],
     ...(quote.yearHigh !== null ? [["52-week high", formatPrice(quote.yearHigh, quote)] as [string, string]] : []),
     ...(quote.yearLow !== null ? [["52-week low", formatPrice(quote.yearLow, quote)] as [string, string]] : []),
     ["Updated", updatedAt(quote.time)],
@@ -82,7 +79,7 @@ function Detail({ quote }: { quote: Quote }) {
           </DeltaPill>
         </div>
         <p className="mt-1.5 text-[13px] text-slate-500">
-          {hover !== null && points[hover] ? pointTime(points[hover].t, range, tz, fund) : range === "1d" ? (fund ? "Since the NAV before" : "Since yesterday's close") : `Over ${RANGE_WORDS[range]}`}
+          {hover !== null && points[hover] ? pointTime(points[hover].t, range, tz, daily) : range === "1d" ? (fund ? "Since the NAV before" : "Since yesterday's close") : `Over ${RANGE_WORDS[range]}`}
         </p>
         {quote.note && <p className="mt-1 text-xs text-slate-500">{quote.note}</p>}
       </div>
@@ -104,7 +101,7 @@ function Detail({ quote }: { quote: Quote }) {
             onHoverChange={setHover}
             tooltip={(i) => (
               <TooltipCard>
-                <TooltipTitle>{pointTime(points[i].t, range, tz, fund)}</TooltipTitle>
+                <TooltipTitle>{pointTime(points[i].t, range, tz, daily)}</TooltipTitle>
                 <TooltipRow label="Price" value={formatPrice(points[i].v, quote)} color={color} strong />
                 {first !== undefined && (
                   <TooltipRow label="Change" value={formatPct(((points[i].v - first) / first) * 100)} tone={points[i].v >= first ? "positive" : "negative"} />
@@ -139,11 +136,6 @@ function Detail({ quote }: { quote: Quote }) {
           </div>
         ))}
       </dl>
-
-      <Button variant={watched ? "outline" : "default"} onClick={() => (watched ? removeFromWatchlist(quote.symbol) : addToWatchlist(quote.symbol))}>
-        <Star className={watched ? "fill-current" : undefined} />
-        {watched ? "Remove from watchlist" : "Add to watchlist"}
-      </Button>
     </>
   );
 }

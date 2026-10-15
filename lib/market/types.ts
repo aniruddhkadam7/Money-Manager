@@ -61,6 +61,8 @@ export interface Quote {
   spark: number[];
   /** A word on how the price or its history is worked out, when it isn't simply quoted. */
   note?: string;
+  /** One price a day (no trading through the day), so there's no one-day chart. */
+  daily?: boolean;
 }
 
 export interface ChartData {
@@ -165,4 +167,48 @@ export interface SectorResponse {
   /** Stocks whose prices couldn't be fetched this time. */
   failed: string[];
   fetchedAt: number;
+}
+
+/** A PE worked out from a group of stocks: their total value ÷ their total yearly earnings (losses count against). */
+export interface GroupPe {
+  /** Null when the group's earnings add up to a loss, or no stock had figures. */
+  pe: number | null;
+  /** How many of the group's stocks had the figures to count. */
+  count: number;
+  total: number;
+}
+
+export interface IndexValuation {
+  /** NSE's own published figures for the index; null where NSE gives none. */
+  pe: number | null;
+  pb: number | null;
+  /** Dividend yield, %. */
+  dy: number | null;
+  /** The same PE worked out from the index's stocks' Yahoo figures (sectors only). */
+  fromStocks: GroupPe | null;
+  /** The closest world sector and its PE (sectors only). */
+  global: { symbol: string; name: string; pe: number | null } | null;
+}
+
+export interface StockValuation {
+  /** Price ÷ the last four quarters' earnings per share; null for a loss-maker or without figures. */
+  pe: number | null;
+  /** Its earnings over the last four quarters were a loss. */
+  loss: boolean;
+  /** NSE's industry for the company. */
+  industry: string;
+}
+
+export interface ValuationResponse {
+  /** By the page's symbol (^NSEI, ^CNXIT …). */
+  indices: Record<string, IndexValuation>;
+  /** By NSE's industry name: the PE of the Nifty 500's stocks in that industry. */
+  industries: Record<string, GroupPe>;
+  /** By Yahoo symbol (TCS.NS): the Nifty 500 and every sector's stocks. */
+  stocks: Record<string, StockValuation>;
+  /** When NSE's index figures are as of, as NSE writes it ("15-Oct-2026 15:30"); null if NSE couldn't be reached. */
+  nseAsOf: string | null;
+  fetchedAt: number;
+  /** False when a source was down and some figures are missing: worth asking again soon. */
+  complete: boolean;
 }

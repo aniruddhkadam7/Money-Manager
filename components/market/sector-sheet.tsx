@@ -4,9 +4,9 @@ import { useMemo } from "react";
 import { ChartLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { formatPrice, formatReturn } from "@/lib/market/format";
+import { formatPe, formatPrice, formatReturn } from "@/lib/market/format";
 import { sparkFor } from "@/lib/market/perf";
-import { PERIODS, type Period, type Quote } from "@/lib/market/types";
+import { PERIODS, type Period, type Quote, type ValuationResponse } from "@/lib/market/types";
 import { cn } from "@/lib/utils";
 import { RangeTabs } from "../charts/primitives";
 import { PRICE_SORTS, sortItems, SortSelect, useSort, type QuoteSort, type SortOption } from "./sort";
@@ -28,6 +28,7 @@ const returnTone = (v: number | null) => (v === null ? "text-slate-400" : v > 0 
  */
 export function SectorSheet({
   sector,
+  valuation,
   period,
   onPeriod,
   onClose,
@@ -35,6 +36,8 @@ export function SectorSheet({
 }: {
   /** The sector's own quote (from the overview); null when closed. */
   sector: Quote | null;
+  /** PEs for the sector and its stocks, once fetched. */
+  valuation: ValuationResponse | null;
   period: Period;
   onPeriod: (p: Period) => void;
   onClose: () => void;
@@ -44,13 +47,26 @@ export function SectorSheet({
     <Dialog open={!!sector} onOpenChange={(open) => !open && onClose()}>
       {/* [&>*]:min-w-0: long company names truncate instead of widening the sheet past a phone screen. */}
       <DialogContent className="sm:max-w-2xl sm:max-h-[85dvh] sm:overflow-y-auto [&>*]:min-w-0">
-        {sector && <Sheet key={sector.symbol} sector={sector} period={period} onPeriod={onPeriod} onOpen={onOpen} />}
+        {sector && <Sheet key={sector.symbol} sector={sector} valuation={valuation} period={period} onPeriod={onPeriod} onOpen={onOpen} />}
       </DialogContent>
     </Dialog>
   );
 }
 
-function Sheet({ sector, period, onPeriod, onOpen }: { sector: Quote; period: Period; onPeriod: (p: Period) => void; onOpen: (q: Quote) => void }) {
+function Sheet({
+  sector,
+  valuation,
+  period,
+  onPeriod,
+  onOpen,
+}: {
+  sector: Quote;
+  valuation: ValuationResponse | null;
+  period: Period;
+  onPeriod: (p: Period) => void;
+  onOpen: (q: Quote) => void;
+}) {
+  const own = valuation?.indices[sector.symbol];
   const { data, status, refresh } = useSector(sector.symbol);
   const [sort, setSort] = useSort("sector-stocks", STOCK_SORTS, "best");
   const words = PERIODS.find((p) => p.value === period)!.words;
@@ -58,7 +74,7 @@ function Sheet({ sector, period, onPeriod, onOpen }: { sector: Quote; period: Pe
   const stocks = useMemo(() => sortItems(data?.stocks ?? [], sort, period, (s) => s, (s) => s.name), [data, period, sort]);
   const up = stocks.filter((s) => (s.perf[period] ?? 0) > 0).length;
   const down = stocks.filter((s) => (s.perf[period] ?? 0) < 0).length;
-  const own = sector.perf[period];
+  const ret = sector.perf[period];
   // Bars share one scale, so a stock's bar reads against the others'.
   const max = Math.max(1, ...stocks.map((s) => Math.abs(s.perf[period] ?? 0)));
 
@@ -74,8 +90,26 @@ function Sheet({ sector, period, onPeriod, onOpen }: { sector: Quote; period: Pe
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs text-slate-500">The sector {words}</p>
-          <p className={cn("text-2xl font-semibold tabular-nums", returnTone(own))}>{formatReturn(own)}</p>
+          <p className={cn("text-2xl font-semibold tabular-nums", returnTone(ret))}>{formatReturn(ret)}</p>
         </div>
+        {own && (
+          <dl className="flex gap-4 text-right">
+            {[
+              { label: "PE (NSE)", value: formatPe(own.pe), title: valuation?.nseAsOf ? `NSE's figure for the index, as of ${valuation.nseAsOf}` : "NSE's figure for the index" },
+              {
+                label: "From stocks",
+                value: own.fromStocks?.pe === null && own.fromStocks.count ? "Loss" : formatPe(own.fromStocks?.pe),
+                title: own.fromStocks ? `The stocks' total value ÷ their total earnings (${own.fromStocks.count} of ${own.fromStocks.total} had figures)` : undefined,
+              },
+              { label: own.global ? `World · ${own.global.name.replace(/^Global /, "")}` : "World", value: formatPe(own.global?.pe), title: own.global ? `${own.global.name}: the iShares global sector fund's PE` : undefined },
+            ].map((f) => (
+              <div key={f.label} title={f.title} className="min-w-0">
+                <dt className="max-w-[7rem] truncate text-xs text-slate-500">{f.label}</dt>
+                <dd className="text-lg font-semibold tabular-nums text-slate-900">{f.value}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
         <Button variant="outline" size="sm" className="rounded-full" onClick={() => onOpen(sector)}>
           <ChartLine /> Sector chart
         </Button>
@@ -104,6 +138,8 @@ function Sheet({ sector, period, onPeriod, onOpen }: { sector: Quote; period: Pe
           <ul className="-mx-2 divide-y divide-slate-100">
             {stocks.map((s) => {
               const r = s.perf[period];
+              const v = valuation?.stocks[s.symbol];
+              const industry = v ? valuation?.industries[v.industry] : undefined;
               return (
                 <li key={s.symbol}>
                   <button
@@ -117,6 +153,12 @@ function Sheet({ sector, period, onPeriod, onOpen }: { sector: Quote; period: Pe
                         {s.symbol.replace(/\.NS$/, "")}
                         {s.industry && ` · ${s.industry}`}
                       </span>
+                      {v && (
+                        <span className="block truncate text-[11px] tabular-nums text-slate-500" title="Price ÷ the last four quarters' earnings; the industry's is across the Nifty 500">
+                          PE {v.loss ? "Loss" : formatPe(v.pe)}
+                          {industry && ` · Industry ${industry.pe === null && industry.count ? "Loss" : formatPe(industry.pe)}`}
+                        </span>
+                      )}
                     </span>
                     <span className="max-[380px]:hidden">
                       <Sparkline values={sparkFor(s.spark, period)} width={56} height={24} />
@@ -141,7 +183,10 @@ function Sheet({ sector, period, onPeriod, onOpen }: { sector: Quote; period: Pe
             })}
           </ul>
           {data.failed.length > 0 && <p className="text-xs text-slate-500">No prices right now for: {data.failed.join(", ")}.</p>}
-          <p className="text-xs text-slate-500">Members from NSE&apos;s list for the index. The small line follows the period chosen.</p>
+          <p className="text-xs text-slate-500">
+            Members from NSE&apos;s list for the index. The small line follows the period chosen. Stock PEs are Yahoo&apos;s; an industry&apos;s PE is the total value ÷ total earnings of
+            the Nifty 500 stocks NSE files under that industry.
+          </p>
         </>
       )}
     </>
