@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { indianShares, type IndianShare } from "@/lib/market/indian-shares";
+import { indianShares, type IndianShare } from "@/lib/stocks/indian-shares";
 import { cn } from "@/lib/utils";
-import { useSearch } from "../market/use-market";
+import { useStockSearch } from "./use-stock-search";
 
 /**
  * The "Which stock?" box: type a few letters of a company or its symbol and pick from NSE / BSE matches
@@ -31,7 +31,7 @@ export function StockSearch({
   autoFocus?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const { hits, searching, error } = useSearch(open ? value : "");
+  const { hits, searching, error } = useStockSearch(open ? value : "");
   const q = value.trim().toLowerCase();
   // Matches stay listed even when typed out in full: the company name and exchange confirm it's the right one.
   const mine = q ? holdings.filter((n) => n.toLowerCase().includes(q)) : [];

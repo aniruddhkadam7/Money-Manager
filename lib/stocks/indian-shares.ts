@@ -1,4 +1,4 @@
-import type { SearchHit } from "./types";
+import type { SearchHit } from "./yahoo";
 
 export interface IndianShare {
   /** The trading symbol, e.g. RELIANCE: what's saved as the holding's name. */

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { LtpResponse } from "@/lib/market/types";
+import type { LtpResponse } from "@/lib/stocks/yahoo";
 
 /** Yahoo's symbol for an Indian share: RELIANCE on NSE is RELIANCE.NS, on BSE RELIANCE.BO. */
 export const yahooSymbol = (symbol: string, exchange: "NSE" | "BSE" = "NSE") => `${symbol.toUpperCase()}.${exchange === "BSE" ? "BO" : "NS"}`;
@@ -19,7 +19,7 @@ export function useLtp(symbols: string[], everyMs = 15_000) {
     let alive = true;
     const load = () => {
       if (document.visibilityState !== "visible") return;
-      fetch(`/api/market/ltp?symbols=${encodeURIComponent(key)}`)
+      fetch(`/api/stocks/ltp?symbols=${encodeURIComponent(key)}`)
         .then(async (res) => {
           if (!res.ok) throw new Error(`Status ${res.status}`);
           const data = (await res.json()) as LtpResponse;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { indianShares } from "@/lib/market/indian-shares";
+import { indianShares } from "@/lib/stocks/indian-shares";
 
 describe("indianShares", () => {
   it("keeps NSE and BSE shares, one per company, NSE first, with the bare trading symbol", () => {

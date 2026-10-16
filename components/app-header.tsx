@@ -18,7 +18,6 @@ const NAV = [
   { href: "/calendar", label: "Calendar" },
   { href: "/money", label: "Money" },
   { href: "/investments", label: "Investments" },
-  { href: "/market", label: "Market" },
 ];
 
 /**
