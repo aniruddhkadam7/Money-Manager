@@ -38,6 +38,14 @@ const SORTS: { value: SortKey; label: string }[] = [
   { value: "highest", label: "Highest amount" },
   { value: "lowest", label: "Lowest amount" },
 ];
+/** Typed in by hand, or created or confirmed by a bank statement import. */
+type Origin = typeof ALL | "manual" | "statement";
+const ORIGINS: { value: Origin; label: string }[] = [
+  { value: ALL, label: "All" },
+  { value: "manual", label: "Manually" },
+  { value: "statement", label: "Bank statement" },
+];
+const fromStatement = (e: FinancialEvent) => (e.sources ?? []).some((s) => s.kind === "statement");
 // The amount the row shows: a split's total, a sale's proceeds, a holding's new value.
 const amountOf = (e: FinancialEvent): number => headline(e).amountMinor;
 
@@ -136,9 +144,9 @@ function ActivityContent() {
   // Tapping an entry narrows the list to everything with the same shop, company or name.
   const [party, setParty] = useState<{ key: string; label: string } | null>(null);
   const [owed, setOwed] = useState<string | null>(params.get("owed"));
-  const [manualOnly, setManualOnly] = useState(false);
+  const [origin, setOrigin] = useState<Origin>(ALL);
   // Phones: the detailed filters fold away behind the filter button, whose badge counts the ones set (a dashboard link sets dates).
-  const detailFilters = [entryType !== ALL, categoryId !== ALL, accountId !== ALL, personId !== ALL, from !== "", to !== "", manualOnly].filter(Boolean).length;
+  const detailFilters = [entryType !== ALL, categoryId !== ALL, accountId !== ALL, personId !== ALL, from !== "", to !== "", origin !== ALL].filter(Boolean).length;
   const [moreOpen, setMoreOpen] = useState(false);
 
   const owedPeople = useMemo(() => {
@@ -163,7 +171,7 @@ function ActivityContent() {
           (categoryId === ALL || categoryOf(e) === categoryId) &&
           (!from || e.date >= from) &&
           (!to || e.date <= to) &&
-          (!manualOnly || !(e.sources ?? []).some((s) => s.kind === "statement")),
+          (origin === ALL || (origin === "statement") === fromStatement(e)),
       )
       .sort((a, b) => {
         const byDate = oldestFirst(b, a);
@@ -172,10 +180,10 @@ function ActivityContent() {
         const byAmount = amountOf(b) - amountOf(a);
         return (sort === "highest" ? byAmount : -byAmount) || byDate;
       });
-  }, [book.events, group, entryType, categoryId, accountId, personId, from, to, query, describer, owedPeople, sort, party]);
+  }, [book.events, group, entryType, categoryId, accountId, personId, from, to, origin, query, describer, owedPeople, sort, party]);
 
   const hasFilters =
-    party !== null || group !== ALL || entryType !== ALL || categoryId !== ALL || accountId !== ALL || personId !== ALL || from !== "" || to !== "" || query !== "" || owed !== null;
+    party !== null || group !== ALL || entryType !== ALL || categoryId !== ALL || accountId !== ALL || personId !== ALL || from !== "" || to !== "" || origin !== ALL || query !== "" || owed !== null;
   const person = personId === ALL ? undefined : state.people.find((p) => p.person.id === personId);
 
   // A dashboard link can open a view that isn't on the short menu (e.g. "Money I lent"); it's listed while it's on.
@@ -219,7 +227,7 @@ function ActivityContent() {
     setQuery("");
     setOwed(null);
     setParty(null);
-    setManualOnly(false);
+    setOrigin(ALL);
   };
 
   /** Everything with this entry's person, or else with the same shop / company / name, across all dates. */
@@ -407,19 +415,37 @@ function ActivityContent() {
               <Label htmlFor="filter-person">Person</Label>
               <SearchableSelect id="filter-person" value={personId} onValueChange={setPersonId} options={personOptions} placeholder="Search people…" />
             </div>
-            <div className={cn("grid gap-1.5", !moreOpen && "max-sm:hidden")}>
+            <div className={cn("grid min-w-0 gap-1.5", !moreOpen && "max-sm:hidden")}>
               <Label htmlFor="filter-from">From</Label>
               <Input id="filter-from" type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
             </div>
-            <div className={cn("grid gap-1.5", !moreOpen && "max-sm:hidden")}>
+            <div className={cn("grid min-w-0 gap-1.5", !moreOpen && "max-sm:hidden")}>
               <Label htmlFor="filter-to">To</Label>
               <Input id="filter-to" type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
             </div>
           </div>
-          <label className={cn("flex cursor-pointer select-none items-center gap-2 text-sm", !moreOpen && "max-sm:hidden")}>
-            <input type="checkbox" className="accent-primary" checked={manualOnly} onChange={(e) => setManualOnly(e.target.checked)} />
-            <span>Manual entries only <span className="text-muted-foreground">(not confirmed by a bank statement)</span></span>
-          </label>
+          <div className={cn("grid gap-1.5", !moreOpen && "max-sm:hidden")}>
+            <span id="filter-origin" className="text-sm font-medium">
+              Entered
+            </span>
+            <div role="radiogroup" aria-labelledby="filter-origin" className="grid grid-cols-3 rounded-lg bg-muted p-0.5 sm:inline-grid sm:w-fit">
+              {ORIGINS.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={origin === o.value}
+                  onClick={() => setOrigin(o.value)}
+                  className={cn(
+                    "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                    origin === o.value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </CardContent>
       </Card>
 
