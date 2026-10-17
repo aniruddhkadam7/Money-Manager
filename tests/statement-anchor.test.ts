@@ -49,6 +49,23 @@ describe("balances from the latest bank statement", () => {
     expect(p16.netWorthMinor).toBe(5000000 + 940674);
   });
 
+  it("counts entries marked as not in a statement on top of the statement's balance", () => {
+    const withOff: Book = {
+      ...book,
+      events: [
+        ...book.events,
+        // Before and after the statement's day: the bank shows neither.
+        ev("3", "2026-10-12", { type: "expense", accountId: "Kotak", amountMinor: 10000, categoryId: "food", offStatement: true }),
+        ev("4", "2026-10-17", { type: "expense", accountId: "Kotak", amountMinor: 20000, categoryId: "food", offStatement: true }),
+      ],
+    };
+    const l = buildLedger(withOff);
+    const gaps = anchorGaps(withOff, l, anchors);
+    expect(gaps).toEqual([{ accountId: "Kotak", date: "2026-10-16", gapMinor: 940674 + 81826 }]);
+    const state = applyAnchorGaps(deriveState(withOff, l, "2026-10-17"), gaps);
+    expect(state.accounts.find((a) => a.account.id === "Kotak")?.balanceMinor).toBe(940674 - 50000 - 10000 - 20000);
+  });
+
   it("changes nothing when the entries already match the statement", () => {
     expect(anchorGaps(book, ledger, [{ accountId: "Kotak", date: "2026-10-16", closingMinor: -81826 }])).toEqual([]);
   });

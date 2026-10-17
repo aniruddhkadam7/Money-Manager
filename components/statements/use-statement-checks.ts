@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import { deriveState, type FinancialState } from "@/lib/finance/state";
-import { anchorGaps, applyAnchorGaps, type AnchorGap } from "@/lib/finance/statement-anchor";
+import type { FinancialState } from "@/lib/finance/state";
+import { anchorGaps, applyAnchorGaps, statementBalanceAt, type AnchorGap } from "@/lib/finance/statement-anchor";
 import { useFinance } from "../finance-provider";
 import { useStatements } from "./statements-provider";
 
@@ -11,7 +11,7 @@ export interface StatementCheck {
   /** Last day the statement covers (`YYYY-MM-DD`). */
   date: string;
   closingMinor: number;
-  /** The app's balance for the account at the end of that day. */
+  /** What the app's entries say the statement should show that day (entries marked not in a statement left out). */
   appMinor: number;
   /** Bank and last four digits as the statement prints them. */
   bankHint?: string;
@@ -38,7 +38,7 @@ export function useStatementChecks(): Map<string, StatementCheck> {
       }
     }
     for (const [accountId, check] of out) {
-      check.appMinor = deriveState(book, ledger, check.date).accounts.find((a) => a.account.id === accountId)?.balanceMinor ?? 0;
+      check.appMinor = statementBalanceAt(book, ledger, accountId, check.date);
     }
     return out;
   }, [imports, book, ledger]);

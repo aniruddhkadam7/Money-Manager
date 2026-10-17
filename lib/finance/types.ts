@@ -67,6 +67,11 @@ interface EventBase {
   id: string;
   /** Bank statement lines this entry came from or was confirmed by. */
   sources?: EventSource[];
+  /**
+   * The money moved but no bank statement will show it (paid some other way, or the bank leaves it out). A bank
+   * account's balance starts from its latest statement, and this entry is counted on top of it.
+   */
+  offStatement?: boolean;
   /** When it happened (`YYYY-MM-DD`, user's local date). */
   date: string;
   description?: string;

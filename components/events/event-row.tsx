@@ -82,6 +82,7 @@ export function EventRow({ event, onOpen }: { event: FinancialEvent; /** Tapping
               Refund of the {formatDisplayDate(refundedItem.date)} purchase · not counted as income
             </p>
           )}
+          {event.offStatement && <p className="mt-0.5 text-xs text-muted-foreground">Not in bank statement</p>}
           {issue && (
             <p className="mt-0.5 flex items-center gap-1 text-xs text-amber-700">
               <TriangleAlert className="size-3" /> Not counted: {issue.message}
