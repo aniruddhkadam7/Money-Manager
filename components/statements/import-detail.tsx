@@ -11,6 +11,7 @@ import { formatRupees } from "@/lib/finance/describe";
 import { statementDirection } from "@/lib/finance/order";
 import { looksLikeCardStatement, needsDecision } from "@/lib/statements/pipeline";
 import { deriveState } from "@/lib/finance/state";
+import { statementBalanceAt } from "@/lib/finance/statement-anchor";
 import type { StatementRow } from "@/lib/statements/types";
 import { cn, scrollPage } from "@/lib/utils";
 import { useEventDialog } from "../events/event-dialog";
@@ -269,7 +270,11 @@ export function ImportDetail({ importId, onBack }: { importId: string; onBack: (
   // Using today's balance would include post-statement transactions and produce a wrong gap.
   const accountAtClose = useMemo(() => {
     if (!record.periodEnd) return accountNow;
-    return deriveState(finance.book, finance.ledger, record.periodEnd).accounts.find((a) => a.account.id === record.accountId);
+    const then = deriveState(finance.book, finance.ledger, record.periodEnd).accounts.find((a) => a.account.id === record.accountId);
+    // Entries marked as not in a statement aren't expected in the bank's closing balance.
+    return then && (then.account.type === "bank" || then.account.type === "cash")
+      ? { ...then, balanceMinor: statementBalanceAt(finance.book, finance.ledger, record.accountId, record.periodEnd) }
+      : then;
   }, [finance.book, finance.ledger, record.periodEnd, record.accountId, accountNow]);
   const gap = imported && accountAtClose && closing !== undefined ? closing - accountAtClose.balanceMinor : undefined;
 

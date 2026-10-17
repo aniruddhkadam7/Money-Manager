@@ -51,6 +51,8 @@ interface Values {
   shares: { person: string; amount: string }[];
   /** Lend / borrow: owed from before records began, so no money moves in an account now. */
   beforeTracking: boolean;
+  /** The money moved, but no bank statement will show it: counted on top of the bank's balance. */
+  offStatement: boolean;
 }
 
 type Errors = Partial<Record<FieldKey | "form", string>>;
@@ -154,10 +156,12 @@ export function EventForm({
       date: preset?.date ?? todayISO(),
       shares: [{ person: "", amount: "" }],
       beforeTracking: false,
+      offStatement: false,
     };
     if (!e) return base;
     base.date = editing ? e.date : todayISO();
     base.description = e.description ?? "";
+    base.offStatement = !!e.offStatement;
     switch (e.type) {
       case "expense":
       case "income":
@@ -433,7 +437,8 @@ export function EventForm({
     const undoNewNames = () => {
       if (f.getBook() !== before) void f.commitBook(before);
     };
-    const draft = buildDraft(amountMinor ?? 0);
+    const built = buildDraft(amountMinor ?? 0);
+    const draft = built && offStatementApplies && values.offStatement ? ({ ...built, offStatement: true } as EventDraft) : built;
     if (!draft) {
       undoNewNames();
       setErrors({ form: "Something is missing. Please check the form." });
@@ -884,6 +889,12 @@ export function EventForm({
     }
   };
 
+  // Not in bank statement: only a bank account's balance follows its statement, so the switch matters only when one is used.
+  const involved = [values.accountId, spec.fields.includes("toAccount") ? values.toAccountId : ""];
+  const usesBank = involved.some((id) => f.book.accounts.find((a) => a.id === id)?.type === "bank");
+  const hasOffStatement = spec.fields.includes("account") && !values.beforeTracking;
+  const offStatementApplies = hasOffStatement && usesBank;
+
   // Put short fields (account/date, etc.) side by side where it reads naturally.
   const noAccountsForType = spec.fields.includes("account") && mainAccounts.length === 0;
   // Pay EMI needs a loan to pay; the loan field explains how to add one.
@@ -932,6 +943,29 @@ export function EventForm({
         </p>
       ) : (
         spec.fields.map((k) => field(k))
+      )}
+
+      {hasOffStatement && !noAccountsForType && (
+        <label className="flex cursor-pointer items-center gap-3 rounded-lg border bg-muted/40 px-3 py-2.5" data-testid="off-statement">
+          <FileTypeIcon filename="statement.pdf" className="h-6 w-5" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-medium">Not in bank statement</span>
+            <span className="block text-xs text-muted-foreground">
+              {!usesBank
+                ? "Cash and cards don't follow a bank statement, so this counts as you entered it."
+                : values.offStatement
+                  ? "Your bank won't show this, so it's counted on top of the statement's balance."
+                  : "Turn on if your bank statement won't show this."}
+            </span>
+          </span>
+          <Switch
+            checked={!usesBank || values.offStatement}
+            disabled={!usesBank}
+            onCheckedChange={(on) => set("offStatement", on)}
+            aria-label="Not in bank statement"
+            className={!usesBank || values.offStatement ? undefined : "bg-slate-300 dark:bg-slate-600"}
+          />
+        </label>
       )}
 
       {errors.form && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{errors.form}</p>}

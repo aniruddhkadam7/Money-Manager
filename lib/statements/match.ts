@@ -80,7 +80,8 @@ export function matchExistingEntries(rows: StatementRow[], book: Book, ledger: L
     if (row.match) continue;
     const signed = row.direction === "credit" ? row.amountMinor : -row.amountMinor;
     for (const e of book.events) {
-      if (!applied.has(e.id)) continue;
+      // An entry marked as not in a statement is never one of its lines.
+      if (!applied.has(e.id) || e.offStatement) continue;
       const fromStatement = e.sources?.filter((x) => x.kind === "statement") ?? [];
       if (effects.get(e.id)?.get(row.accountId) !== signed) continue;
       const diff = daysBetween(e.date, row.transactionDate);
