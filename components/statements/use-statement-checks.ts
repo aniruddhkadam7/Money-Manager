@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import { deriveState } from "@/lib/finance/state";
+import { deriveState, type FinancialState } from "@/lib/finance/state";
+import { anchorGaps, applyAnchorGaps, type AnchorGap } from "@/lib/finance/statement-anchor";
 import { useFinance } from "../finance-provider";
 import { useStatements } from "./statements-provider";
 
@@ -41,4 +42,24 @@ export function useStatementChecks(): Map<string, StatementCheck> {
     }
     return out;
   }, [imports, book, ledger]);
+}
+
+/** Each bank account's gap between its latest statement and the app's entries on that statement's day. */
+export function useStatementGaps(): AnchorGap[] {
+  const { book, ledger } = useFinance();
+  const checks = useStatementChecks();
+  return useMemo(
+    () => anchorGaps(book, ledger, [...checks].map(([accountId, c]) => ({ accountId, date: c.date, closingMinor: c.closingMinor }))),
+    [book, ledger, checks],
+  );
+}
+
+/**
+ * Today's state with bank balances taken from the latest statements (closing balance plus what's recorded
+ * since). Every page showing a balance or a total uses this, so Home and Money always agree.
+ */
+export function useBalances(): { state: FinancialState; gaps: AnchorGap[] } {
+  const { state } = useFinance();
+  const gaps = useStatementGaps();
+  return useMemo(() => ({ state: applyAnchorGaps(state, gaps), gaps }), [state, gaps]);
 }

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { buildDashboardModel } from "@/lib/finance/dashboard-model";
 import { useEventDialog } from "../events/event-dialog";
 import { useFinance } from "../finance-provider";
+import { useBalances } from "../statements/use-statement-checks";
 import { AccountsSection } from "./accounts-section";
 import { SpendingSection } from "./cash-flow-sections";
 import { InvestmentSection } from "./investment-section";
@@ -17,7 +18,9 @@ import { hasPartyData, TopParties } from "./top-parties";
 import { SubscriptionsSection } from "./subscriptions-section";
 
 export function DashboardView() {
-  const { status, book, ledger, state, today } = useFinance();
+  const { status, book, ledger, today } = useFinance();
+  // Bank balances as the latest statements say, so these match the Money page.
+  const { state } = useBalances();
   const { openAdd } = useEventDialog();
 
   // Every number on this page comes from this one deterministic model.
