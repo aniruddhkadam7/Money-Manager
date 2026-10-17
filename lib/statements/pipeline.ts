@@ -560,7 +560,9 @@ export async function processStatement(input: ProcessInput, env: PipelineEnv): P
   const now = env.now();
   const rows = buildRows(parsed, { importId, accountId, newId: env.newId });
   detectDuplicatesWithinStatement(rows, parsed);
-  const previous = input.store.rows.filter((r) => r.accountId === accountId && r.importId !== importId);
+  // Only earlier lines whose entry is still in your records: one deleted (or replaced) since leaves nothing to point at.
+  const inBook = new Set(book.events.map((e) => e.id));
+  const previous = input.store.rows.filter((r) => r.accountId === accountId && r.importId !== importId && (!r.eventId || inBook.has(r.eventId)));
   matchPreviousImports(rows, previous);
   const catName = (id: string) => [...categories.expenseCategories, ...categories.incomeCategories].find((c) => c.id === id)?.name ?? id;
   matchExistingEntries(rows, book, ledger, catName);
@@ -723,15 +725,22 @@ const userClassification = (base: Classification | undefined, d: Extract<Decisio
   alternatives: base?.alternatives ?? [],
 });
 
+/** A line taken as already in your records ("already imported" or "matched") whose entry is no longer there. */
+export function entryGone(row: StatementRow, book: Book): boolean {
+  return (row.status === "already_imported" || row.status === "matched_existing") && !!row.eventId && !book.events.some((e) => e.id === row.eventId);
+}
+
 /** Applies one decision to one row. Pure: returns a new store. */
 export function resolveRow(store: ImportStoreData, rowId: string, decision: Decision, env: ResolveEnv): ResolveResult {
   const row = store.rows.find((r) => r.id === rowId);
   if (!row) return { store, error: "That line no longer exists." };
   const record = store.imports.find((i) => i.id === row.importId);
   if (!record) return { store, error: "This statement has already been imported." };
+  const orphan = entryGone(row, env.book);
   if (record.status === "IMPORTED") {
-    // A skipped line can still be brought back after the import; the statement reopens just for it.
-    if (decision.kind !== "reopen" || row.status !== "skipped") return { store, error: "This statement has already been imported." };
+    // A skipped line can still be brought back after the import, and so can one whose entry has since gone from
+    // your records; the statement reopens just for it.
+    if (decision.kind !== "reopen" || (row.status !== "skipped" && !orphan)) return { store, error: "This statement has already been imported." };
     store = { ...store, imports: store.imports.map((i) => (i.id === record.id ? { ...i, status: "REVIEW_REQUIRED" as const } : i)) };
   }
 
@@ -772,7 +781,18 @@ export function resolveRow(store: ImportStoreData, rowId: string, decision: Deci
       break;
     }
     case "reopen":
-      next = { ...next, status: row.match && row.match.level === 3 ? "possible_duplicate" : "review", eventId: row.match?.level === 3 ? undefined : undefined, decision: undefined };
+      if (orphan) {
+        // Nothing to be a duplicate of any more: it waits as a line of its own, with a reading ready to confirm.
+        const { match: _match, eventId: _eventId, ...rest } = next;
+        const fresh: StatementRow = { ...rest, status: "pending", decision: undefined, classification: row.classification ?? classifyByRules(rest, ruleContext(env.book, store)) ?? fallbackClassification(rest) };
+        // The entry may have been replaced rather than deleted (a card payment linked up from the card's side, say):
+        // link the line to what's there now instead of adding the same money twice.
+        matchExistingEntries([fresh], env.book, buildLedger(env.book), (id) => id);
+        // Linked, nothing waits, and the statement goes back to imported on its own (see statusFor).
+        next = fresh.status === "pending" ? { ...fresh, status: "review" } : fresh;
+      } else {
+        next = { ...next, status: row.match && row.match.level === 3 ? "possible_duplicate" : "review", eventId: row.match?.level === 3 ? undefined : undefined, decision: undefined };
+      }
       break;
   }
 
@@ -951,8 +971,21 @@ export function reclassifyWaiting(store: ImportStoreData, book: Book, onlyImport
   const cardImports = new Set(
     store.imports.filter((i) => book.accounts.find((a) => a.id === i.accountId)?.type === "credit_card").map((i) => i.id),
   );
+  const inBook = new Set(book.events.map((e) => e.id));
   const rows = store.rows.map((original) => {
-    if (!open.has(original.importId) || original.status !== "review" || original.decision?.by === "user") return original;
+    if (!open.has(original.importId) || original.decision?.by === "user") return original;
+    // Waiting lines taken as "already in your records" whose entry has since gone: nothing holds them, so they're
+    // read afresh and imported like any other line.
+    if ((original.status === "already_imported" || original.status === "matched_existing") && original.eventId && !inBook.has(original.eventId)) {
+      const { match: _match, eventId: _eventId, ...rest } = original;
+      const c = original.classification ?? classifyByRules(rest, ctx) ?? fallbackClassification(rest);
+      const status = statusForClassification(rest, c, book, store.settings);
+      changed++;
+      if (status !== "review") settled++;
+      touched.add(original.importId);
+      return { ...rest, classification: c, status };
+    }
+    if (original.status !== "review") return original;
     // Card-statement lines read before card statements were understood: settle their direction now.
     let r = original;
     if (cardImports.has(r.importId) && r.rawData.warnings.some((w) => UNSURE_DIRECTION.test(w))) {

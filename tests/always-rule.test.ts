@@ -81,6 +81,28 @@ describe("waiting lines are re-read with newer rules", () => {
   });
 });
 
+describe("lines from an earlier statement whose entry is gone", () => {
+  it("aren't skipped as already imported, in a new statement or one waiting for review", async () => {
+    const { reclassifyWaiting } = await import("@/lib/statements/pipeline");
+    const line: [string, string, number] = ["14/10/2026", "UPI/VILAS BALIRAM/SBIN/658320061999/Paid via", 30];
+    // The earlier statement's line was imported, but its entry has since been deleted from the book.
+    let store = await load(emptyImportStore(), "first.csv", [line]);
+    store = { ...store, rows: store.rows.map((r) => ({ ...r, status: "imported" as const, eventId: "deleted-entry" })) };
+
+    const second = await load(store, "second.csv", [line, ["15/10/2026", "UPI/BIT HUB TECHNO/HDFC/658320062000/Paid via", 5_000]]);
+    const fresh = second.rows.filter((r) => r.importId !== store.rows[0].importId && r.rawDescription.includes("VILAS"));
+    expect(fresh[0].status).not.toBe("already_imported");
+
+    // A statement read before this fix, still waiting: its line is read afresh.
+    const waiting = { ...second, rows: second.rows.map((r) => (r.importId === fresh[0].importId ? { ...r, status: "already_imported" as const, eventId: "deleted-entry", classification: undefined } : r)) };
+    const out = reclassifyWaiting(waiting, book);
+    const after = out.store.rows.find((r) => r.id === fresh[0].id)!;
+    expect(after.status).not.toBe("already_imported");
+    expect(after.eventId).toBeUndefined();
+    expect(after.classification).toBeDefined();
+  });
+});
+
 describe("credit card statements", () => {
   it("reads unmarked amounts as purchases and a payment as money in, so clear lines import on their own", async () => {
     const data = new TextEncoder().encode(
@@ -190,5 +212,36 @@ describe("undoing an import", () => {
     expect(removed).toBe(1);
     expect(after.events.map((e) => e.id)).toEqual(["mine", "typed"]);
     expect(after.events[0].sources).toEqual([src("good", "created")]);
+  });
+});
+
+describe("adding back a line of an imported statement whose entry is gone", () => {
+  it("reopens it as a line of its own, or links it to the entry that replaced it", async () => {
+    const { entryGone } = await import("@/lib/statements/pipeline");
+    const line: [string, string, number] = ["14/10/2026", "UPI/VILAS BALIRAM/SBIN/658320061999/Paid via", 30];
+    let store = await load(emptyImportStore(), "gone.csv", [line]);
+    const id = store.imports[0].id;
+    store = {
+      ...store,
+      imports: store.imports.map((i) => ({ ...i, status: "IMPORTED" as const, importedAt: "2026-10-05T09:00:00Z" })),
+      rows: store.rows.map((r) => ({ ...r, status: "already_imported" as const, eventId: "deleted-entry" })),
+    };
+    const row = store.rows[0];
+    expect(entryGone(row, book)).toBe(true);
+
+    const reopened = resolveRow(store, row.id, { kind: "reopen" }, e);
+    expect(reopened.error).toBeUndefined();
+    expect(reopened.store.rows[0]).toMatchObject({ status: "review" });
+    expect(reopened.store.rows[0].eventId).toBeUndefined();
+    expect(reopened.store.imports.find((i) => i.id === id)!.status).not.toBe("IMPORTED");
+
+    // The same ₹30 is in the book under a new entry: the line links to it and the statement stays imported.
+    const withEntry: Book = {
+      ...book,
+      events: [{ id: "new-entry", type: "expense", date: "2026-10-14", accountId: "account-netbanking", amountMinor: 3_000, categoryId: "food", description: "Vilas Baliram", createdAt: "x", updatedAt: "x" } as Book["events"][number]],
+    };
+    const linked = resolveRow(store, row.id, { kind: "reopen" }, { ...e, book: withEntry });
+    expect(linked.store.rows[0]).toMatchObject({ status: "matched_existing", eventId: "new-entry" });
+    expect(linked.store.imports.find((i) => i.id === id)!.status).toBe("IMPORTED");
   });
 });

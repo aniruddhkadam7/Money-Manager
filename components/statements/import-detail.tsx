@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { formatDisplayDate, formatWeekdayDate } from "@/lib/domain/dates";
 import { formatRupees } from "@/lib/finance/describe";
 import { statementDirection } from "@/lib/finance/order";
-import { looksLikeCardStatement, needsDecision } from "@/lib/statements/pipeline";
+import { entryGone, looksLikeCardStatement, needsDecision } from "@/lib/statements/pipeline";
 import { deriveState } from "@/lib/finance/state";
 import { statementBalanceAt } from "@/lib/finance/statement-anchor";
 import type { StatementRow } from "@/lib/statements/types";
@@ -175,6 +175,14 @@ function RowLine({ row }: { row: StatementRow }) {
             </div>
           )}
         </dl>
+      )}
+      {entryGone(row, book) && (
+        <div className="flex flex-wrap items-center gap-2 border-t px-3 py-2">
+          <span className="mr-auto text-xs text-amber-700">Its entry isn&apos;t in your records any more (deleted or replaced), so this line isn&apos;t counted anywhere.</span>
+          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={bringBack} data-testid="add-back">
+            <Undo2 /> Add it back
+          </Button>
+        </div>
       )}
       {row.status === "skipped" && (
         <div className="flex flex-wrap items-center gap-2 border-t px-3 py-2">
