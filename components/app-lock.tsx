@@ -34,6 +34,9 @@ const KEYS: [string, string][] = [
   ["9", "WXYZ"],
 ];
 
+/** How long the last digit's filled dot and lit key show before the passcode is checked. */
+const LAST_DIGIT_MS = 220;
+
 /**
  * Dots for the digits typed so far and a phone-style keypad, so a passcode can be typed on an iPhone
  * without the keyboard; a computer's number keys work too. onComplete runs once all digits are in and
@@ -67,9 +70,14 @@ export function PasscodePad({
     const next = codeRef.current + digit;
     setDigits(next);
     if (next.length < length) return;
+    // Taps stop counting now, but the keys only dim and the check only starts after a beat: otherwise the
+    // last dot never fills and the key never lights before the screen unlocks or the dots clear.
     busyRef.current = true;
-    setBusy(true);
-    Promise.resolve(onComplete(next))
+    new Promise((r) => setTimeout(r, LAST_DIGIT_MS))
+      .then(() => {
+        setBusy(true);
+        return onComplete(next);
+      })
       .then((keep) => {
         if (keep === false) {
           animate(dots.current, { x: [0, -8, 8, -5, 5, 0] }, { duration: 0.35 });
