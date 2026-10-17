@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseConstituents } from "@/lib/market/constituents";
 import { formatCrore, formatPct } from "@/lib/market/format";
+import { dropOldMarketStorage } from "@/lib/market/old-storage";
 import { indexQuote, member } from "@/lib/market/service";
 import type { Member } from "@/lib/market/types";
 import { groupPe, sectorWeights } from "@/lib/market/weights";
@@ -133,5 +134,27 @@ describe("formatting", () => {
     expect(formatPct(-0.0225)).toBe("−0.02%");
     expect(formatPct(null)).toBe("—");
     expect(formatCrore(8.86e12)).toBe("₹8,86,000 Cr");
+  });
+});
+
+describe("old Market page storage", () => {
+  it("clears the old page's caches and view choices, nothing else", () => {
+    const data = new Map<string, string>([
+      ["mm-market-cache:3:/api/market/economy", "{}"],
+      ["mm-market-sort:sectors", "pe"],
+      ["mm-market-view", "{}"],
+      ["mm-market-viewer", "keep"],
+      ["mm-sync:pending", "[]"],
+      ["money-manager:v1:book", "{}"],
+    ]);
+    const storage = {
+      get length() {
+        return data.size;
+      },
+      key: (i: number) => [...data.keys()][i] ?? null,
+      removeItem: (k: string) => void data.delete(k),
+    } as Storage;
+    expect(dropOldMarketStorage(storage)).toBe(3);
+    expect([...data.keys()]).toEqual(["mm-market-viewer", "mm-sync:pending", "money-manager:v1:book"]);
   });
 });

@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PieChart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { INDICES } from "@/lib/market/catalog";
 import { formatChange, formatNumber, formatPct, formatTime } from "@/lib/market/format";
+import { dropOldMarketStorage } from "@/lib/market/old-storage";
 import type { IndexQuote } from "@/lib/market/types";
 import { cn } from "@/lib/utils";
 import { RangeTabs } from "../charts/primitives";
@@ -31,6 +32,14 @@ export function MarketView() {
   const [sector, setSector] = useState<IndexQuote | null>(null);
   const [company, setCompany] = useState<CompanyView | null>(null);
   const [horizon, setHorizon] = useState<Horizon>("today");
+
+  useEffect(() => {
+    try {
+      dropOldMarketStorage(window.localStorage);
+    } catch {
+      // Storage blocked: nothing to clear.
+    }
+  }, []);
 
   const latest = data ? Math.max(...data.indices.map((i) => i.time)) : 0;
   const ret = (q: IndexQuote) => (horizon === "today" ? q.changePct : q.yearChangePct);
