@@ -1,9 +1,11 @@
 import type { Category } from "@/lib/domain/types";
 import { bankBrandFor } from "@/lib/finance/bank-logos";
+import { formatRupees } from "@/lib/finance/describe";
 import { buildLedger } from "@/lib/finance/engine";
-import { STATEMENT_ACCOUNT_TYPES, type Book } from "@/lib/finance/types";
+import { statementBalanceAt } from "@/lib/finance/statement-anchor";
+import { STATEMENT_ACCOUNT_TYPES, type Book, type EventDraft, type Ledger } from "@/lib/finance/types";
 import { classifyWithAi, type AiOptions, type AiOutcome } from "./ai";
-import { readCardBill } from "./card-bill";
+import { readCardBill, type CardBill } from "./card-bill";
 import { readCardNumber } from "./mask";
 import { settleCardPayments } from "./card-payments";
 import { detectDuplicatesWithinStatement } from "./dedupe";
@@ -11,8 +13,8 @@ import { fileHash } from "./fingerprint";
 import { matchExistingEntries, matchPreviousImports } from "./match";
 import { extractPdfText, type ExtractedPdf, type PdfjsLike } from "./pdf";
 import { detectFormat, parseCsv, readWorkbook, tableToPages } from "./tabular";
-import { missingInfo, type CommitOutcome, type PlanContext } from "./plan";
-import { reconcile } from "./reconcile";
+import { missingInfo, resolveCategoryId, type CommitOutcome, type PlanContext } from "./plan";
+import { BLOCKING, reconcile } from "./reconcile";
 import { buildRows } from "./rows";
 import { classifyByRules, applyUserRule, fallbackClassification, gate, learnRule, relationships, ruleKey, type RuleContext } from "./rules";
 import { readBank } from "./bank";
@@ -23,6 +25,7 @@ import {
   type Classification,
   type ImportCounts,
   type ImportRecord,
+  type Reconciliation,
   type ImportSettings,
   type ImportStatus,
   type ImportStoreData,
@@ -185,14 +188,20 @@ export function combineOpinions(rule: Classification, ai: Classification, review
   };
 }
 
-const CARD_CREDIT = /\b(payment received|payment recd|thank you|autopay|auto debit|bill ?desk|bbps|neft|imps|upi payment|refund|reversal|reversed|cashback|cash back|credit adjw*|chargeback|cr)\b/i;
+// "Cr" counts only as a trailing marker: inside a narration it's usually part of a cut-off merchant name
+// ("STR WBERRY DELIGH CR Restaurants").
+const CARD_CREDIT = /\b(payment received|payment recd|thank you|autopay|auto debit|bill ?desk|bbps|neft|imps|upi payment|refund|reversal|reversed|cashback|cash back|credit adj\w*|chargeback)\b|\bcr\.?$/i;
 const UNSURE_DIRECTION = /^Direction (could not be determined|inferred from the wording)/;
 
-/** Settles the direction of card-statement lines the table itself didn't mark. */
-export function readAsCardStatement(parsed: { rows: { rawDescription: string; debitMinor: number; creditMinor: number; confidence: number; warnings: string[] }[] }): void {
-  for (const r of parsed.rows) {
+type CardLine = { rawDescription: string; debitMinor: number; creditMinor: number; confidence: number; warnings: string[] };
+
+/** Settles the direction of card-statement lines the table itself didn't mark; returns those lines' indexes. */
+export function readAsCardStatement(parsed: { rows: CardLine[] }): number[] {
+  const guessed: number[] = [];
+  for (const [i, r] of parsed.rows.entries()) {
     const unsure = r.warnings.findIndex((w) => UNSURE_DIRECTION.test(w));
     if (unsure < 0) continue;
+    guessed.push(i);
     const amount = r.debitMinor || r.creditMinor;
     const credit = CARD_CREDIT.test(r.rawDescription);
     r.debitMinor = credit ? 0 : amount;
@@ -201,6 +210,133 @@ export function readAsCardStatement(parsed: { rows: { rawDescription: string; de
     // Only the direction was in doubt; anything else wrong with the line keeps its own warning and score.
     if (r.warnings.length === 0) r.confidence = Math.max(r.confidence, 0.9);
   }
+  return guessed;
+}
+
+/**
+ * A card statement prints no running balance, but its bill adds up: owed before + purchases − payments and
+ * refunds = total due. When it doesn't, and turning round exactly one line whose direction was only guessed
+ * closes the gap, that line is turned round (a purchase read as a refund counts twice against the bill).
+ * The check then stands in for the balance check a card statement can't have; a gap left over blocks the
+ * import until it's looked at, so a misread line can't slip into the card's balance unnoticed.
+ */
+export function checkCardBill(
+  parsed: { rows: CardLine[] },
+  guessed: number[],
+  bill: { previousMinor?: number; previousFrom: "statement" | "last bill" | "your entries"; totalDueMinor?: number },
+  reconciliation: Reconciliation,
+): Reconciliation {
+  const { previousMinor, totalDueMinor } = bill;
+  if (previousMinor === undefined || totalDueMinor === undefined) return reconciliation;
+  const rows = parsed.rows;
+  const lines = () => rows.reduce((t, r) => t + r.debitMinor - r.creditMinor, 0);
+  let gap = totalDueMinor - (previousMinor + lines());
+  if (gap !== 0 && gap % 2 === 0) {
+    const half = Math.abs(gap) / 2;
+    // Bill higher than the lines: a "refund" is really a purchase; lower: a "purchase" is really a credit.
+    const fits = guessed.filter((i) => (gap > 0 ? rows[i].creditMinor : rows[i].debitMinor) === half);
+    if (fits.length === 1) {
+      const r = rows[fits[0]];
+      [r.debitMinor, r.creditMinor] = [r.creditMinor, r.debitMinor];
+      r.warnings.push(`Read as ${gap > 0 ? "a purchase" : "a payment or refund"} so the lines add up to the bill's total due.`);
+      gap = 0;
+    }
+  }
+  const totalDebitsMinor = rows.reduce((t, r) => t + r.debitMinor, 0);
+  const totalCreditsMinor = rows.reduce((t, r) => t + r.creditMinor, 0);
+  const issues = reconciliation.issues.filter((i) => i.kind !== "no_totals");
+  if (gap !== 0) {
+    issues.push({
+      kind: "balance_mismatch",
+      message:
+        `Owed before ${formatRupees(previousMinor)} (${bill.previousFrom}) + purchases ${formatRupees(totalDebitsMinor)} − payments and refunds ${formatRupees(totalCreditsMinor)} ` +
+        `= ${formatRupees(totalDueMinor - gap)}, but the bill's total due is ${formatRupees(totalDueMinor)} (${formatRupees(Math.abs(gap))} ${gap > 0 ? "higher" : "lower"}). ` +
+        `A line may be missing or read the wrong way round.`,
+    });
+  }
+  return {
+    ...reconciliation,
+    ok: !issues.some((i) => BLOCKING.includes(i.kind)),
+    verifiable: true,
+    openingMinor: previousMinor,
+    totalDebitsMinor,
+    totalCreditsMinor,
+    expectedClosingMinor: totalDueMinor - gap,
+    actualClosingMinor: totalDueMinor,
+    differenceMinor: gap,
+    issues,
+  };
+}
+
+export const CARD_CHECK_VERSION = 1;
+
+/**
+ * Card statements imported before the bill check: a line whose direction today's reading disagrees with, and
+ * whose turning round makes the lines add up to the bill exactly, was misread. Its line is put right, and a
+ * purchase that was entered as a payment to the card becomes the purchase. Each statement is checked once.
+ */
+export function recheckCardImports(store: ImportStoreData, book: Book, ctx: PlanContext): { store: ImportStoreData; fixes: { eventId: string; draft: EventDraft }[] } {
+  const ledger = buildLedger(book);
+  const fixes: { eventId: string; draft: EventDraft }[] = [];
+  let rows = store.rows;
+  const imports = store.imports.map((record) => {
+    if (record.status !== "IMPORTED" || (record.cardChecked ?? 0) >= CARD_CHECK_VERSION) return record;
+    const card = book.accounts.find((a) => a.id === record.accountId);
+    if (card?.type !== "credit_card") return record;
+    const done = { ...record, cardChecked: CARD_CHECK_VERSION };
+    const lines = rows.filter((r) => r.importId === record.id);
+    const { previousMinor } = owedBefore(record.cardBill, record.periodStart, card.id, store.imports, book, ledger);
+    const due = record.cardBill?.totalDueMinor;
+    if (previousMinor === undefined || due === undefined) return done;
+    const gap = due - (previousMinor + lines.reduce((t, r) => t + r.debitMinor - r.creditMinor, 0));
+    if (gap === 0 || gap % 2 !== 0) return done;
+    const fits = lines.filter(
+      (r) => r.amountMinor * 2 === Math.abs(gap) && r.direction === (gap > 0 ? "credit" : "debit") && CARD_CREDIT.test(r.rawDescription) === (gap < 0),
+    );
+    if (fits.length !== 1) return done;
+    const row = fits[0];
+    const direction = row.direction === "credit" ? "debit" : "credit";
+    const note = `Read as ${direction === "debit" ? "a purchase" : "a payment or refund"} so the lines add up to the bill's total due.`;
+    const fixed: StatementRow = {
+      ...row,
+      direction,
+      debitMinor: row.creditMinor,
+      creditMinor: row.debitMinor,
+      rawData: { ...row.rawData, warnings: [...row.rawData.warnings, note] },
+    };
+    rows = rows.map((r) => (r.id === row.id ? fixed : r));
+    // A purchase entered as money paid into the card becomes the purchase it was.
+    const event = row.eventId ? book.events.find((e) => e.id === row.eventId) : undefined;
+    if (event?.type === "transfer" && event.toAccountId === card.id && direction === "debit") {
+      const category = classifyByRules(fixed, ruleContext(book, store))?.category;
+      fixes.push({
+        eventId: event.id,
+        draft: { type: "expense", date: event.date, description: event.description, accountId: card.id, amountMinor: event.amountMinor, categoryId: resolveCategoryId(ctx, "expense", category) },
+      });
+    }
+    return done;
+  });
+  return { store: { ...store, imports, rows }, fixes };
+}
+
+/** What was owed on the card when the statement began: printed on it, else the last bill, else the app's entries. */
+function owedBefore(
+  bill: CardBill | undefined,
+  periodStart: string | undefined,
+  card: string,
+  imports: ImportRecord[],
+  book: Book,
+  ledger: Ledger,
+): { previousMinor?: number; previousFrom: "statement" | "last bill" | "your entries" } {
+  if (bill?.previousBalanceMinor !== undefined) return { previousMinor: bill.previousBalanceMinor, previousFrom: "statement" };
+  if (!periodStart) return { previousFrom: "statement" };
+  const dayBefore = new Date(Date.parse(`${periodStart}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+  // The statement just before this one: its bill is what this one starts from.
+  const last = imports
+    .filter((i) => i.accountId === card && i.status === "IMPORTED" && i.cardBill?.totalDueMinor !== undefined && i.periodEnd && i.periodEnd < periodStart)
+    .sort((a, b) => (a.periodEnd! < b.periodEnd! ? 1 : -1))[0];
+  if (last && Date.parse(periodStart) - Date.parse(last.periodEnd!) <= 7 * 86_400_000) return { previousMinor: last.cardBill!.totalDueMinor, previousFrom: "last bill" };
+  return { previousMinor: -statementBalanceAt(book, ledger, card, dayBefore), previousFrom: "your entries" };
 }
 
 // Phrases only a card statement prints (a bank statement may mention "credit card" in a bill-payment line).
@@ -409,10 +545,14 @@ export async function processStatement(input: ProcessInput, env: PipelineEnv): P
 
   // Card statements print charges as plain amounts and mark only payments and refunds ("Cr", "Payment
   // received"…). For a credit card account, an unmarked amount is a purchase, not an unreadable line.
-  if (target?.type === "credit_card") readAsCardStatement(parsed);
+  const guessed = target?.type === "credit_card" ? readAsCardStatement(parsed) : [];
 
   report("checking", 0.68);
-  const reconciliation = reconcile(parsed);
+  const ledger = buildLedger(book);
+  const reconciliation =
+    target?.type === "credit_card"
+      ? checkCardBill(parsed, guessed, { ...owedBefore(cardBill, parsed.periodStart, target.id, input.store.imports, book, ledger), totalDueMinor: cardBill?.totalDueMinor }, reconcile(parsed))
+      : reconcile(parsed);
 
   // 4. Rows, duplicates, matches.
   report("matching", 0.74);
@@ -422,7 +562,6 @@ export async function processStatement(input: ProcessInput, env: PipelineEnv): P
   detectDuplicatesWithinStatement(rows, parsed);
   const previous = input.store.rows.filter((r) => r.accountId === accountId && r.importId !== importId);
   matchPreviousImports(rows, previous);
-  const ledger = buildLedger(book);
   const catName = (id: string) => [...categories.expenseCategories, ...categories.incomeCategories].find((c) => c.id === id)?.name ?? id;
   matchExistingEntries(rows, book, ledger, catName);
   for (const r of rows) if (r.decision?.at === "") r.decision.at = now;

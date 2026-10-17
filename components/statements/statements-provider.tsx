@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { aiAvailable } from "@/lib/statements/ai";
 import { browserOcr, browserOcrImage, loadPdfjs } from "@/lib/statements/browser";
 import {
-  AUTO_ACCOUNT, BANK_READING_VERSION, acceptAllFlagged, correctBank, discardImport, failedImport, markFailures, markImported, forgetImport, processStatement, readiness, reclassifyWaiting, rereadBank, resolveRow, setOverride,
+  AUTO_ACCOUNT, BANK_READING_VERSION, acceptAllFlagged, recheckCardImports, correctBank, discardImport, failedImport, markFailures, markImported, forgetImport, processStatement, readiness, reclassifyWaiting, rereadBank, resolveRow, setOverride,
   type Decision, type Progress, type Readiness,
 } from "@/lib/statements/pipeline";
 import { buildCommit, type CommitFailure } from "@/lib/statements/plan";
@@ -114,6 +114,23 @@ export function StatementsProvider({ children, repository = repo }: { children: 
     setStore(next);
     repository.save(next).catch(() => setSaveError("Couldn't save import progress in this browser (is storage full?)."));
   }, [status, finance, repository, nameAccountsAfterBanks]);
+
+  // Card statements imported before the bill check: a line misread the wrong way round is put right, once,
+  // and so is the entry it made, so the card's balance follows the bank's bill without editing anything.
+  const cardsChecked = useRef(false);
+  useEffect(() => {
+    if (cardsChecked.current || status !== "ready" || finance.status !== "ready") return;
+    cardsChecked.current = true;
+    const { store: next, fixes } = recheckCardImports(storeRef.current, finance.getBook(), {
+      expenseCategories: finance.expenseCategories,
+      incomeCategories: finance.incomeCategories,
+    });
+    if (next === storeRef.current) return;
+    for (const f of fixes) finance.updateEvent(f.eventId, f.draft);
+    storeRef.current = next;
+    setStore(next);
+    repository.save(next).catch(() => setSaveError("Couldn't save import progress in this browser (is storage full?)."));
+  }, [status, finance, repository]);
 
   // Card statements imported before the bill summary or card number was read: read them from the saved PDF, once.
   const billsRead = useRef(false);

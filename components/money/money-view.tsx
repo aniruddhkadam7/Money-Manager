@@ -102,11 +102,13 @@ export function MoneyView() {
         const rows = state.accounts.filter((a) => section.types.includes(a.account.type));
         // With a bank logo in the list, every row's picture sits in the logo's width so the names line up.
         const wide = rows.some((a) => bankBrandFor(a.account.name, bankOf(a.account.id)));
+        // Cash below zero only means the starting cash was never set: show nothing left, not a debt.
+        const shown = (a: { account: Account; balanceMinor: number }) => (a.account.type === "cash" ? Math.max(a.balanceMinor, 0) : a.balanceMinor);
         return (
           <Card key={section.title} id={section.id} className={cn("scroll-mt-24", hide("accounts"))}>
             <SectionHead
               title={section.title}
-              total={rows.length > 0 ? formatRupees(rows.reduce((t, a) => t + a.balanceMinor, 0)) : undefined}
+              total={rows.length > 0 ? formatRupees(rows.reduce((t, a) => t + shown(a), 0)) : undefined}
               action={
                 <div className="flex gap-2 max-sm:gap-0">
                   {section.add.map((a) => (
@@ -128,7 +130,8 @@ export function MoneyView() {
                     bankHint={bankOf(account.id)}
                     wide={wide}
                     detail={ACCOUNT_TYPE_INFO[account.type].label}
-                    value={formatRupees(balanceMinor)}
+                    value={formatRupees(shown({ account, balanceMinor }))}
+                    startingCash={account.type === "cash" && balanceMinor < 0 ? -balanceMinor : undefined}
                     caption={account.type === "credit_card" || account.type === "loan" ? "owed" : undefined}
                     statement={account.type === "bank" || account.type === "cash" ? statements.get(account.id) : undefined}
                     onEdit={() => setDialog({ open: true, editing: account })}
@@ -303,6 +306,7 @@ function AccountRow({
   wide,
   detail,
   value,
+  startingCash,
   caption,
   statement,
   onEdit,
@@ -312,6 +316,8 @@ function AccountRow({
   wide: boolean;
   detail: string;
   value: string;
+  /** Cash spent beyond the starting cash you set: the starting cash is missing, not a debt. */
+  startingCash?: number;
   caption?: string;
   statement?: StatementCheck;
   onEdit: () => void;
@@ -328,6 +334,11 @@ function AccountRow({
       <div className="min-w-0 flex-1">
         <p className="truncate font-medium">{account.name}</p>
         <p className="truncate text-sm text-muted-foreground">{detail}</p>
+        {startingCash !== undefined && (
+          <p className="mt-0.5 truncate text-xs text-amber-700" data-testid="starting-cash" title="Tap the pencil and enter how much cash you had before these entries.">
+            {formatRupees(startingCash)} spent · set your starting cash
+          </p>
+        )}
         {statement && !off && (
           <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-emerald-700" data-testid="statement-balance">
             <CheckCircle2 className="size-3.5 shrink-0" /> Matches bank on {formatDisplayDate(statement.date)}

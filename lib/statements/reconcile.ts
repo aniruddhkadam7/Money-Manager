@@ -2,6 +2,9 @@ import { formatRupees } from "@/lib/finance/describe";
 import { parseStatementDate } from "./parse-values";
 import type { ParsedStatement, ReconIssue, Reconciliation } from "./types";
 
+/** Issues that stop an import until they're fixed or overridden. */
+export const BLOCKING: ReconIssue["kind"][] = ["balance_mismatch", "balance_jump", "invalid_date", "invalid_amount"];
+
 /**
  * Does the statement add up?  opening + credits − debits = closing, and every line's running
  * balance follows from the line before it. If not, a line was missed or misread, and importing
@@ -92,7 +95,6 @@ export function reconcile(parsed: ParsedStatement): Reconciliation {
     });
   }
 
-  const BLOCKING: ReconIssue["kind"][] = ["balance_mismatch", "balance_jump", "invalid_date", "invalid_amount"];
   const ok = verifiable && !issues.some((i) => BLOCKING.includes(i.kind));
   return {
     ok,

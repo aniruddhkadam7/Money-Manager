@@ -6,12 +6,15 @@ export interface CardBill {
   dueDate?: string;
   totalDueMinor?: number;
   minimumDueMinor?: number;
+  /** What was owed when the statement began (the last bill), when the summary prints it. */
+  previousBalanceMinor?: number;
 }
 
-type Kind = "statementDate" | "dueDate" | "totalDueMinor" | "minimumDueMinor";
+type Kind = "statementDate" | "dueDate" | "totalDueMinor" | "minimumDueMinor" | "previousBalanceMinor";
 
 const LABELS: { kind: Kind; re: RegExp }[] = [
   { kind: "minimumDueMinor", re: /minimum\s+(?:amount\s+)?(?:due|payable|payment)|min\.?\s*amt\.?\s*due/gi },
+  { kind: "previousBalanceMinor", re: /previous\s+(?:statement\s+)?(?:balance|amount\s+due|dues|outstanding)|last\s+statement\s+balance|opening\s+balance/gi },
   { kind: "totalDueMinor", re: /total\s+(?:amount\s+)?(?:due|payable)|total\s+dues|total\s+payment\s+due|amount\s+payable/gi },
   { kind: "dueDate", re: /payment\s+due\s+date|due\s+date|pay\s+by\s+date|pay\s+by/gi },
   { kind: "statementDate", re: /statement\s+(?:generation\s+)?date|bill\s+date|statement\s+as\s+on/gi },

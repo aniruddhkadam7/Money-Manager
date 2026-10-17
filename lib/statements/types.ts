@@ -300,6 +300,8 @@ export interface ImportRecord {
   cardBill?: CardBill;
   /** Which version of the bank-reading rules last read this file's bank (see BANK_READING_VERSION). */
   bankRead?: number;
+  /** Which version of the card-bill check last went over this card statement's lines (see CARD_CHECK_VERSION). */
+  cardChecked?: number;
 }
 
 /** What the person taught us: "this counterparty, in this direction, means that". */
