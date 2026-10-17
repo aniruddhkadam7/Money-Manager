@@ -9,6 +9,7 @@ import { useEventDialog } from "../events/event-dialog";
 import { useFinance } from "../finance-provider";
 import { useBalances } from "../statements/use-statement-checks";
 import { AccountsSection } from "./accounts-section";
+import { AssetsLiabilitiesSection } from "./assets-liabilities-section";
 import { SpendingSection } from "./cash-flow-sections";
 import { InvestmentSection } from "./investment-section";
 import { SamePeopleBanner } from "../money/same-people-banner";
@@ -109,8 +110,13 @@ export function DashboardView() {
       )}
 
 
-      {/* Net worth, assets and liabilities are in the summary at the top (with their history and breakdowns);
+      {/* Net worth, assets and liabilities are in the summary at the top (with their breakdowns) and charted together below;
           spending by category is in "Earned & spent". The cards below each add something those don't. */}
+
+      {/* What you own against what you owe, over time */}
+      <div className={`${cell} lg:col-span-2`}>
+        <AssetsLiabilitiesSection model={model} />
+      </div>
 
       {/* Spending over time, and investments */}
       <div className={cell}>

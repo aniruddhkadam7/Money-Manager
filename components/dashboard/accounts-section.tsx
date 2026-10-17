@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef } from "react";
 import { formatExactINR } from "@/lib/charts/format";
 import { activityHref } from "@/lib/charts/links";
 import { formatDisplayDate } from "@/lib/domain/dates";
@@ -28,45 +29,110 @@ export function AccountsSection({ book, state }: { book: Book; state: FinancialS
   const rows = state.accounts
     .filter((a) => a.account.type in order && (a.balanceMinor !== 0 || used(a.account.id) || checks.has(a.account.id)))
     .sort((a, b) => order[a.account.type] - order[b.account.type]);
+  const rowRef = useTicker(rows.length);
   if (rows.length === 0) return null;
 
+  const tile = ({ account, balanceMinor }: (typeof rows)[number], copy: boolean) => {
+    const card = account.type === "credit_card";
+    const check = checks.get(account.id);
+    // `state` already starts bank balances from the latest statement; name the statement while nothing has moved since.
+    const asStatement = !!check && !card && balanceMinor === check.closingMinor;
+    // Cash below zero only means the starting cash was never set: show nothing left, not a debt.
+    const noStartingCash = account.type === "cash" && balanceMinor < 0;
+    return (
+      <div
+        key={copy ? `copy-${account.id}` : account.id}
+        className={cn("group relative flex w-[42%] min-w-0 shrink-0 flex-col gap-1 glass rounded-xl border p-2.5 sm:w-auto sm:gap-1.5 sm:p-3", copy && "sm:hidden")}
+        data-testid={copy ? undefined : "account-tile"}
+        data-ticker-copy={copy || undefined}
+        aria-hidden={copy || undefined}
+      >
+        {/* The link's ::after covers the whole tile, so a tap anywhere on it opens the account (the ⓘ sits above it). */}
+        <Link
+          href={activityHref({ account: account.id })}
+          tabIndex={copy ? -1 : undefined}
+          className="flex items-center gap-2 after:absolute after:inset-0 after:rounded-xl after:content-[''] group-hover:[&>span:last-child]:underline max-sm:[&>span:first-child]:h-7 max-sm:[&>span:first-child]:max-w-11"
+        >
+          <AccountLogo account={account} bankHint={bankOf(account.id)} />
+          <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-slate-900 sm:text-sm">
+            {account.name}
+            {check?.accountMask && <span className="font-normal text-slate-500"> ••{check.accountMask}</span>}
+          </span>
+        </Link>
+        <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between sm:gap-2">
+          <span className="flex items-center gap-1 text-xs text-slate-500">
+            {asStatement && check ? `Statement ${formatDisplayDate(check.date)}` : card ? "To pay" : noStartingCash ? "Set starting cash" : "Available"}
+            {!copy && (!check || card) && (
+              <span className="relative z-10 flex">
+                <AccountBalanceHow account={account} />
+              </span>
+            )}
+          </span>
+          <span className={cn("text-base font-semibold tabular-nums sm:text-lg", (card ? balanceMinor > 0 : balanceMinor < 0 && !noStartingCash) ? "text-red-700" : "text-slate-900")}>
+            {formatExactINR(card || noStartingCash ? Math.max(balanceMinor, 0) : balanceMinor)}
+          </span>
+        </div>
+      </div>
+    );
+  };
+
   return (
-    // Phones: one row that swipes sideways (a bit of the next tile shows, so it's clear there's more); wider screens: a grid.
+    // Phones: one row that glides sideways like a stock ticker (the tiles are repeated once so it loops seamlessly, and
+    // you can still swipe it); wider screens: a grid, without the repeat.
     <section
+      ref={rowRef}
       aria-label="Your accounts"
-      className="-mx-4 flex snap-x snap-mandatory gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:grid sm:grid-cols-2 sm:gap-2.5 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-3 xl:grid-cols-4 [&::-webkit-scrollbar]:hidden"
+      className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:grid sm:grid-cols-2 sm:gap-2.5 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-3 xl:grid-cols-4 [&::-webkit-scrollbar]:hidden"
     >
-      {rows.map(({ account, balanceMinor }) => {
-        const card = account.type === "credit_card";
-        const check = checks.get(account.id);
-        // `state` already starts bank balances from the latest statement; name the statement while nothing has moved since.
-        const asStatement = !!check && !card && balanceMinor === check.closingMinor;
-        return (
-          <div key={account.id} className="flex w-[42%] min-w-0 shrink-0 snap-start flex-col gap-1 glass rounded-xl border p-2.5 sm:w-auto sm:gap-1.5 sm:p-3" data-testid="account-tile">
-            <Link
-              href={activityHref({ account: account.id })}
-              className="flex items-center gap-2 hover:underline max-sm:[&>span:first-child]:h-7 max-sm:[&>span:first-child]:max-w-11"
-            >
-              <AccountLogo account={account} bankHint={bankOf(account.id)} />
-              <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-slate-900 sm:text-sm">
-                {account.name}
-                {check?.accountMask && <span className="font-normal text-slate-500"> ••{check.accountMask}</span>}
-              </span>
-            </Link>
-            <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between sm:gap-2">
-              <span className="flex items-center gap-1 text-xs text-slate-500">
-                {asStatement && check ? `Statement ${formatDisplayDate(check.date)}` : card ? "To pay" : "Available"}
-                {(!check || card) && <AccountBalanceHow account={account} />}
-              </span>
-              <span className={cn("text-base font-semibold tabular-nums sm:text-lg", (card ? balanceMinor > 0 : balanceMinor < 0) ? "text-red-700" : "text-slate-900")}>
-                {formatExactINR(card ? Math.max(balanceMinor, 0) : balanceMinor)}
-              </span>
-            </div>
-          </div>
-        );
-      })}
+      {rows.map((r) => tile(r, false))}
+      {rows.length > 1 && rows.map((r) => tile(r, true))}
     </section>
   );
+}
+
+/**
+ * Keeps the phone row of tiles gliding left at a steady pace, like a stock ticker. When it reaches the repeated tiles
+ * it jumps back by exactly one set, which looks identical, so it never visibly rewinds. It holds still while you touch
+ * or swipe it (and for a moment after), when everything fits (the grid on wider screens), for reduced motion, and in a
+ * hidden tab.
+ */
+function useTicker(count: number) {
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || count < 2 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const SPEED = 30; // px per second
+    let pausedUntil = 0;
+    let pos = el.scrollLeft;
+    let last = performance.now();
+    let frame = 0;
+    const pause = () => (pausedUntil = performance.now() + 2500);
+    const events = ["pointerdown", "touchstart", "touchmove", "wheel", "focusin"] as const;
+    for (const e of events) el.addEventListener(e, pause, { passive: true });
+
+    const step = (now: number) => {
+      const dt = Math.min(now - last, 100);
+      last = now;
+      const first = el.firstElementChild as HTMLElement | null;
+      const copy = el.querySelector<HTMLElement>("[data-ticker-copy]");
+      // One set of tiles wide; zero when the copies are hidden (wider screens).
+      const loop = first && copy && copy.offsetParent ? copy.offsetLeft - first.offsetLeft : 0;
+      if (now < pausedUntil || document.hidden || loop <= 0) {
+        pos = el.scrollLeft; // pick up wherever a swipe left it
+      } else {
+        pos += (SPEED * dt) / 1000;
+        if (pos >= loop) pos -= loop;
+        el.scrollLeft = pos;
+      }
+      frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    return () => {
+      cancelAnimationFrame(frame);
+      for (const e of events) el.removeEventListener(e, pause);
+    };
+  }, [count]);
+  return ref;
 }
 
 /** ⓘ beside an account's balance: its starting balance, then everything in and out, ending in the balance. */
