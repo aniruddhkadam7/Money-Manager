@@ -18,7 +18,7 @@ import { AccountLogo, useBankHints } from "../account-logo";
 import { RangeTabs } from "../charts/primitives";
 import { PageTitle } from "../page-title";
 import { PictureIcon } from "../picture-icon";
-import { statementMatches, useStatementChecks, type StatementCheck } from "../statements/use-statement-checks";
+import { statementMatches, useBalances, useStatementChecks, type StatementCheck } from "../statements/use-statement-checks";
 import { ACCOUNT_TYPE_INFO, AccountDialog, type AddableAccountType } from "./account-dialog";
 import { PeopleList } from "./manage-lists";
 
@@ -59,7 +59,9 @@ function SectionHead({ title, total, action }: { title: string; total?: string; 
 }
 
 export function MoneyView() {
-  const { status, state } = useFinance();
+  const { status } = useFinance();
+  // Bank balances as the latest statements say, so these match Home.
+  const { state } = useBalances();
   const statements = useStatementChecks();
   const bankOf = useBankHints();
   const { openAdd } = useEventDialog();
@@ -329,6 +331,11 @@ function AccountRow({
         {statement && !off && (
           <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-emerald-700" data-testid="statement-balance">
             <CheckCircle2 className="size-3.5 shrink-0" /> Matches bank on {formatDisplayDate(statement.date)}
+          </p>
+        )}
+        {statement && off && (
+          <p className="mt-0.5 truncate text-xs text-amber-700" data-testid="statement-gap" title="The balance follows the bank statement; your entries up to that day add up to a different amount.">
+            As per statement {formatDisplayDate(statement.date)} · {formatRupees(statement.closingMinor - statement.appMinor)} not in your entries
           </p>
         )}
       </div>

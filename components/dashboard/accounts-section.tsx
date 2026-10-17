@@ -39,6 +39,8 @@ export function AccountsSection({ book, state }: { book: Book; state: FinancialS
       {rows.map(({ account, balanceMinor }) => {
         const card = account.type === "credit_card";
         const check = checks.get(account.id);
+        // `state` already starts bank balances from the latest statement; name the statement while nothing has moved since.
+        const asStatement = !!check && !card && balanceMinor === check.closingMinor;
         return (
           <div key={account.id} className="flex w-[42%] min-w-0 shrink-0 snap-start flex-col gap-1 glass rounded-xl border p-2.5 sm:w-auto sm:gap-1.5 sm:p-3" data-testid="account-tile">
             <Link
@@ -53,11 +55,11 @@ export function AccountsSection({ book, state }: { book: Book; state: FinancialS
             </Link>
             <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between sm:gap-2">
               <span className="flex items-center gap-1 text-xs text-slate-500">
-                {check && !card ? `Statement ${formatDisplayDate(check.date)}` : card ? "To pay" : "Available"}
+                {asStatement && check ? `Statement ${formatDisplayDate(check.date)}` : card ? "To pay" : "Available"}
                 {(!check || card) && <AccountBalanceHow account={account} />}
               </span>
-              <span className={cn("text-base font-semibold tabular-nums sm:text-lg", (card ? balanceMinor > 0 : (check ? check.closingMinor : balanceMinor) < 0) ? "text-red-700" : "text-slate-900")}>
-                {check && !card ? formatExactINR(check.closingMinor) : formatExactINR(card ? Math.max(balanceMinor, 0) : balanceMinor)}
+              <span className={cn("text-base font-semibold tabular-nums sm:text-lg", (card ? balanceMinor > 0 : balanceMinor < 0) ? "text-red-700" : "text-slate-900")}>
+                {formatExactINR(card ? Math.max(balanceMinor, 0) : balanceMinor)}
               </span>
             </div>
           </div>

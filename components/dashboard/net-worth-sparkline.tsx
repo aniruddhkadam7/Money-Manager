@@ -5,10 +5,12 @@ import { formatExactINR } from "@/lib/charts/format";
 import { areaPath, monotonePath } from "@/lib/charts/path";
 import { linearScale, nearestIndex } from "@/lib/charts/scale";
 import { daysBetween, formatLongDayMonth } from "@/lib/domain/dates";
+import { applyAnchorGapsToSeries } from "@/lib/finance/statement-anchor";
 import { balanceSeries, DEFAULT_PERIOD, PERIODS, periodWords, rangeStart, sampleDates, type RangeKey } from "@/lib/finance/series";
 import { RangeTabs } from "../charts/primitives";
 import { useWidth } from "../charts/use-width";
 import { useFinance } from "../finance-provider";
+import { useStatementGaps } from "../statements/use-statement-checks";
 import { axisLabel, GAIN, LOSS } from "./chart-helpers";
 
 const HEIGHT = 56;
@@ -17,6 +19,7 @@ const PAD = 4;
 /** A small line of net worth over a chosen span, under the headline number. Tap or hover for a day's value. */
 export function NetWorthSparkline({ firstActivity }: { firstActivity: string | null }) {
   const { book, ledger, today } = useFinance();
+  const gaps = useStatementGaps();
   const [ref, width] = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
   const [range, setRange] = useState<RangeKey>(DEFAULT_PERIOD);
@@ -24,8 +27,8 @@ export function NetWorthSparkline({ firstActivity }: { firstActivity: string | n
 
   const points = useMemo(() => {
     const dates = sampleDates(rangeStart(range, today, firstActivity), today, 60);
-    return balanceSeries(book, ledger, dates);
-  }, [book, ledger, today, firstActivity, range]);
+    return applyAnchorGapsToSeries(balanceSeries(book, ledger, dates), gaps);
+  }, [book, ledger, today, firstActivity, range, gaps]);
 
   const layout = useMemo(() => {
     if (!width || points.length < 2) return null;
