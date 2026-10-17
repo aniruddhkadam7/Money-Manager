@@ -81,3 +81,40 @@ export function cardBillStatus(
 
   return { latest, paidSinceMinor, remainingMinor: Math.max(0, latest.billMinor - paidSinceMinor), previous };
 }
+
+/** The limit a card is taken to have when none is set on it. */
+export const DEFAULT_CARD_LIMIT_MINOR = 6_000_000;
+
+export interface CardUsage {
+  /** Taken from the card's limit right now: the latest bill's unpaid part plus what's been spent since it. */
+  usedMinor: number;
+  /** Still to pay on the latest bill, and by when (when its statement printed a due date). */
+  dueMinor: number;
+  dueDate?: string;
+  /** Spent on the card after the latest statement: on the next bill. */
+  unbilledMinor: number;
+}
+
+/**
+ * How much of a card's limit is in use, going by its statements: the latest bill less the payments made after
+ * its statement date, plus purchases (less refunds) charged after that date. A payment beyond the bill counts
+ * against the new spending. With no printed bill, it's what your entries say is owed (`balanceMinor`).
+ */
+export function cardUsage(book: Book, cardId: string, statements: StatementBill[], balanceMinor: number): CardUsage {
+  const status = cardBillStatus(book, cardId, statements);
+  if (!status) return { usedMinor: Math.max(0, balanceMinor), dueMinor: 0, unbilledMinor: Math.max(0, balanceMinor) };
+  const after = status.latest.statementDate;
+  let unbilledMinor = 0;
+  for (const e of book.events) {
+    if (e.date <= after || !("accountId" in e) || e.accountId !== cardId) continue;
+    if (e.type === "expense" || e.type === "reimbursable_expense") unbilledMinor += e.amountMinor;
+    else if (e.type === "split_expense") unbilledMinor += e.totalMinor;
+    else if (e.type === "income") unbilledMinor -= e.amountMinor;
+  }
+  return {
+    usedMinor: Math.max(0, status.latest.billMinor + unbilledMinor - status.paidSinceMinor),
+    dueMinor: status.remainingMinor,
+    dueDate: status.latest.dueDate,
+    unbilledMinor,
+  };
+}

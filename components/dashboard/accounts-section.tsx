@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useRef } from "react";
-import { formatExactINR } from "@/lib/charts/format";
+import { formatCompactINR, formatExactINR } from "@/lib/charts/format";
 import { activityHref } from "@/lib/charts/links";
-import { formatDisplayDate } from "@/lib/domain/dates";
+import { formatDayMonth, formatDisplayDate } from "@/lib/domain/dates";
+import { cardUsage, DEFAULT_CARD_LIMIT_MINOR } from "@/lib/finance/card-bill-status";
 import { explainAccountBalance } from "@/lib/finance/explain";
 import type { FinancialState } from "@/lib/finance/state";
 import type { Account, Book } from "@/lib/finance/types";
@@ -12,16 +13,18 @@ import { cn } from "@/lib/utils";
 import { ExplainSheet, HowIcon, useExplain } from "../explainer";
 import { useFinance } from "../finance-provider";
 import { AccountLogo, useBankHints } from "../account-logo";
+import { useStatements } from "../statements/statements-provider";
 import { useStatementChecks } from "../statements/use-statement-checks";
 
 /**
  * Every bank account and credit card you use, compactly, as its bank app would show it: the logo and what's
- * available (or, for a card, what's to pay). This month's spending is in the summary at the top.
+ * available (for a card, what's left of its limit, going by its statements). This month's spending is in the summary at the top.
  */
 export function AccountsSection({ book, state }: { book: Book; state: FinancialState }) {
   const checks = useStatementChecks();
   // The bank any of the account's statements names (card statements print no closing balance, so not only `checks`).
   const bankOf = useBankHints();
+  const { imports } = useStatements();
   const used = (id: string) =>
     book.events.some((e) => ("accountId" in e && e.accountId === id) || ("fromAccountId" in e && e.fromAccountId === id) || ("toAccountId" in e && e.toAccountId === id));
 
@@ -32,16 +35,24 @@ export function AccountsSection({ book, state }: { book: Book; state: FinancialS
   const rowRef = useTicker(rows.length);
   if (rows.length === 0) return null;
 
-  const tile = ({ account, balanceMinor }: (typeof rows)[number], copy: boolean) => {
+  const tile = ({ account, balanceMinor }: (typeof rows)[number], set: number) => {
+    const copy = set > 0;
     const card = account.type === "credit_card";
     const check = checks.get(account.id);
     // `state` already starts bank balances from the latest statement; name the statement while nothing has moved since.
     const asStatement = !!check && !card && balanceMinor === check.closingMinor;
     // Cash below zero only means the starting cash was never set: show nothing left, not a debt.
     const noStartingCash = account.type === "cash" && balanceMinor < 0;
+    // A card shows what's left of its limit, as the bank's app does: the latest bill's unpaid part and what's been
+    // spent since its statement are taken off.
+    const usage = card
+      ? cardUsage(book, account.id, imports.filter((i) => i.accountId === account.id && i.status !== "FAILED").map((i) => i.cardBill ?? {}), balanceMinor)
+      : null;
+    const limit = account.creditLimitMinor ?? DEFAULT_CARD_LIMIT_MINOR;
+    const shown = usage ? limit - usage.usedMinor : noStartingCash ? 0 : balanceMinor;
     return (
       <div
-        key={copy ? `copy-${account.id}` : account.id}
+        key={copy ? `copy${set}-${account.id}` : account.id}
         className={cn("group relative flex w-[42%] min-w-0 shrink-0 flex-col gap-1 glass rounded-xl border p-2.5 sm:w-auto sm:gap-1.5 sm:p-3", copy && "sm:hidden")}
         data-testid={copy ? undefined : "account-tile"}
         data-ticker-copy={copy || undefined}
@@ -61,15 +72,30 @@ export function AccountsSection({ book, state }: { book: Book; state: FinancialS
         </Link>
         <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between sm:gap-2">
           <span className="flex items-center gap-1 text-xs text-slate-500">
-            {asStatement && check ? `Statement ${formatDisplayDate(check.date)}` : card ? "To pay" : noStartingCash ? "Set starting cash" : "Available"}
+            {asStatement && check
+              ? `Statement ${formatDisplayDate(check.date)}`
+              : usage
+                ? usage.dueMinor > 0
+                  ? `${formatCompactINR(usage.dueMinor)} due${usage.dueDate ? ` ${formatDayMonth(usage.dueDate)}` : ""}`
+                  : usage.usedMinor > 0
+                    ? `Available · ${formatCompactINR(usage.usedMinor)} used`
+                    : "Available"
+                : noStartingCash
+                  ? "Set starting cash"
+                  : "Available"}
             {!copy && (!check || card) && (
               <span className="relative z-10 flex">
                 <AccountBalanceHow account={account} />
               </span>
             )}
           </span>
-          <span className={cn("text-base font-semibold tabular-nums sm:text-lg", (card ? balanceMinor > 0 : balanceMinor < 0 && !noStartingCash) ? "text-red-700" : "text-slate-900")}>
-            {formatExactINR(card || noStartingCash ? Math.max(balanceMinor, 0) : balanceMinor)}
+          <span
+            className={cn(
+              "text-base font-semibold tabular-nums sm:text-lg",
+              shown < 0 ? "text-red-700" : "text-slate-900",
+            )}
+          >
+            {formatExactINR(shown)}
           </span>
         </div>
       </div>
@@ -77,51 +103,70 @@ export function AccountsSection({ book, state }: { book: Book; state: FinancialS
   };
 
   return (
-    // Phones: one row that glides sideways like a stock ticker (the tiles are repeated once so it loops seamlessly, and
-    // you can still swipe it); wider screens: a grid, without the repeat.
+    // Phones: one endless row that glides sideways like a stock ticker; the tiles are repeated so it never runs out,
+    // whichever way you swipe. Wider screens: a grid, without the repeats.
     <section
       ref={rowRef}
       aria-label="Your accounts"
       className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:grid sm:grid-cols-2 sm:gap-2.5 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-3 xl:grid-cols-4 [&::-webkit-scrollbar]:hidden"
     >
-      {rows.map((r) => tile(r, false))}
-      {rows.length > 1 && rows.map((r) => tile(r, true))}
+      {rows.map((r) => tile(r, 0))}
+      {rows.length > 1 && [1, 2, 3].flatMap((set) => rows.map((r) => tile(r, set)))}
     </section>
   );
 }
 
 /**
- * Keeps the phone row of tiles gliding left at a steady pace, like a stock ticker. When it reaches the repeated tiles
- * it jumps back by exactly one set, which looks identical, so it never visibly rewinds. It holds still while you touch
- * or swipe it (and for a moment after), when everything fits (the grid on wider screens), for reduced motion, and in a
- * hidden tab.
+ * Makes the phone row of tiles an endless ticker. The tiles are drawn four times over; the row is kept inside the
+ * second and third sets, and whenever it drifts out (by gliding or by your swipe, either way) it is moved back by
+ * exactly one set, which looks identical, so it never reaches an end. It glides left at a steady pace, and holds still
+ * while you touch or swipe it (and for a moment after), when everything fits (the grid on wider screens), for reduced
+ * motion, and in a hidden tab.
  */
 function useTicker(count: number) {
   const ref = useRef<HTMLElement>(null);
   useEffect(() => {
     const el = ref.current;
-    if (!el || count < 2 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (!el || count < 2) return;
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const SPEED = 30; // px per second
     let pausedUntil = 0;
     let pos = el.scrollLeft;
     let last = performance.now();
     let frame = 0;
+
+    // One set of tiles wide; zero when the repeats are hidden (wider screens).
+    const loopWidth = () => {
+      const first = el.firstElementChild as HTMLElement | null;
+      const copy = el.querySelector<HTMLElement>("[data-ticker-copy]");
+      return first && copy && copy.offsetParent ? copy.offsetLeft - first.offsetLeft : 0;
+    };
+    // Back into the middle sets, by whole sets.
+    const wrap = (x: number, loop: number) => (x < loop ? x + loop : x >= 2 * loop ? x - loop : x);
+
     const pause = () => (pausedUntil = performance.now() + 2500);
     const events = ["pointerdown", "touchstart", "touchmove", "wheel", "focusin"] as const;
     for (const e of events) el.addEventListener(e, pause, { passive: true });
+    // A swipe that runs past the middle sets is moved back too, so swiping never meets an end either.
+    const onScroll = () => {
+      const loop = loopWidth();
+      if (loop <= 0) return;
+      const x = wrap(el.scrollLeft, loop);
+      if (x !== el.scrollLeft) el.scrollLeft = pos = x;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+
+    const start = loopWidth();
+    if (start > 0) el.scrollLeft = pos = start;
 
     const step = (now: number) => {
       const dt = Math.min(now - last, 100);
       last = now;
-      const first = el.firstElementChild as HTMLElement | null;
-      const copy = el.querySelector<HTMLElement>("[data-ticker-copy]");
-      // One set of tiles wide; zero when the copies are hidden (wider screens).
-      const loop = first && copy && copy.offsetParent ? copy.offsetLeft - first.offsetLeft : 0;
-      if (now < pausedUntil || document.hidden || loop <= 0) {
+      const loop = loopWidth();
+      if (still || now < pausedUntil || document.hidden || loop <= 0) {
         pos = el.scrollLeft; // pick up wherever a swipe left it
       } else {
-        pos += (SPEED * dt) / 1000;
-        if (pos >= loop) pos -= loop;
+        pos = wrap(pos + (SPEED * dt) / 1000, loop);
         el.scrollLeft = pos;
       }
       frame = requestAnimationFrame(step);
@@ -130,6 +175,7 @@ function useTicker(count: number) {
     return () => {
       cancelAnimationFrame(frame);
       for (const e of events) el.removeEventListener(e, pause);
+      el.removeEventListener("scroll", onScroll);
     };
   }, [count]);
   return ref;

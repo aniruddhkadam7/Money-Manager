@@ -5,13 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { todayISO } from "@/lib/domain/dates";
+import { formatDisplayDate, todayISO } from "@/lib/domain/dates";
 import { BANK_BRANDS } from "@/lib/finance/bank-logos";
 import { accountIdsUsedBy } from "@/lib/finance/book-ops";
 import { minorToInputString, parseAmountToMinor } from "@/lib/domain/money";
 import type { Account, AccountType, TradeStyle } from "@/lib/finance/types";
 import { cn } from "@/lib/utils";
 import { useFinance } from "../finance-provider";
+import { useBalances } from "../statements/use-statement-checks";
 import { StylePicker } from "../investments/style-picker";
 import { type PictureName } from "../picture-icon";
 
@@ -99,8 +100,17 @@ function AccountForm({ editing, adding, onDone }: { editing: Account | null; add
   const info = ACCOUNT_TYPE_INFO[type];
   const add = ADD_INFO[adding];
   const [name, setName] = useState(editing?.name ?? "");
-  const [balance, setBalance] = useState(editing ? minorToInputString(editing.openingBalanceMinor) : "");
+  // Editing a bank, cash, card or loan: the box holds today's balance, as its label says (not the starting
+  // balance, which your entries since are counted on top of). Saving a different figure moves the starting
+  // balance by the difference, so today's balance comes out as entered.
+  const { state } = useBalances();
+  const todayMinor = editing && !editing.style && editing.type !== "investment" ? state.accounts.find((a) => a.account.id === editing.id)?.balanceMinor : undefined;
+  const shownToday = todayMinor === undefined ? undefined : Math.max(0, todayMinor);
+  const [balance, setBalance] = useState(
+    editing ? minorToInputString(shownToday ?? editing.openingBalanceMinor) : "",
+  );
   const [openedOn, setOpenedOn] = useState(editing?.openedOn ?? todayISO());
+  const [limit, setLimit] = useState(editing?.creditLimitMinor ? minorToInputString(editing.creditLimitMinor) : "");
   const [style, setStyle] = useState<TradeStyle | "">(editing?.style ?? "");
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -110,14 +120,25 @@ function AccountForm({ editing, adding, onDone }: { editing: Account | null; add
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    const openingBalanceMinor = parseOpeningBalance(balance);
+    const entered = parseOpeningBalance(balance);
     if (!name.trim()) return setError("Give it a name.");
-    if (openingBalanceMinor === null) return setError("Enter a valid amount, or leave it blank for zero.");
+    if (entered === null) return setError("Enter a valid amount, or leave it blank for zero.");
+    let openingBalanceMinor = entered;
+    if (editing && todayMinor !== undefined) {
+      openingBalanceMinor = entered === shownToday ? editing.openingBalanceMinor : editing.openingBalanceMinor + (entered - todayMinor);
+      if (openingBalanceMinor < 0) {
+        return setError(
+          `Your entries since ${formatDisplayDate(openedOn)} already add up to more than that. Pick a later "${editing.type === "credit_card" || editing.type === "loan" ? "Owed from" : "Entries from"}" date, or check the entries.`,
+        );
+      }
+    }
     if (!openedOn) return setError("Pick a start date.");
+    const creditLimitMinor = type === "credit_card" ? parseOpeningBalance(limit) : 0;
+    if (creditLimitMinor === null) return setError("Enter a valid credit limit, or leave it blank.");
 
     const result = editing
-      ? f.updateAccount(editing.id, { name, openingBalanceMinor, openedOn, ...(style ? { style } : {}) })
-      : f.addAccount({ name, type, openingBalanceMinor, openedOn });
+      ? f.updateAccount(editing.id, { name, openingBalanceMinor, openedOn, ...(style ? { style } : {}), ...(type === "credit_card" ? { creditLimitMinor } : {}) })
+      : f.addAccount({ name, type, openingBalanceMinor, openedOn, creditLimitMinor });
     if (!result.ok) return setError(result.issues[0]?.message ?? "Couldn't save that.");
     onDone();
   }
@@ -136,7 +157,7 @@ function AccountForm({ editing, adding, onDone }: { editing: Account | null; add
     <form onSubmit={submit} noValidate className="grid gap-4">
       <DialogHeader>
         <DialogTitle>{editing ? `Edit ${editing.name}` : add.title}</DialogTitle>
-        <DialogDescription>{editing ? "Rename it, set its starting balance, or delete it." : add.description}</DialogDescription>
+        <DialogDescription>{editing ? todayMinor !== undefined ? "Rename it, correct today's balance, or delete it." : "Rename it, set its starting balance, or delete it." : add.description}</DialogDescription>
       </DialogHeader>
 
       <div className="grid gap-1.5">
@@ -186,10 +207,29 @@ function AccountForm({ editing, adding, onDone }: { editing: Account | null; add
           </div>
         </div>
         <div className="grid content-start gap-1.5">
-          <Label htmlFor="acc-date">As of</Label>
+          <Label htmlFor="acc-date">{todayMinor !== undefined ? (type === "credit_card" || type === "loan" ? "Owed from" : "Entries from") : "As of"}</Label>
           <Input id="acc-date" type="date" value={openedOn} onChange={(e) => setOpenedOn(e.target.value)} />
         </div>
       </div>
+
+      {type === "credit_card" && (
+        <div className="grid gap-1.5">
+          <Label htmlFor="acc-limit">Credit limit</Label>
+          <div className="relative">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">₹</span>
+            <Input
+              id="acc-limit"
+              inputMode="decimal"
+              autoComplete="off"
+              placeholder="60,000"
+              className="pl-7 tabular-nums"
+              value={limit}
+              onChange={(e) => setLimit(e.target.value)}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">Leave it blank for ₹60,000. Home shows what you can still spend: the limit, less the unpaid bill and spending since the statement.</p>
+        </div>
+      )}
 
       {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
 

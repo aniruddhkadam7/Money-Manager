@@ -23,6 +23,8 @@ export interface Account {
   openingBalanceMinor: number;
   /** The day the opening balance counts from (`YYYY-MM-DD`). */
   openedOn: string;
+  /** Credit cards only: the card's limit, when you've set it, so what's left to spend can be shown. */
+  creditLimitMinor?: number;
   /** Stock trades only (an investment with a style is a stock): how it's traded. Each company + style is its own holding. */
   style?: TradeStyle;
   createdAt: string;

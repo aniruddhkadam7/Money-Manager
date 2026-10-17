@@ -82,6 +82,7 @@ export interface AccountInput {
   type: AccountType;
   openingBalanceMinor: number;
   openedOn: string;
+  creditLimitMinor?: number;
 }
 
 const cleanName = (name: string) => name.trim().replace(/\s+/g, " ");
@@ -98,6 +99,7 @@ export function addAccount(book: Book, input: AccountInput, clock: Clock = syste
     type: input.type,
     openingBalanceMinor: input.openingBalanceMinor,
     openedOn: input.openedOn,
+    ...(input.type === "credit_card" && input.creditLimitMinor ? { creditLimitMinor: input.creditLimitMinor } : {}),
     createdAt: clock.now(),
   };
   const after = { ...book, accounts: [...book.accounts, account] };
@@ -108,11 +110,13 @@ export function addAccount(book: Book, input: AccountInput, clock: Clock = syste
 export function updateAccount(
   book: Book,
   id: string,
-  changes: Partial<Pick<Account, "name" | "openingBalanceMinor" | "openedOn" | "style">>,
+  changes: Partial<Pick<Account, "name" | "openingBalanceMinor" | "openedOn" | "style" | "creditLimitMinor">>,
 ): Result<Book> {
   const existing = book.accounts.find((a) => a.id === id);
   if (!existing) return invalid("That account no longer exists.", "not_found");
   const next = { ...existing, ...changes, name: changes.name === undefined ? existing.name : cleanName(changes.name) };
+  // No limit (or zero) means it isn't set.
+  if (!next.creditLimitMinor || next.type !== "credit_card") delete next.creditLimitMinor;
   if (!next.name) return invalid("Give the account a name.");
   // Two holdings of one stock can share its name when they're traded differently (intraday, long term...).
   const clash = (a: Account) => !(a.type === "investment" && next.type === "investment" && a.style !== next.style);
