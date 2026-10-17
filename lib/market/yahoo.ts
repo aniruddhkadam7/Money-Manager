@@ -119,3 +119,47 @@ export async function fetchRatios(symbol: string): Promise<CompanyRatios> {
   const s = encodeURIComponent(symbol);
   return parseRatios(symbol, await withSession((crumb) => `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${s}?modules=financialData,defaultKeyStatistics,summaryDetail&crumb=${crumb}`));
 }
+
+const ChartJson = z.object({
+  chart: z.object({
+    result: z
+      .array(
+        z.object({
+          meta: z.object({ gmtoffset: Num.nullish() }).nullish(),
+          timestamp: z.array(Num).nullish(),
+          indicators: z.object({ quote: z.array(z.object({ close: z.array(Num.nullable()).nullish() })).nullish() }),
+        }),
+      )
+      .nullish(),
+  }),
+});
+
+/** One closing price a trading day (or week), as the exchange's own date. */
+export interface Close {
+  date: string;
+  close: number;
+}
+
+export function parseCloses(json: unknown): Close[] {
+  const r = ChartJson.parse(json).chart.result?.[0];
+  const closes = r?.indicators.quote?.[0]?.close ?? [];
+  const offset = (r?.meta?.gmtoffset ?? 19_800) * 1000;
+  const byDate = new Map<string, number>();
+  (r?.timestamp ?? []).forEach((t, i) => {
+    const c = closes[i];
+    // The last of a day wins (Yahoo can add today's live bar beside the day's close).
+    if (c != null && c > 0) byDate.set(new Date(t * 1000 + offset).toISOString().slice(0, 10), c);
+  });
+  return [...byDate].map(([date, close]) => ({ date, close })).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** Closing prices over `range` (Yahoo's "1mo", "6mo", "1y", "5y") at `interval` ("1d", "1wk"). Needs no session. */
+export async function fetchCloses(symbol: string, range: string, interval: string): Promise<Close[]> {
+  const res = await fetch(`https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}`, {
+    headers: HEADERS,
+    cache: "no-store",
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) throw new Error(`Yahoo answered ${res.status}`);
+  return parseCloses(await res.json());
+}

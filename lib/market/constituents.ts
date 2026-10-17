@@ -46,7 +46,7 @@ export function parseConstituents(csv: string): Constituent[] {
 }
 
 export async function fetchConstituents(list: string): Promise<Constituent[]> {
-  if (!/^ind_[a-z0-9]+$/.test(list)) throw new Error("Bad list name");
+  if (!/^ind_[a-z0-9_]+$/.test(list)) throw new Error("Bad list name");
   const res = await fetch(`${BASE}/${list}.csv`, {
     cache: "no-store",
     signal: AbortSignal.timeout(15_000),

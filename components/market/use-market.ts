@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useSyncExternalStore } from "react";
-import type { CompanyRatios, MembersResponse, OverviewResponse } from "@/lib/market/types";
+import type { CompanyRatios, HistoryRange, MembersResponse, OverviewResponse, SectorHistoryResponse } from "@/lib/market/types";
 
 /**
  * Market data lives in this tab's memory only (nothing in localStorage): a reload starts afresh. Each URL
@@ -10,6 +10,7 @@ import type { CompanyRatios, MembersResponse, OverviewResponse } from "@/lib/mar
  */
 const PRICES_MAX_AGE = 60_000;
 const RATIOS_MAX_AGE = 6 * 3600_000;
+const HISTORY_MAX_AGE = 10 * 60_000;
 
 interface Snapshot<T> {
   data: T | null;
@@ -90,3 +91,6 @@ export const useOverview = () => useMemoryJson<OverviewResponse>("/api/market/ov
 export const useMembers = (symbol: string | null) => useMemoryJson<MembersResponse>(symbol ? `/api/market/members?symbol=${encodeURIComponent(symbol)}` : null, PRICES_MAX_AGE);
 
 export const useRatios = (symbol: string | null) => useMemoryJson<CompanyRatios>(symbol ? `/api/market/company?symbol=${encodeURIComponent(symbol)}` : null, RATIOS_MAX_AGE);
+
+/** Every sector's closes over a span, for the comparison chart. */
+export const useSectorHistory = (range: HistoryRange) => useMemoryJson<SectorHistoryResponse>(`/api/market/sectors?range=${range}`, HISTORY_MAX_AGE);

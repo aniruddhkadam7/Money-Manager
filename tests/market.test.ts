@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { parseConstituents } from "@/lib/market/constituents";
 import { formatCrore, formatPct } from "@/lib/market/format";
-import { indexQuote, member } from "@/lib/market/service";
+import { alignCloses, basketCloses, indexQuote, member } from "@/lib/market/service";
 import type { Member } from "@/lib/market/types";
 import { groupPe, sectorWeights } from "@/lib/market/weights";
-import { parseQuotes, parseRatios } from "@/lib/market/yahoo";
+import { parseCloses, parseQuotes, parseRatios } from "@/lib/market/yahoo";
 
 const m = (symbol: string, industry: string, marketCap: number | null, changePct: number | null = 0): Member => ({
   symbol,
@@ -133,5 +133,51 @@ describe("formatting", () => {
     expect(formatPct(-0.0225)).toBe("−0.02%");
     expect(formatPct(null)).toBe("—");
     expect(formatCrore(8.86e12)).toBe("₹8,86,000 Cr");
+  });
+});
+
+describe("sector history", () => {
+  it("reads Yahoo's chart bars as India dates, skipping empty bars and keeping a day's last close", () => {
+    // 2026-10-15 09:15 IST, 2026-10-16 09:15 IST, a gap, then 2026-10-16 15:30 IST.
+    const json = {
+      chart: {
+        result: [
+          {
+            meta: { gmtoffset: 19800 },
+            timestamp: [1792035900, 1792122300, 1792132200, 1792144800],
+            indicators: { quote: [{ close: [100, 101, null, 102] }] },
+          },
+        ],
+      },
+    };
+    expect(parseCloses(json)).toEqual([
+      { date: "2026-10-15", close: 100 },
+      { date: "2026-10-16", close: 102 },
+    ]);
+  });
+
+  it("lines sectors up from the first date all have, carrying a missing day's close forward", () => {
+    const out = alignCloses([
+      { symbol: "A", name: "A", closes: [{ date: "2026-01-01", close: 1 }, { date: "2026-01-02", close: 2 }, { date: "2026-01-04", close: 4 }] },
+      { symbol: "B", name: "B", closes: [{ date: "2026-01-02", close: 20 }, { date: "2026-01-03", close: 30 }] },
+      { symbol: "C", name: "C", closes: [] },
+    ]);
+    expect(out.dates).toEqual(["2026-01-02", "2026-01-03", "2026-01-04"]);
+    expect(out.items).toEqual([
+      { symbol: "A", name: "A", closes: [2, 2, 4] },
+      { symbol: "B", name: "B", closes: [20, 30, 30] },
+    ]);
+  });
+
+  it("rebuilds a sector from fixed share counts, leaving out a company listed after the span began", () => {
+    const out = basketCloses([
+      { shares: 2, closes: [{ date: "2026-01-01", close: 10 }, { date: "2026-01-02", close: 11 }] },
+      { shares: 1, closes: [{ date: "2026-01-01", close: 50 }, { date: "2026-01-02", close: 40 }] },
+      { shares: 5, closes: [{ date: "2026-01-02", close: 99 }] },
+    ]);
+    expect(out).toEqual([
+      { date: "2026-01-01", close: 70 },
+      { date: "2026-01-02", close: 62 },
+    ]);
   });
 });

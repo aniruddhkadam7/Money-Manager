@@ -25,6 +25,12 @@
   --primary-foreground: #ffffff;
   --destructive: #dc2626;
   --ring: #059669;
+  /* Market sector lines: five categorical slots, checked for colour-blind separation on this surface. */
+  --sector-1: #2a78d6;
+  --sector-2: #eb6834;
+  --sector-3: #1baf7a;
+  --sector-4: #eda100;
+  --sector-5: #e87ba4;
 }
 
 .dark {
@@ -45,6 +51,11 @@
   --glass-highlight: rgba(255, 255, 255, 0.06);
   --glass-edge: rgba(255, 255, 255, 0.04);
   --glass-solid: #0f172a;
+  --sector-1: #3987e5;
+  --sector-2: #d95926;
+  --sector-3: #199e70;
+  --sector-4: #c98500;
+  --sector-5: #d55181;
   color-scheme: dark;
 }
 

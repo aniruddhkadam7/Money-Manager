@@ -9,6 +9,7 @@ import type { IndexQuote } from "@/lib/market/types";
 import { cn } from "@/lib/utils";
 import { RangeTabs } from "../charts/primitives";
 import { CompanySheet, type CompanyView } from "./company-sheet";
+import { SectorChart } from "./sector-chart";
 import { SectorSheet } from "./sector-sheet";
 import { tone } from "./tone";
 import { useOverview } from "./use-market";
@@ -134,6 +135,8 @@ export function MarketView() {
             )}
             <p className="mt-3 text-[11px] text-slate-500">Nifty sector indices, best to worst. Tap a sector for its companies.</p>
           </section>
+
+          <SectorChart />
         </>
       )}
 

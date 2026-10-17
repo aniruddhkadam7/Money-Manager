@@ -79,3 +79,15 @@ export interface CompanyRatios {
   beta: number | null;
   fetchedAt: number;
 }
+
+export type HistoryRange = "1M" | "6M" | "1Y" | "5Y";
+
+/** Every sector's closing level on shared dates (a day a sector has no close carries its last one forward). */
+export interface SectorHistoryResponse {
+  range: HistoryRange;
+  /** YYYY-MM-DD, oldest first. */
+  dates: string[];
+  /** `rebuilt`: Yahoo has no history for the index itself, so its level is rebuilt from its largest companies. */
+  sectors: { symbol: string; name: string; rebuilt: boolean; closes: number[] }[];
+  fetchedAt: number;
+}
