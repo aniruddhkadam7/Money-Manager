@@ -27,6 +27,7 @@ import { PictureIcon } from "../picture-icon";
 import { BankMark } from "../account-logo";
 import { useFinance } from "../finance-provider";
 import { DuplicatesBanner } from "./duplicates-banner";
+import { DeletedEntries } from "./deleted-entries";
 import { WaitingLines } from "./waiting-lines";
 
 const ALL = "all";
@@ -491,6 +492,7 @@ function ActivityContent() {
           </ul>
         )}
       </Card>
+      <DeletedEntries />
     </div>
   );
 }

@@ -13,6 +13,7 @@ const book: Book = {
   people: [{ id: "g", name: "Govindraj", createdAt: t }, { id: "ey", name: "EY", createdAt: t }],
   events: [
     ev("s", "2026-09-30", { type: "income", accountId: "Kotak", amountMinor: 999, categoryId: "salary" }),
+    ev("cb", "2026-10-12", { type: "income", accountId: "Kotak", amountMinor: 10_086, categoryId: "refund", description: "Cashback from bank" }),
     ev("1", "2026-10-01", { type: "income", accountId: "Kotak", amountMinor: 4480600, categoryId: "salary" }),
     ev("2", "2026-10-02", { type: "expense", accountId: "Kotak", amountMinor: 120000, categoryId: "food" }),
     ev("3", "2026-10-02", { type: "expense", accountId: "Card", amountMinor: 30000, categoryId: "shopping", description: "Amazon" }),
@@ -45,6 +46,9 @@ describe("how the dashboard's numbers add up", () => {
     const spent = explainSpent(book, ledger, "2026-10-01", "2026-10-31", name);
     expect(spent.totalMinor).toBe(r.expensesMinor);
     expect(sum(spent.lines)).toBe(r.expensesMinor);
+    // A refund with no matching purchase is listed on its own, named and dated, not lumped together.
+    expect(spent.lines.find((l) => l.label === "refund from Cashback from bank")).toMatchObject({ amountMinor: -10_086, entry: { categoryId: "refund", date: "2026-10-12" } });
+    expect(spent.lines.some((l) => l.label === "Other refunds")).toBe(false);
     const income = explainIncome(book, ledger, "2026-10-01", "2026-10-31", name);
     expect(sum(income.lines)).toBe(r.incomeMinor);
     expect(income.savedMinor).toBe(r.incomeMinor - r.expensesMinor);
@@ -59,5 +63,22 @@ describe("how the dashboard's numbers add up", () => {
     }
     const card = explainAccountBalance(book, ledger, "Card", "2026-10-31");
     expect(card.lines.map((l) => l.label).sort()).toEqual(["Payments & refunds", "Purchases & charges"]);
+  });
+});
+
+describe("a refund from a shop you bought from", () => {
+  it("comes off that purchase's category, however the bank wrote the names, even printed a day before it", () => {
+    const b: Book = {
+      accounts: [acc("Card", "credit_card")],
+      people: [],
+      events: [
+        ev("sub", "2026-10-14", { type: "expense", accountId: "Card", amountMinor: 209_986, categoryId: "subscriptions", description: "GITHUB, INC." }),
+        ev("back", "2026-10-13", { type: "income", accountId: "Card", amountMinor: 10_086, categoryId: "refund", description: "Markup reversal GitHub" }),
+      ],
+    };
+    const r = periodReport(b, buildLedger(b), "2026-10-01", "2026-10-31");
+    expect(r.expensesByCategory).toEqual([{ categoryId: "subscriptions", amountMinor: 209_986 - 10_086 }]);
+    const spent = explainSpent(b, buildLedger(b), "2026-10-01", "2026-10-31", (id) => id);
+    expect(spent.lines).toEqual([{ label: "subscriptions", amountMinor: 199_900 }]);
   });
 });

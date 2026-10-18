@@ -5,7 +5,6 @@ import { useEffect, useRef } from "react";
 import { formatCompactINR, formatExactINR } from "@/lib/charts/format";
 import { activityHref } from "@/lib/charts/links";
 import { formatDayMonth, formatDisplayDate } from "@/lib/domain/dates";
-import { cardUsage, DEFAULT_CARD_LIMIT_MINOR } from "@/lib/finance/card-bill-status";
 import { explainAccountBalance } from "@/lib/finance/explain";
 import type { FinancialState } from "@/lib/finance/state";
 import type { Account, Book } from "@/lib/finance/types";
@@ -13,8 +12,7 @@ import { cn } from "@/lib/utils";
 import { ExplainSheet, HowIcon, useExplain } from "../explainer";
 import { useFinance } from "../finance-provider";
 import { AccountLogo, useBankHints } from "../account-logo";
-import { useStatements } from "../statements/statements-provider";
-import { useStatementChecks } from "../statements/use-statement-checks";
+import { useCardUsage, useStatementChecks } from "../statements/use-statement-checks";
 
 /**
  * Every bank account and credit card you use, compactly, as its bank app would show it: the logo and what's
@@ -24,7 +22,7 @@ export function AccountsSection({ book, state }: { book: Book; state: FinancialS
   const checks = useStatementChecks();
   // The bank any of the account's statements names (card statements print no closing balance, so not only `checks`).
   const bankOf = useBankHints();
-  const { imports } = useStatements();
+  const usageOf = useCardUsage();
   const used = (id: string) =>
     book.events.some((e) => ("accountId" in e && e.accountId === id) || ("fromAccountId" in e && e.fromAccountId === id) || ("toAccountId" in e && e.toAccountId === id));
 
@@ -45,11 +43,8 @@ export function AccountsSection({ book, state }: { book: Book; state: FinancialS
     const noStartingCash = account.type === "cash" && balanceMinor < 0;
     // A card shows what's left of its limit, as the bank's app does: the latest bill's unpaid part and what's been
     // spent since its statement are taken off.
-    const usage = card
-      ? cardUsage(book, account.id, imports.filter((i) => i.accountId === account.id && i.status !== "FAILED").map((i) => i.cardBill ?? {}), balanceMinor)
-      : null;
-    const limit = account.creditLimitMinor ?? DEFAULT_CARD_LIMIT_MINOR;
-    const shown = usage ? limit - usage.usedMinor : noStartingCash ? 0 : balanceMinor;
+    const usage = card ? usageOf(account, balanceMinor) : null;
+    const shown = usage ? usage.availableMinor : noStartingCash ? 0 : balanceMinor;
     return (
       <div
         key={copy ? `copy${set}-${account.id}` : account.id}

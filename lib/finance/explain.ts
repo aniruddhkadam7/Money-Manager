@@ -1,5 +1,6 @@
 import { idOf } from "./engine";
-import { isMoneyBack, periodReport } from "./state";
+import { formatDisplayDate } from "@/lib/domain/dates";
+import { isMoneyBack, matchRefunds, periodReport } from "./state";
 import type { Book, FlowKind, Ledger } from "./types";
 
 /**
@@ -11,6 +12,8 @@ export interface ExplainLine {
   label: string;
   note?: string;
   amountMinor: number;
+  /** A line for one entry: its category and day, so the line can open it. */
+  entry?: { categoryId: string; date: string };
 }
 
 export interface ExplainGroup {
@@ -95,9 +98,26 @@ export function explainNetWorthChange(book: Book, ledger: Ledger, afterDate: str
 export function explainSpent(book: Book, ledger: Ledger, from: string, to: string, categoryName: (id: string) => string) {
   const r = periodReport(book, ledger, from, to);
   const lines: ExplainLine[] = r.expensesByCategory.map((c) => ({ label: categoryName(c.categoryId), amountMinor: c.amountMinor }));
-  const categorised = lines.reduce((t, l) => t + l.amountMinor, 0);
-  const otherRefunds = categorised - r.expensesMinor;
-  if (otherRefunds !== 0) lines.push({ label: "Refunds not tied to a purchase", note: "Taken off the total", amountMinor: -otherRefunds });
+  // Refunds and cashback that no purchase in your records matches: each one, so you can see what came back.
+  const matched = matchRefunds(book);
+  const refundIds = new Set(book.events.filter((e) => isMoneyBack(e) && !matched.has(e.id)).map((e) => e.id));
+  for (const entry of ledger.entries) {
+    if (entry.date < from || entry.date > to || !refundIds.has(entry.sourceId)) continue;
+    const back = entry.postings.filter((p) => p.ledger.startsWith("inc:")).reduce((t, p) => t - p.amountMinor, 0);
+    if (back === 0) continue;
+    const event = book.events.find((e) => e.id === entry.sourceId);
+    const categoryId = event && "categoryId" in event ? event.categoryId : "refund";
+    lines.push({
+      // Named as what it is (a refund, cashback…) and who from: it isn't a category of spending of its own.
+      label: `${categoryName(categoryId)}${event && "description" in event && event.description ? ` from ${event.description}` : ""}`,
+      note: `${formatDisplayDate(entry.date)} · no purchase found to take it off, so it's taken off the total`,
+      amountMinor: -back,
+      entry: { categoryId, date: entry.date },
+    });
+  }
+  // Anything else between the categories and the total (there shouldn't be), so the lines still add up.
+  const rest = lines.reduce((t, l) => t + l.amountMinor, 0) - r.expensesMinor;
+  if (rest !== 0) lines.push({ label: "Other refunds", note: "Taken off the total", amountMinor: -rest });
   return { totalMinor: r.expensesMinor, lines };
 }
 

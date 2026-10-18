@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo } from "react";
+import { cardUsage, DEFAULT_CARD_LIMIT_MINOR, type CardUsage } from "@/lib/finance/card-bill-status";
 import type { FinancialState } from "@/lib/finance/state";
+import type { Account } from "@/lib/finance/types";
 import { anchorGaps, applyAnchorGaps, statementBalanceAt, type AnchorGap } from "@/lib/finance/statement-anchor";
 import { useFinance } from "../finance-provider";
 import { useStatements } from "./statements-provider";
@@ -62,4 +64,21 @@ export function useBalances(): { state: FinancialState; gaps: AnchorGap[] } {
   const { state } = useFinance();
   const gaps = useStatementGaps();
   return useMemo(() => ({ state: applyAnchorGaps(state, gaps), gaps }), [state, gaps]);
+}
+
+/**
+ * A card's place against its limit, from its statements: `availableMinor` is what's left to spend (the limit,
+ * ₹60,000 unless set, less the unpaid bill and what's been spent since its statement).
+ */
+export function useCardUsage(): (account: Account, balanceMinor: number) => CardUsage & { limitMinor: number; availableMinor: number } {
+  const { book } = useFinance();
+  const { imports } = useStatements();
+  return useMemo(
+    () => (account: Account, balanceMinor: number) => {
+      const usage = cardUsage(book, account.id, imports.filter((i) => i.accountId === account.id && i.status !== "FAILED").map((i) => i.cardBill ?? {}), balanceMinor);
+      const limitMinor = account.creditLimitMinor ?? DEFAULT_CARD_LIMIT_MINOR;
+      return { ...usage, limitMinor, availableMinor: limitMinor - usage.usedMinor };
+    },
+    [book, imports],
+  );
 }

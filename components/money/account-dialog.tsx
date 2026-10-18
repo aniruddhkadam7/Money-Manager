@@ -106,6 +106,7 @@ function AccountForm({ editing, adding, onDone }: { editing: Account | null; add
   const { state } = useBalances();
   const todayMinor = editing && !editing.style && editing.type !== "investment" ? state.accounts.find((a) => a.account.id === editing.id)?.balanceMinor : undefined;
   const shownToday = todayMinor === undefined ? undefined : Math.max(0, todayMinor);
+  const [balanceTouched, setBalanceTouched] = useState(false);
   const [balance, setBalance] = useState(
     editing ? minorToInputString(shownToday ?? editing.openingBalanceMinor) : "",
   );
@@ -125,7 +126,9 @@ function AccountForm({ editing, adding, onDone }: { editing: Account | null; add
     if (entered === null) return setError("Enter a valid amount, or leave it blank for zero.");
     let openingBalanceMinor = entered;
     if (editing && todayMinor !== undefined) {
-      openingBalanceMinor = entered === shownToday ? editing.openingBalanceMinor : editing.openingBalanceMinor + (entered - todayMinor);
+      // Left as it opened (a rename, say): nothing moves. A balance shown as 0 because it's below zero (cash spent
+      // beyond the starting cash, a card paid beyond its recorded purchases) is corrected once you save it yourself.
+      openingBalanceMinor = !balanceTouched ? editing.openingBalanceMinor : editing.openingBalanceMinor + (entered - todayMinor);
       if (openingBalanceMinor < 0) {
         return setError(
           `Your entries since ${formatDisplayDate(openedOn)} already add up to more than that. Pick a later "${editing.type === "credit_card" || editing.type === "loan" ? "Owed from" : "Entries from"}" date, or check the entries.`,
@@ -202,7 +205,10 @@ function AccountForm({ editing, adding, onDone }: { editing: Account | null; add
               placeholder="0"
               className="pl-7 tabular-nums"
               value={balance}
-              onChange={(e) => setBalance(e.target.value)}
+              onChange={(e) => {
+                setBalance(e.target.value);
+                setBalanceTouched(true);
+              }}
             />
           </div>
         </div>

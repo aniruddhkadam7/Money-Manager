@@ -88,12 +88,13 @@ export function deriveState(book: Book, ledger: Ledger, asOf: string): Financial
 
   const cashMinor = sumOf(["bank", "cash"]);
   const investmentsMinor = sumOf(["investment"]);
-  // Each card and loan counts what it is owed; one paid beyond that is a credit balance, i.e. an asset.
+  // Each card and loan counts what it is owed. A loan paid beyond that is a credit balance, i.e. an asset; a card
+  // paid beyond its recorded purchases is almost always a bill from before your entries, so it counts as nothing.
   const owedOn = (type: Account["type"]) => accounts.filter((a) => a.account.type === type).reduce((t, a) => t + Math.max(0, a.balanceMinor), 0);
   const creditCardsMinor = owedOn("credit_card");
   const loansMinor = owedOn("loan");
   const creditBalancesMinor = accounts
-    .filter((a) => (a.account.type === "credit_card" || a.account.type === "loan") && a.balanceMinor < 0)
+    .filter((a) => a.account.type === "loan" && a.balanceMinor < 0)
     .reduce((t, a) => t - a.balanceMinor, 0);
 
   let receivablesMinor = 0;
@@ -258,6 +259,18 @@ function sameParty(a: string | undefined, b: string | undefined): boolean {
 
 /** Refunds are only paired with purchases made up to this many days before them. */
 const REFUND_WINDOW_DAYS = 120;
+/** …or this many days after: a card can print a reversal (of a foreign-currency fee, say) before the charge itself. */
+const REFUND_EARLY_DAYS = 5;
+/** Every name an entry goes by: what it's called, its note, and each line a statement printed for it. */
+const namesOf = (e: FinancialEvent) => ["description" in e ? e.description : undefined, e.note, ...(e.sources ?? []).map((s) => s.narration)].filter((n): n is string => !!n);
+const sameShop = (a: FinancialEvent, b: FinancialEvent) => namesOf(a).some((x) => namesOf(b).some((y) => sameParty(x, y) || sharesShopName(x, y)));
+/** A bank line names the shop inside other words ("UPI/GITHUB INC/…", "Refund GitHub"): any shared word of 5+ letters that isn't banking jargon. */
+const JARGON = new Set(["refund", "reversal", "reversed", "cashback", "credit", "debit", "payment", "purchase", "transfer", "charges", "markup", "international", "transaction", "paid", "india", "private", "limited"]);
+function sharesShopName(a: string, b: string): boolean {
+  const words = (s: string) => new Set(nameKey(s).split(" ").filter((w) => w.length >= 5 && !/\d/.test(w) && !JARGON.has(w)));
+  const x = words(a);
+  return [...words(b)].some((w) => x.has(w));
+}
 const dayNumber = (iso: string) => Math.floor(Date.parse(`${iso}T00:00:00Z`) / 86_400_000);
 
 export interface RefundMatch {
@@ -271,7 +284,8 @@ const refundCache = new WeakMap<FinancialEvent[], Map<string, RefundMatch>>();
 
 /**
  * Pairs each refund with the purchase it gave back: same shop (names compared loosely, as banks shorten
- * them), made before the refund within REFUND_WINDOW_DAYS, and big enough to cover it. An exact amount
+ * them, across everything the entries are called), made within REFUND_WINDOW_DAYS before the refund (or a few
+ * days after), and big enough to cover it. An exact amount
  * wins, then the closest date. One purchase can absorb several partial refunds up to its own amount.
  * Reimbursements and refunds with no matching purchase stay unpaired.
  */
@@ -287,7 +301,7 @@ export function matchRefunds(book: Book): Map<string, RefundMatch> {
   for (const r of refunds) {
     const day = dayNumber(r.date);
     const candidates = purchases
-      .filter((p) => p.date <= r.date && day - dayNumber(p.date) <= REFUND_WINDOW_DAYS && sameParty(p.description, r.description))
+      .filter((p) => day - dayNumber(p.date) <= REFUND_WINDOW_DAYS && dayNumber(p.date) - day <= REFUND_EARLY_DAYS && sameShop(p, r))
       .filter((p) => (left.get(p.id) ?? p.amountMinor) >= r.amountMinor)
       .sort((a, b) => Number(b.amountMinor === r.amountMinor) - Number(a.amountMinor === r.amountMinor) || b.date.localeCompare(a.date));
     const p = candidates[0];

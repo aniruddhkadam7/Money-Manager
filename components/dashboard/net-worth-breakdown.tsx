@@ -15,7 +15,7 @@ interface Line {
 
 /**
  * Every item behind net worth, so it can be checked by hand: what you own (each bank and cash account,
- * investments, money people owe you, cards paid ahead) less what you owe (cards, loans, people). Built from
+ * investments, money people owe you, loans paid ahead) less what you owe (cards, loans, people). Built from
  * the same numbers as the headline, so the lines always add up to it exactly.
  */
 export function buildBreakdown(state: FinancialState): { own: Line[]; owe: Line[] } {
@@ -30,8 +30,8 @@ export function buildBreakdown(state: FinancialState): { own: Line[]; owe: Line[
       own.push({ key: account.id, label: account.name, note: "Investment, current value", amountMinor: balanceMinor, href });
     } else if (balanceMinor > 0) {
       owe.push({ key: account.id, label: account.name, note: account.type === "loan" ? "Loan still owed" : "Card bill to pay", amountMinor: balanceMinor, href });
-    } else {
-      own.push({ key: account.id, label: account.name, note: "Paid more than recorded spending", amountMinor: -balanceMinor, href });
+    } else if (account.type === "loan") {
+      own.push({ key: account.id, label: account.name, note: "Paid more than owed", amountMinor: -balanceMinor, href });
     }
   }
   for (const p of state.people) {
@@ -68,7 +68,7 @@ export function NetWorthBreakdownSheet({
         open={open}
         onOpenChange={onOpenChange}
         title="What you own"
-        description={<>Your total assets as of {asOf}: bank and cash, money people owe you, investments, and cards paid ahead. Tap a line to see its entries.</>}
+        description={<>Your total assets as of {asOf}: bank and cash, money people owe you, and investments. Tap a line to see its entries.</>}
         sections={[{ title: "What you own", rows: own, totalMinor: state.assets.totalMinor, empty: "Nothing recorded yet." }]}
         steps={[{ label: "Total assets", amountMinor: state.assets.totalMinor, op: "=" }]}
       />

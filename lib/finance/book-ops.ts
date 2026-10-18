@@ -1,6 +1,6 @@
 import { newId } from "@/lib/domain/id";
 import { buildLedger } from "./engine";
-import type { Account, AccountType, Book, EventDraft, EventIssue, EventSource, FinancialEvent, Person, TradeStyle } from "./types";
+import type { Account, AccountType, Book, DeletedEntry, EventDraft, EventIssue, EventSource, FinancialEvent, Person, TradeStyle } from "./types";
 
 /**
  * Pure, validated changes to a Book. Every change is applied to a copy and the
@@ -56,14 +56,24 @@ export function updateEvent(book: Book, id: string, draft: EventDraft, clock: Cl
 }
 
 /** Puts a previously deleted entry back exactly as it was (used by Undo). */
+/** Puts an entry back (from Undo, or from the deleted entries), exactly as it was. */
 export function restoreEvent(book: Book, event: FinancialEvent): Result<Book> {
   if (book.events.some((e) => e.id === event.id)) return invalid("That entry already exists.", "duplicate");
-  return accept(book, { ...book, events: [...book.events, event] });
+  const deleted = book.deleted?.filter((d) => d.event.id !== event.id);
+  return accept(book, { ...book, events: [...book.events, event], ...(book.deleted ? { deleted } : {}) });
 }
 
-export function deleteEvent(book: Book, id: string): Result<Book> {
-  if (!book.events.some((e) => e.id === id)) return invalid("That entry no longer exists.", "not_found");
-  return accept(book, { ...book, events: book.events.filter((e) => e.id !== id) });
+/** Moves entries to the deleted ones: out of every balance and report, but kept to see and put back. */
+function binned(book: Book, gone: FinancialEvent[], clock: Clock): DeletedEntry[] {
+  const at = clock.now();
+  const ids = new Set(gone.map((e) => e.id));
+  return [...(book.deleted ?? []).filter((d) => !ids.has(d.event.id)), ...gone.map((event) => ({ event, deletedAt: at }))];
+}
+
+export function deleteEvent(book: Book, id: string, clock: Clock = systemClock): Result<Book> {
+  const event = book.events.find((e) => e.id === id);
+  if (!event) return invalid("That entry no longer exists.", "not_found");
+  return accept(book, { ...book, events: book.events.filter((e) => e.id !== id), deleted: binned(book, [event], clock) });
 }
 
 /** Records that a statement line confirms or created an entry. Metadata only: no money changes. */
@@ -161,7 +171,7 @@ export function deleteAccount(book: Book, id: string, choice?: DeleteAccountChoi
 
   if ("withEntries" in choice) {
     const gone = new Set(used.map((e) => e.id));
-    return accept(book, { ...book, accounts, events: book.events.filter((e) => !gone.has(e.id)) });
+    return accept(book, { ...book, accounts, events: book.events.filter((e) => !gone.has(e.id)), deleted: binned(book, used, systemClock) });
   }
 
   const to = choice.moveTo;

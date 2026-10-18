@@ -45,7 +45,7 @@ describe("one person, two spellings", () => {
 });
 
 describe("a card paid beyond its recorded spending", () => {
-  it("never lowers liabilities: the credit counts as an asset, net worth unchanged", () => {
+  it("never lowers liabilities, and isn't counted as something you own: it paid a bill from before your entries", () => {
     const { s, hdfc } = startingScenario();
     const card = s.account({ name: "Credit card", type: "credit_card" });
     const friend = s.person("Govindraj Ingle");
@@ -57,8 +57,8 @@ describe("a card paid beyond its recorded spending", () => {
     expect(st.liabilities.creditCardsMinor).toBe(0);
     expect(st.liabilities.borrowedMinor).toBe(rs(114_800));
     expect(st.liabilities.totalMinor).toBe(rs(100_000) + rs(114_800)); // home loan + people, nothing taken off
-    expect(st.assets.creditBalancesMinor).toBe(rs(13_776));
+    expect(st.assets.creditBalancesMinor).toBe(0);
     expect(st.netWorthMinor).toBe(st.assets.totalMinor - st.liabilities.totalMinor);
-    expect(st.netWorthMinor).toBe(rs(400_000)); // borrowing and paying a bill don't change what you're worth
+    expect(st.netWorthMinor).toBe(rs(400_000) - rs(13_776)); // the bank money went to clear a debt from before
   });
 });

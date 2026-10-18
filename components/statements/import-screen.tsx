@@ -20,8 +20,11 @@ function Screen() {
   const finance = useFinance();
   const statements = useStatements();
   const id = params.get("import");
+  // Which statements to list: all, one kind (bank or card), or one account. Kept in the address so Back returns to it.
+  const show = params.get("show") ?? "all";
+  const setShow = (v: string) => router.replace(v === "all" ? pathname : `${pathname}?show=${v}`, { scroll: false });
 
-  const open = (importId: string | null) => router.push(importId ? `${pathname}?import=${importId}` : pathname);
+  const open = (importId: string | null) => router.push(importId ? `${pathname}?import=${importId}` : show === "all" ? pathname : `${pathname}?show=${show}`);
 
   if (finance.status === "loading" || statements.status === "loading") {
     return (
@@ -41,12 +44,45 @@ function Screen() {
       {statements.saveError && <p className="text-sm text-destructive">{statements.saveError}</p>}
       <UploadPanel onDone={open} />
 
-      {statements.imports.length > 0 && (
+      {statements.imports.length > 0 && (() => {
+        const accountOf = (i: { accountId: string }) => finance.book.accounts.find((a) => a.id === i.accountId);
+        const kindOf = (i: { accountId: string }) => (accountOf(i)?.type === "credit_card" ? "card" : "bank");
+        const used = [...new Set(statements.imports.map((i) => i.accountId))].map((aid) => finance.book.accounts.find((a) => a.id === aid)).filter((a) => !!a);
+        const kinds = new Set(statements.imports.map(kindOf));
+        const filters = [
+          { value: "all", label: "All" },
+          ...(kinds.size > 1 ? [{ value: "bank", label: "Bank accounts" }, { value: "card", label: "Credit cards" }] : []),
+          ...(used.length > 1 ? used.map((a) => ({ value: a.id, label: a.name })) : []),
+        ];
+        const shown = statements.imports
+          .filter((i) => show === "all" || (show === "bank" || show === "card" ? kindOf(i) === show : i.accountId === show))
+          .sort((x, y) => whenOf(y) - whenOf(x));
+        return (
         <section data-testid="history">
           <h2 className="mb-2 text-base font-semibold">Previous imports</h2>
+          {filters.length > 1 && (
+            <div role="tablist" aria-label="Show statements of" className="-mx-4 mb-3 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0" data-testid="import-filter">
+              {filters.map((f) => (
+                <button
+                  key={f.value}
+                  role="tab"
+                  type="button"
+                  aria-selected={show === f.value}
+                  onClick={() => setShow(f.value)}
+                  className={cn(
+                    "shrink-0 rounded-full border px-3 py-1 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    show === f.value ? "border-primary bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          )}
+          {shown.length === 0 && <p className="py-4 text-sm text-muted-foreground">No statements here yet.</p>}
           <div className="space-y-2">
-            {[...statements.imports].sort((x, y) => whenOf(y) - whenOf(x)).map((i) => {
-              const account = finance.book.accounts.find((a) => a.id === i.accountId);
+            {shown.map((i) => {
+              const account = accountOf(i);
               const failed = i.status === "FAILED";
               const alreadyThere = i.counts.matchedExisting + i.counts.alreadyImported;
               const count = i.status === "IMPORTED"
@@ -95,7 +131,8 @@ function Screen() {
             })}
           </div>
         </section>
-      )}
+        );
+      })()}
     </div>
   );
 }

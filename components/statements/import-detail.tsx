@@ -2,11 +2,12 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ArrowLeft, CheckCircle2, ChevronDown, FileText, Loader2, ScanText, ShieldAlert, ShieldCheck, Sparkles, Trash2, TriangleAlert, Undo2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronDown, FileText, Loader2, Pencil, ScanText, ShieldAlert, ShieldCheck, Sparkles, Trash2, TriangleAlert, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatDisplayDate, formatWeekdayDate } from "@/lib/domain/dates";
+import { useRestoreDeleted } from "../activity/deleted-entries";
 import { formatRupees } from "@/lib/finance/describe";
 import { statementDirection } from "@/lib/finance/order";
 import { entryGone, looksLikeCardStatement, needsDecision } from "@/lib/statements/pipeline";
@@ -121,10 +122,13 @@ function Section({ title, hint, count, children, defaultOpen = true, testId }: {
 /** A settled line: what it is, with the full trail (statement -> classification -> match -> decision -> entry) on demand. */
 function RowLine({ row }: { row: StatementRow }) {
   const { book } = useFinance();
-  const { openDetail } = useEventDialog();
+  const { openDetail, openEdit } = useEventDialog();
   const [open, setOpen] = useState(false);
   const c = row.classification;
   const event = row.eventId ? book.events.find((e) => e.id === row.eventId) : undefined;
+  // Its entry, if you deleted it: kept, so it can be put back from here.
+  const deletedEntry = row.eventId && !event ? book.deleted?.find((d) => d.event.id === row.eventId) : undefined;
+  const restoreDeleted = useRestoreDeleted();
   const statements = useStatements();
   const toast = useToast();
   const bringBack = () => {
@@ -135,7 +139,8 @@ function RowLine({ row }: { row: StatementRow }) {
 
   return (
     <div className="rounded-xl border bg-card" data-testid="row-line" data-status={row.status}>
-      <button className="flex w-full items-center gap-3 px-3 py-2.5 text-left" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+      <div className="flex items-center">
+      <button className="flex min-w-0 flex-1 items-center gap-3 py-2.5 pl-3 pr-1 text-left" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         <div className="w-28 shrink-0 text-xs text-muted-foreground">{formatWeekdayDate(row.transactionDate)}</div>
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium">{row.normalized.counterparty || row.rawDescription}</div>
@@ -152,8 +157,17 @@ function RowLine({ row }: { row: StatementRow }) {
           </div>
         </div>
         <div className={cn("text-sm font-semibold tabular-nums", row.direction === "credit" && "text-emerald-700")}>{signedAmount(row.direction, row.amountMinor)}</div>
-        <ChevronDown className={cn("size-4 text-muted-foreground transition-transform", open && "rotate-180")} />
+        <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
       </button>
+      {/* The entry this line made (or matched), to correct straight from the statement. */}
+      {event ? (
+        <Button variant="ghost" size="icon" className="mr-1 shrink-0" aria-label="Edit the entry" title="Edit the entry" onClick={() => openEdit(event.id)} data-testid="edit-entry">
+          <Pencil />
+        </Button>
+      ) : (
+        <span className="w-2 shrink-0" />
+      )}
+      </div>
       {open && (
         <dl className="grid gap-x-6 gap-y-1.5 border-t px-3 py-3 text-xs sm:grid-cols-2" data-testid="row-trail">
           <Item k="As printed by the bank" v={row.rawDescription} mono />
@@ -176,7 +190,17 @@ function RowLine({ row }: { row: StatementRow }) {
           )}
         </dl>
       )}
-      {entryGone(row, book) && (
+      {deletedEntry && (
+        <div className="flex flex-wrap items-center gap-2 border-t px-3 py-2">
+          <span className="mr-auto text-xs text-amber-700">
+            You deleted its entry on {formatDisplayDate(deletedEntry.deletedAt.slice(0, 10))}, so this line isn&apos;t counted anywhere.
+          </span>
+          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => restoreDeleted(deletedEntry)} data-testid="put-back">
+            <Undo2 /> Put it back
+          </Button>
+        </div>
+      )}
+      {!deletedEntry && entryGone(row, book) && (
         <div className="flex flex-wrap items-center gap-2 border-t px-3 py-2">
           <span className="mr-auto text-xs text-amber-700">Its entry isn&apos;t in your records any more (deleted or replaced), so this line isn&apos;t counted anywhere.</span>
           <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={bringBack} data-testid="add-back">

@@ -268,10 +268,20 @@ type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K>
 export type EventDraft = DistributiveOmit<FinancialEvent, "id" | "createdAt" | "updatedAt">;
 
 /** Everything the engine needs. The whole financial picture derives from this. */
+export interface DeletedEntry {
+  event: FinancialEvent;
+  deletedAt: string;
+}
+
 export interface Book {
   accounts: Account[];
   people: Person[];
   events: FinancialEvent[];
+  /**
+   * Entries you deleted, kept as they were so they can be seen and put back at any time. They count for
+   * nothing: balances and reports only read `events`.
+   */
+  deleted?: DeletedEntry[];
   /** Bookkeeping about the book itself, not money. */
   setup?: {
     /** The standard accounts (Cash, UPI, cards...) were offered once. */

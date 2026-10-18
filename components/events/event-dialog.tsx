@@ -237,7 +237,7 @@ function ConfirmDelete({ eventId, onClose }: { eventId: string; onClose: () => v
       <DialogHeader>
         <DialogTitle>Delete this entry?</DialogTitle>
         <DialogDescription>
-          {describer.title(event)} · {formatDisplayDate(event.date)}. Its effects are reversed; you can undo right after.
+          {describer.title(event)} · {formatDisplayDate(event.date)}. Its effects are reversed. It's kept under “Deleted entries” on the Statement page, to put back any time.
         </DialogDescription>
       </DialogHeader>
       <EffectsPanel eventId={eventId} />
@@ -339,7 +339,7 @@ function Detail({
       {confirming ? (
         <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm">
           <p className="font-medium text-red-900">Delete this entry?</p>
-          <p className="mt-0.5 text-red-800">Everything it changed will be reversed automatically. You can undo it right after.</p>
+          <p className="mt-0.5 text-red-800">Everything it changed will be reversed. It's kept under “Deleted entries” on the Statement page, to put back any time.</p>
           <div className="mt-3 flex justify-end gap-2">
             <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
               Cancel

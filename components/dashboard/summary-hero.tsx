@@ -110,7 +110,7 @@ export function SummaryHero({ model, state, book }: { model: DashboardModel; sta
         </div>
 
         <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-3 border-t border-slate-100 pt-3 sm:mt-5 sm:grid-cols-4 sm:gap-y-4 sm:pt-4 lg:mt-0 lg:max-w-4xl lg:flex-1 lg:border-t-0 lg:pt-0">
-          <Metric onHow={howAssets.open} href="/money#accounts" label="Total assets" value={formatHeadlineINR(state.assets.totalMinor)} title={formatExactINR(state.assets.totalMinor)} sub={<>Bank & cash {formatHeadlineINR(state.cashMinor)}{state.assets.creditBalancesMinor > 0 && <span className="max-sm:hidden"> · Card paid ahead {formatHeadlineINR(state.assets.creditBalancesMinor)}</span>}</>} />
+          <Metric onHow={howAssets.open} href="/money#accounts" label="Total assets" value={formatHeadlineINR(state.assets.totalMinor)} title={formatExactINR(state.assets.totalMinor)} sub={<>Bank & cash {formatHeadlineINR(state.cashMinor)}{state.assets.creditBalancesMinor > 0 && <span className="max-sm:hidden"> · Paid ahead {formatHeadlineINR(state.assets.creditBalancesMinor)}</span>}</>} />
           <Metric
             // Go where most of it is: people you owe, or cards and loans.
             href={state.liabilities.borrowedMinor >= state.liabilities.creditCardsMinor + state.liabilities.loansMinor ? "/money#owe" : "/money#cards-loans"}
@@ -176,7 +176,7 @@ export function SummaryHero({ model, state, book }: { model: DashboardModel; sta
           {...howSpent.props}
           title="What you spent this month"
           description="Purchases by category, with refunds taken off. Card bill payments aren't counted: the card's purchases already are. Tap a line to see its entries."
-          sections={[{ title: "By category", rows: spentX.lines.map((l) => ({ ...l, href: catId(l.label) ? monthHref({ category: catId(l.label) }) : undefined })), totalMinor: spentX.totalMinor, empty: "Nothing spent yet." }]}
+          sections={[{ title: "By category", rows: spentX.lines.map(({ entry, ...l }) => ({ ...l, href: entry ? activityHref({ category: entry.categoryId, from: entry.date, to: entry.date }) : catId(l.label) ? monthHref({ category: catId(l.label) }) : undefined })), totalMinor: spentX.totalMinor, empty: "Nothing spent yet." }]}
           steps={[{ label: "Spent this month", amountMinor: spentX.totalMinor, op: "=" }]}
         />
       )}

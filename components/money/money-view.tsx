@@ -18,7 +18,7 @@ import { AccountLogo, useBankHints } from "../account-logo";
 import { RangeTabs } from "../charts/primitives";
 import { PageTitle } from "../page-title";
 import { PictureIcon } from "../picture-icon";
-import { statementMatches, useBalances, useStatementChecks, type StatementCheck } from "../statements/use-statement-checks";
+import { statementMatches, useBalances, useCardUsage, useStatementChecks, type StatementCheck } from "../statements/use-statement-checks";
 import { ACCOUNT_TYPE_INFO, AccountDialog, type AddableAccountType } from "./account-dialog";
 import { PeopleList } from "./manage-lists";
 
@@ -64,6 +64,7 @@ export function MoneyView() {
   const { state } = useBalances();
   const statements = useStatementChecks();
   const bankOf = useBankHints();
+  const usageOf = useCardUsage();
   const { openAdd } = useEventDialog();
   const theyPaidMe = useQuickRepaymentReceived();
   const [dialog, setDialog] = useState<{ open: boolean; editing: Account | null; adding?: AddableAccountType }>({ open: false, editing: null });
@@ -102,8 +103,10 @@ export function MoneyView() {
         const rows = state.accounts.filter((a) => section.types.includes(a.account.type));
         // With a bank logo in the list, every row's picture sits in the logo's width so the names line up.
         const wide = rows.some((a) => bankBrandFor(a.account.name, bankOf(a.account.id)));
-        // Cash below zero only means the starting cash was never set: show nothing left, not a debt.
-        const shown = (a: { account: Account; balanceMinor: number }) => (a.account.type === "cash" ? Math.max(a.balanceMinor, 0) : a.balanceMinor);
+        // Cash below zero only means the starting cash was never set: show nothing left, not a debt. A card counts
+        // what's taken from its limit (the unpaid bill and spending since), never a payment beyond its purchases.
+        const shown = (a: { account: Account; balanceMinor: number }) =>
+          a.account.type === "cash" ? Math.max(a.balanceMinor, 0) : a.account.type === "credit_card" ? usageOf(a.account, a.balanceMinor).usedMinor : a.balanceMinor;
         return (
           <Card key={section.title} id={section.id} className={cn("scroll-mt-24", hide("accounts"))}>
             <SectionHead
@@ -123,20 +126,30 @@ export function MoneyView() {
               <CardContent className="py-6 text-sm text-muted-foreground">None yet.</CardContent>
             ) : (
               <ul className="divide-y py-2">
-                {rows.map(({ account, balanceMinor }) => (
+                {rows.map(({ account, balanceMinor }) => {
+                  // A card shows what's left to spend, as its bank's app does.
+                  const usage = account.type === "credit_card" ? usageOf(account, balanceMinor) : null;
+                  return (
                   <AccountRow
                     key={account.id}
                     account={account}
                     bankHint={bankOf(account.id)}
                     wide={wide}
-                    detail={ACCOUNT_TYPE_INFO[account.type].label}
-                    value={formatRupees(shown({ account, balanceMinor }))}
+                    detail={
+                      usage
+                        ? usage.dueMinor > 0
+                          ? `${formatRupees(usage.dueMinor)} due${usage.dueDate ? ` by ${formatDisplayDate(usage.dueDate)}` : ""}`
+                          : `${formatRupees(usage.usedMinor)} used of ${formatRupees(usage.limitMinor)}`
+                        : ACCOUNT_TYPE_INFO[account.type].label
+                    }
+                    value={formatRupees(usage ? usage.availableMinor : shown({ account, balanceMinor }))}
                     startingCash={account.type === "cash" && balanceMinor < 0 ? -balanceMinor : undefined}
-                    caption={account.type === "credit_card" || account.type === "loan" ? "owed" : undefined}
+                    caption={usage ? "available" : account.type === "loan" ? "owed" : undefined}
                     statement={account.type === "bank" || account.type === "cash" ? statements.get(account.id) : undefined}
                     onEdit={() => setDialog({ open: true, editing: account })}
                   />
-                ))}
+                  );
+                })}
               </ul>
             )}
           </Card>

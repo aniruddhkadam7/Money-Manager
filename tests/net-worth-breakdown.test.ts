@@ -26,7 +26,8 @@ describe("net worth breakdown", () => {
     expect(sum(own)).toBe(state.assets.totalMinor);
     expect(sum(owe)).toBe(state.liabilities.totalMinor);
     expect(sum(own) - sum(owe)).toBe(state.netWorthMinor);
-    expect(own.find((l) => l.label === "Card")).toMatchObject({ amountMinor: 3000, note: "Paid more than recorded spending" });
+    // A card paid beyond its recorded purchases is a bill from before your entries: not something you own.
+    expect(own.find((l) => l.label === "Card")).toBeUndefined();
     expect(own.find((l) => l.label === "EY")).toMatchObject({ amountMinor: 565100, note: "Owes you" });
     expect(owe.map((l) => l.label)).toEqual(["Car loan", "Malu", "Other card"]);
   });

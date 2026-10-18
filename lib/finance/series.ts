@@ -99,6 +99,9 @@ export function balanceSeries(book: Book, ledger: Ledger, dates: string[]): Bala
   let investments = 0;
   let invested = 0;
   let i = 0;
+  // Each card's running balance: one paid beyond its recorded purchases counts as nothing owed, not as money you have.
+  const cards = new Map<string, number>();
+  const cardDebt = () => [...cards.values()].reduce((t, owed) => t + Math.max(0, owed), 0);
 
   return dates.map((date) => {
     for (; i < entries.length && entries[i].date <= date; i++) {
@@ -106,7 +109,10 @@ export function balanceSeries(book: Book, ledger: Ledger, dates: string[]): Bala
         if (p.ledger.startsWith("acct:")) {
           const type = typeOf.get(p.ledger.slice(5));
           if (!type) continue;
-          if (isAssetAccount(type)) {
+          if (type === "credit_card") {
+            const id = p.ledger.slice(5);
+            cards.set(id, (cards.get(id) ?? 0) - p.amountMinor);
+          } else if (isAssetAccount(type)) {
             assets += p.amountMinor;
             if (type === "investment") investments += p.amountMinor;
           } else {
@@ -120,11 +126,12 @@ export function balanceSeries(book: Book, ledger: Ledger, dates: string[]): Bala
       }
       invested += entries[i].costDelta?.deltaMinor ?? 0;
     }
+    const owed = liabilities + cardDebt();
     return {
       date,
-      netWorthMinor: assets - liabilities,
+      netWorthMinor: assets - owed,
       assetsMinor: assets,
-      liabilitiesMinor: liabilities,
+      liabilitiesMinor: owed,
       investmentsMinor: investments,
       investedMinor: invested,
     };
