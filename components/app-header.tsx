@@ -91,7 +91,8 @@ const TABS = [
   { href: "/money", label: "Money", icon: Wallet },
   // "Invest", not "Investments": seven places share a phone's width.
   { href: "/investments", label: "Invest", icon: PiggyBank },
-  { href: "/market", label: "Market", icon: TrendingUp },
+  // Sector performance is a page within Market, so the tab stays lit there.
+  { href: "/market", label: "Market", icon: TrendingUp, also: "/market/sectors" },
   { href: "/import", label: "Import", icon: FileUp },
 ];
 

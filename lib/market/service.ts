@@ -65,7 +65,7 @@ export function indexQuote(item: IndexItem, q: QuoteFields): IndexQuote | null {
   };
 }
 
-/** The three indices and every sector, today: one request to Yahoo. */
+/** The headline indices and every sector, today: one request to Yahoo. */
 export function getOverview(): Promise<OverviewResponse> {
   return cached("overview", PRICE_TTL_S * 1000, async () => {
     const quotes = await fetchQuotes([...new Set([...INDICES, ...SECTORS].map((i) => i.symbol))]);
@@ -99,9 +99,10 @@ export function member(c: { symbol: string; name: string; industry: string }, q:
 /** An index's companies (NSE's list) with today's figures from Yahoo. */
 export function getMembers(symbol: string): Promise<MembersResponse> {
   const item = BY_SYMBOL[symbol];
-  if (!item) return Promise.reject(new Error("Unknown index"));
+  if (!item?.list) return Promise.reject(new Error("Unknown index"));
+  const listName = item.list;
   return cached(`members:${symbol}`, PRICE_TTL_S * 1000, async () => {
-    const list = await cached(`list:${item.list}`, LIST_TTL_MS, () => fetchConstituents(item.list));
+    const list = await cached(`list:${listName}`, LIST_TTL_MS, () => fetchConstituents(listName));
     const quotes = await fetchQuotes(list.map((c) => c.symbol));
     return { symbol, name: item.name, members: list.map((c) => member(c, quotes[c.symbol])), fetchedAt: Date.now() };
   });
