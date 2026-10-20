@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { ArrowRight, Eye, EyeOff, Loader2, Wallet } from "lucide-react";
 import { useAnimate } from "motion/react";
 import type { Session, User } from "@supabase/supabase-js";
@@ -14,6 +14,7 @@ import { Particles } from "@/components/ui/particles";
 import { cloudConfigured, supabase } from "@/lib/cloud/client";
 import { RELOCK_AFTER_MS, forgetLeftUnlocked, leftUnlockedRecently, lockSettings, noteLeftUnlocked, resetFails } from "@/lib/cloud/app-lock";
 import { startSync } from "@/lib/cloud/sync";
+import { WelcomeScreen } from "./welcome-screen";
 
 type Gate = { kind: "checking" } | { kind: "signed-out" } | { kind: "syncing" } | { kind: "ready"; offline: boolean };
 
@@ -26,6 +27,9 @@ export function CloudGate({ children }: { children: ReactNode }) {
   const [gate, setGate] = useState<Gate>(cloudConfigured ? { kind: "checking" } : { kind: "ready", offline: false });
   const [user, setUser] = useState<User | null>(null);
   const [locked, setLocked] = useState(false);
+  // Just signed in with the password: greet the person before opening the app (not on a reload).
+  const [welcoming, setWelcoming] = useState(false);
+  const endWelcome = useCallback(() => setWelcoming(false), []);
 
   useEffect(() => {
     const sb = supabase();
@@ -78,6 +82,7 @@ export function CloudGate({ children }: { children: ReactNode }) {
 
   // The data keeps loading behind the lock; nothing of it shows until it's unlocked.
   if (locked && user && hasPasscode) return <LockScreen user={user} onUnlock={() => setLocked(false)} />;
+  if (welcoming && gate.kind !== "signed-out") return <WelcomeScreen user={user} ready={gate.kind === "ready"} onDone={endWelcome} />;
   if (gate.kind === "ready") {
     return (
       <>
@@ -90,7 +95,7 @@ export function CloudGate({ children }: { children: ReactNode }) {
       </>
     );
   }
-  if (gate.kind === "signed-out") return <SignIn />;
+  if (gate.kind === "signed-out") return <SignIn onSignedIn={() => setWelcoming(true)} />;
   return (
     <div className="flex min-h-dvh items-center justify-center gap-2 text-sm text-muted-foreground">
       <Loader2 className="size-4 animate-spin" /> {gate.kind === "syncing" ? "Loading your data…" : "Checking sign-in…"}
@@ -131,7 +136,7 @@ export const usernameFor = (email: string): string | undefined => {
 };
 
 
-function SignIn() {
+function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -154,9 +159,12 @@ function SignIn() {
       // Signing in with the password unlocks too: no passcode straight after, and wrong passcode tries are cleared.
       // (Noted first: the session can start before signing in returns.)
       noteLeftUnlocked();
+      // Asked for the greeting before signing in too: the session (and the app) can start before this returns.
+      onSignedIn();
       const { error } = await sb.auth.signInWithPassword({ email: loginEmail(username), password });
       if (error) {
         forgetLeftUnlocked();
+        // Still signed out, so the welcome waits for the next try that works.
         fail(friendlyAuthError(error.message));
       } else resetFails();
     } catch {

@@ -46,7 +46,7 @@ interface Identity {
   lastSignIn?: string;
 }
 
-function identify(user: User | null, profile: Profile): Identity {
+export function identify(user: User | null, profile: Profile): Identity {
   const email = user?.email ?? "";
   const meta = (user?.user_metadata ?? {}) as Record<string, unknown>;
   const username = (typeof meta.username === "string" && meta.username) || usernameFor(email);
@@ -71,7 +71,7 @@ function formatDate(iso: string | undefined, withTime = false): string | undefin
   return d.toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", ...(withTime ? { hour: "numeric", minute: "2-digit" } : {}) });
 }
 
-function Avatar({ photo, initials, className }: { photo?: string; initials: string; className?: string }) {
+export function Avatar({ photo, initials, className }: { photo?: string; initials: string; className?: string }) {
   if (photo) {
     // eslint-disable-next-line @next/next/no-img-element
     return <img src={photo} alt="" className={cn("rounded-full object-cover", className)} />;

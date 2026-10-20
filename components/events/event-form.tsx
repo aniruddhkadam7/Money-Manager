@@ -49,6 +49,8 @@ interface Values {
   interest: string;
   date: string;
   shares: { person: string; amount: string }[];
+  /** Split expense: the bill is shared equally between you and everyone named. */
+  splitEqually: boolean;
   /** Lend / borrow: owed from before records began, so no money moves in an account now. */
   beforeTracking: boolean;
   /** The money moved, but no bank statement will show it: counted on top of the bank's balance. */
@@ -155,6 +157,7 @@ export function EventForm({
       interest: "",
       date: preset?.date ?? todayISO(),
       shares: [{ person: "", amount: "" }],
+      splitEqually: true,
       beforeTracking: false,
       offStatement: false,
     };
@@ -181,6 +184,7 @@ export function EventForm({
           categoryId: e.categoryId,
           accountId: e.accountId,
           shares: e.shares.map((s) => ({ person: personName(s.personId), amount: minorToInputString(s.amountMinor) })),
+          splitEqually: e.shares.every((s) => s.amountMinor === equalShareMinor(e.totalMinor, e.shares.length)),
         };
       case "reimbursable_expense":
         return {
@@ -280,7 +284,15 @@ export function EventForm({
     return f.book.accounts.find((a) => a.type !== "loan" && a.name.toLowerCase() === name);
   };
 
-  const othersTotal = values.shares.reduce((t, s) => t + (parseAmountToMinor(s.amount) ?? 0), 0);
+  // Split equally: everyone named owes the same; any odd paisa stays in your own share.
+  const namedCount = values.shares.filter((r) => r.person.trim()).length;
+  const shares = values.splitEqually
+    ? values.shares.map((s) => ({
+        ...s,
+        amount: s.person.trim() && amountMinor !== null ? minorToInputString(equalShareMinor(amountMinor, namedCount)) : "",
+      }))
+    : values.shares;
+  const othersTotal = shares.reduce((t, s) => t + (parseAmountToMinor(s.amount) ?? 0), 0);
   const yourShare = amountMinor === null ? null : amountMinor - othersTotal;
 
   async function handleAddCategory() {
@@ -412,9 +424,9 @@ export function EventForm({
       next.soldValue = "Enter an amount, or leave blank to sell everything";
     }
     if (has("shares")) {
-      const rows = values.shares.filter((s) => s.person.trim() || s.amount.trim());
+      const rows = shares.filter((s) => s.person.trim() || s.amount.trim());
       if (rows.length === 0 || rows.some((s) => !s.person.trim() || parseAmountToMinor(s.amount) === null)) {
-        next.shares = "Add each person and the amount they owe you";
+        next.shares = values.splitEqually ? "Add each person who shares the bill" : "Add each person and the amount they owe you";
       } else if (amountMinor !== null && othersTotal > amountMinor) {
         next.shares = "Others' shares add up to more than the bill";
       }
@@ -481,14 +493,14 @@ export function EventForm({
         return id ? { type, date, personId: id, accountId: values.accountId, amountMinor: amount, predatesRecords: true } : null;
       }
       case "split_expense": {
-        const shares: { personId: string; amountMinor: number }[] = [];
-        for (const s of values.shares.filter((r) => r.person.trim())) {
+        const owed: { personId: string; amountMinor: number }[] = [];
+        for (const s of shares.filter((r) => r.person.trim())) {
           const id = f.resolvePerson(s.person);
           const share = parseAmountToMinor(s.amount);
           if (!id || share === null) return null;
-          shares.push({ personId: id, amountMinor: share });
+          owed.push({ personId: id, amountMinor: share });
         }
-        return { type, date, description, accountId: values.accountId, totalMinor: amount, categoryId: values.categoryId, shares };
+        return { type, date, description, accountId: values.accountId, totalMinor: amount, categoryId: values.categoryId, shares: owed };
       }
       case "reimbursable_expense": {
         const id = personId();
@@ -652,22 +664,15 @@ export function EventForm({
       case "person":
         return (
           <Field key={key} id="person" label={label("person", "Who?")} error={errors.person}>
-            <Input
+            <PersonInput
               id="person"
-              list="people-list"
-              autoComplete="off"
               autoFocus={!!preset?.person ? false : !editing}
-              maxLength={40}
               placeholder="e.g. Rahul"
               value={values.person}
-              onChange={(e) => set("person", e.target.value)}
-              aria-invalid={!!errors.person}
+              onChange={(v) => set("person", v)}
+              people={f.book.people.map((p) => p.name)}
+              invalid={!!errors.person}
             />
-            <datalist id="people-list">
-              {f.book.people.map((p) => (
-                <option key={p.id} value={p.name} />
-              ))}
-            </datalist>
             {personHint && <p className="text-xs text-muted-foreground">{personHint}</p>}
           </Field>
         );
@@ -782,7 +787,7 @@ export function EventForm({
                 {loans.map((a) => (
                   <SelectItem key={a.id} value={a.id}>
                     <span className="flex items-center gap-2">
-                      <BankMark name={a.name} fallback={<PictureIcon name="loan" />} />
+                      <BankMark name={a.name} accountId={a.id} fallback={<PictureIcon name="loan" />} />
                       {a.name}
                     </span>
                   </SelectItem>
@@ -817,21 +822,34 @@ export function EventForm({
           </Field>
         );
 
-      case "shares":
+      case "shares": {
+        const updateRow = (i: number, row: Partial<Values["shares"][number]>) =>
+          set("shares", values.shares.map((r, j) => (j === i ? { ...r, ...row } : r)));
         return (
           <div key={key} className="grid gap-2">
-            <Label>Who owes you a share?</Label>
-            {values.shares.map((row, i) => (
+            <div className="flex items-center justify-between gap-3">
+              <Label>Who owes you a share?</Label>
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+                Split equally
+                <Switch
+                  checked={values.splitEqually}
+                  onCheckedChange={(on) => {
+                    // Turning it off keeps the equal amounts as a starting point to change.
+                    if (!on) set("shares", shares);
+                    set("splitEqually", on);
+                  }}
+                  aria-label="Split equally"
+                  className={values.splitEqually ? undefined : "bg-slate-300 dark:bg-slate-600"}
+                />
+              </label>
+            </div>
+            {shares.map((row, i) => (
               <div key={i} className="flex items-center gap-2">
-                <Input
-                  list="people-list"
-                  autoComplete="off"
-                  placeholder="Name"
-                  maxLength={40}
+                <PersonInput
                   value={row.person}
-                  onChange={(e) =>
-                    set("shares", values.shares.map((r, j) => (j === i ? { ...r, person: e.target.value } : r)))
-                  }
+                  onChange={(person) => updateRow(i, { person })}
+                  people={f.book.people.map((p) => p.name)}
+                  taken={values.shares.filter((_, j) => j !== i).map((r) => r.person)}
                 />
                 <div className="relative w-32 shrink-0">
                   <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">₹</span>
@@ -839,11 +857,11 @@ export function EventForm({
                     inputMode="decimal"
                     autoComplete="off"
                     placeholder="0"
-                    className="pl-7 tabular-nums"
+                    aria-label={`${row.person.trim() || "Their"} share`}
+                    readOnly={values.splitEqually}
+                    className={`pl-7 tabular-nums ${values.splitEqually ? "bg-muted/50 text-muted-foreground" : ""}`}
                     value={row.amount}
-                    onChange={(e) =>
-                      set("shares", values.shares.map((r, j) => (j === i ? { ...r, amount: e.target.value } : r)))
-                    }
+                    onChange={(e) => updateRow(i, { amount: e.target.value })}
                   />
                 </div>
                 {values.shares.length > 1 && (
@@ -859,11 +877,6 @@ export function EventForm({
                 )}
               </div>
             ))}
-            <datalist id="people-list">
-              {f.book.people.map((p) => (
-                <option key={p.id} value={p.name} />
-              ))}
-            </datalist>
             <button
               type="button"
               onClick={() => set("shares", [...values.shares, { person: "", amount: "" }])}
@@ -879,6 +892,7 @@ export function EventForm({
             {errors.shares && <p className="text-xs text-destructive">{errors.shares}</p>}
           </div>
         );
+      }
 
       case "date":
         return (
@@ -980,6 +994,92 @@ export function EventForm({
   );
 }
 
+/** One person's share of a bill split equally between you and `others` people (rounded down to the paisa). */
+function equalShareMinor(totalMinor: number, others: number): number {
+  return others > 0 ? Math.floor(totalMinor / (others + 1)) : 0;
+}
+
+/**
+ * A name box that offers the people already in your records as you type (a datalist barely shows on
+ * iPhone). Names in `taken`, used elsewhere on the form, aren't offered again.
+ */
+function PersonInput({
+  id,
+  value,
+  onChange,
+  people,
+  taken = [],
+  placeholder = "Name",
+  autoFocus,
+  invalid,
+}: {
+  id?: string;
+  value: string;
+  onChange: (name: string) => void;
+  people: string[];
+  taken?: string[];
+  placeholder?: string;
+  autoFocus?: boolean;
+  invalid?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const typed = value.trim().toLowerCase();
+  const used = new Set(taken.map((t) => t.trim().toLowerCase()));
+  const starts = (n: string) => (n.toLowerCase().startsWith(typed) ? 0 : 1);
+  // Offered only once something is typed; a name that matches no one is simply saved as a new person.
+  const matches = !typed
+    ? []
+    : people
+    .filter((n) => !used.has(n.toLowerCase()) && n.toLowerCase() !== typed && n.toLowerCase().includes(typed))
+    .sort((a, b) => starts(a) - starts(b) || a.localeCompare(b))
+    .slice(0, 6);
+  return (
+    <div className="relative min-w-0 flex-1">
+      <Input
+        id={id}
+        autoComplete="off"
+        autoFocus={autoFocus}
+        maxLength={40}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        onKeyDown={(e) => e.key === "Escape" && setOpen(false)}
+        aria-invalid={invalid}
+        aria-autocomplete="list"
+        aria-expanded={open && matches.length > 0}
+      />
+      {open && matches.length > 0 && (
+        <ul
+          role="listbox"
+          className="glass-pop absolute inset-x-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-xl border p-1 shadow-lg"
+        >
+          {matches.map((name) => (
+            <li key={name} role="option" aria-selected={false}>
+              <button
+                type="button"
+                // Pick on press, before the box loses focus and closes the list.
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  onChange(name);
+                  setOpen(false);
+                }}
+                className="w-full truncate rounded-lg px-2 py-2 text-left text-sm hover:bg-muted"
+              >
+                {name}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function ValueHint({ holdingId }: { holdingId: string }) {
   const { state } = useFinance();
   const h = state.investments.holdings.find((x) => x.account.id === holdingId);
@@ -1035,7 +1135,7 @@ export function AccountField({
             {accounts.map((a) => (
               <SelectItem key={a.id} value={a.id}>
                 <span className="flex items-center gap-2">
-                  <BankMark name={a.name} fallback={<PictureIcon name={accountPicture(a)} />} />
+                  <BankMark name={a.name} accountId={a.id} fallback={<PictureIcon name={accountPicture(a)} />} />
                   {a.name}
                 </span>
               </SelectItem>

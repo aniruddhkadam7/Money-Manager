@@ -45,11 +45,22 @@ export function AccountLogo({ account, bankHint, tile = false }: { account: Acco
 }
 
 /**
- * The bank's official logo at list-row size (inside a picker, beside a name), when the account names a known
- * bank; else `fallback`.
+ * The bank's official logo at list-row size (inside a picker, beside a name), when the account or (given its
+ * `accountId`) one of its statements names a known bank; else `fallback`.
  */
-export function BankMark({ name, bankHint, fallback = null }: { name: string; bankHint?: string; fallback?: React.ReactNode }) {
-  const brand = bankBrandFor(name, bankHint);
+export function BankMark({
+  name,
+  accountId,
+  bankHint,
+  fallback = null,
+}: {
+  name: string;
+  accountId?: string;
+  bankHint?: string;
+  fallback?: React.ReactNode;
+}) {
+  const bankOf = useBankHints();
+  const brand = bankBrandFor(name, bankHint ?? (accountId ? bankOf(accountId) : undefined));
   const [broken, setBroken] = useState(false);
   if (!brand || broken) return <>{fallback}</>;
   return (

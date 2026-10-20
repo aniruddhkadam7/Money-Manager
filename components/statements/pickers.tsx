@@ -140,7 +140,7 @@ export function CounterAccountSelect({
         {accounts.map((a) => (
           <SelectItem key={a.id} value={a.id}>
             <span className="flex items-center gap-2">
-              <BankMark name={a.name} />
+              <BankMark name={a.name} accountId={a.id} />
               {a.name}
             </span>
           </SelectItem>
