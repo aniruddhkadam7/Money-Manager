@@ -34,6 +34,11 @@ export interface PersonSummary {
   owedToMe: { originalMinor: number; receivedMinor: number; outstandingMinor: number };
   /** Money I owe them. */
   iOwe: { originalMinor: number; repaidMinor: number; outstandingMinor: number };
+  /**
+   * What we owed each other that cancelled out: when both sides owe, only the difference is outstanding
+   * (one side), and this much came off each.
+   */
+  offsetMinor: number;
 }
 
 export interface FinancialState {
@@ -100,14 +105,19 @@ export function deriveState(book: Book, ledger: Ledger, asOf: string): Financial
   let receivablesMinor = 0;
   let borrowedMinor = 0;
   const people: PersonSummary[] = book.people.map((person) => {
-    const owedToMe = bal(ledgerIds.receivable(person.id));
-    const iOwe = -bal(ledgerIds.payable(person.id));
+    // Owing each other: only the difference is owed, by whoever owes more. Net worth is the same either way.
+    const theirs = bal(ledgerIds.receivable(person.id));
+    const mine = -bal(ledgerIds.payable(person.id));
+    const offsetMinor = Math.max(0, Math.min(theirs, mine));
+    const owedToMe = theirs - offsetMinor;
+    const iOwe = mine - offsetMinor;
     receivablesMinor += owedToMe;
     borrowedMinor += iOwe;
     return {
       person,
       owedToMe: { originalMinor: 0, receivedMinor: 0, outstandingMinor: owedToMe },
       iOwe: { originalMinor: 0, repaidMinor: 0, outstandingMinor: iOwe },
+      offsetMinor,
     };
   });
 

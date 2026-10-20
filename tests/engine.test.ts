@@ -36,14 +36,17 @@ describe("success criteria: the full story from the spec", () => {
     s.ok({ type: "lend", date: D, personId: rahul.id, accountId: hdfc.id, amountMinor: rs(10_000) });
     st = s.state();
     expect(st.cashMinor).toBe(rs(500_000 + 20_000 - 5_000 - 10_000));
-    expect(st.assets.receivablesMinor).toBe(rs(10_000));
+    // You owe Rahul 20,000 and he owes you 10,000: only the difference, 10,000, is owed (by you).
+    expect(st.assets.receivablesMinor).toBe(0);
+    expect(st.liabilities.borrowedMinor).toBe(rs(10_000));
     expect(st.netWorthMinor).toBe(rs(395_000));
     expect(s.report().expensesMinor).toBe(rs(5_000)); // lending is not an expense
 
     // 5. Rahul repays ₹5,000
     s.ok({ type: "repayment_received", date: D, personId: rahul.id, accountId: hdfc.id, amountMinor: rs(5_000) });
     st = s.state();
-    expect(st.assets.receivablesMinor).toBe(rs(5_000));
+    expect(st.assets.receivablesMinor).toBe(0);
+    expect(st.liabilities.borrowedMinor).toBe(rs(15_000));
     expect(st.cashMinor).toBe(rs(500_000 + 20_000 - 5_000 - 10_000 + 5_000));
     expect(st.netWorthMinor).toBe(rs(395_000));
     expect(s.report().incomeMinor).toBe(0); // a repayment is not income
@@ -66,10 +69,12 @@ describe("success criteria: the full story from the spec", () => {
     expect(st.investments.gainMinor).toBe(rs(1_500));
     expect(st.netWorthMinor).toBe(rs(396_500));
 
-    // Rahul: lent 10,000, repaid 5,000, 5,000 left; and borrowed 20,000, nothing repaid
+    // Rahul: lent 10,000, repaid 5,000, 5,000 left; and borrowed 20,000, nothing repaid. The 5,000 he owes
+    // comes off the 20,000 you owe him, so you owe 15,000 and he owes nothing.
     const rs1 = st.people.find((p) => p.person.id === rahul.id)!;
-    expect(rs1.owedToMe).toEqual({ originalMinor: rs(10_000), receivedMinor: rs(5_000), outstandingMinor: rs(5_000) });
-    expect(rs1.iOwe).toEqual({ originalMinor: rs(20_000), repaidMinor: 0, outstandingMinor: rs(20_000) });
+    expect(rs1.owedToMe).toEqual({ originalMinor: rs(10_000), receivedMinor: rs(5_000), outstandingMinor: 0 });
+    expect(rs1.iOwe).toEqual({ originalMinor: rs(20_000), repaidMinor: 0, outstandingMinor: rs(15_000) });
+    expect(rs1.offsetMinor).toBe(rs(5_000));
   });
 });
 

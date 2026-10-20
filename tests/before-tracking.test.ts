@@ -41,4 +41,18 @@ describe("debts from before you started tracking", () => {
     expect(state.people.find((p) => p.person.id === "g")!.iOwe.outstandingMinor + 0).toBe(0);
     expect(state.accounts[0].balanceMinor).toBe(2944631 - 500000);
   });
+
+  it("what you and a person owe each other cancels out, leaving only the difference", () => {
+    const { state } = stateOf([
+      ev("b", { type: "borrow", personId: "g", accountId: "kotak", amountMinor: 8896100 }),
+      ev("r", { type: "repayment_made", personId: "g", accountId: "kotak", amountMinor: 500000 }),
+      ev("s", { type: "split_expense", accountId: "kotak", totalMinor: 57000, categoryId: "food", shares: [{ personId: "g", amountMinor: 28500 }] }),
+    ]);
+    const g = state.people.find((p) => p.person.id === "g")!;
+    expect(g.owedToMe.outstandingMinor).toBe(0);
+    expect(g.iOwe.outstandingMinor).toBe(8396100 - 28500);
+    expect(g.offsetMinor).toBe(28500);
+    expect(state.assets.receivablesMinor).toBe(0);
+    expect(state.liabilities.borrowedMinor).toBe(8396100 - 28500);
+  });
 });

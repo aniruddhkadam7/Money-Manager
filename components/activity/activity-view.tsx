@@ -11,8 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SearchableSelect, type SearchableOption } from "@/components/ui/searchable-select";
 import { accountIdsUsedBy, personIdsUsedBy } from "@/lib/finance/book-ops";
 import { formatRupees } from "@/lib/finance/describe";
+import { involvesPerson, personSummary, type PersonSummary } from "@/lib/finance/person-summary";
 import { chronological } from "@/lib/finance/order";
 import { isMoneyBack } from "@/lib/finance/state";
+import type { Category } from "@/lib/domain/types";
 import type { EventType, FinancialEvent } from "@/lib/finance/types";
 import { cn, scrollPage } from "@/lib/utils";
 import { ActivityViewSwitch } from "../calendar/calendar-view";
@@ -21,7 +23,6 @@ import { PartyLogo } from "../brand-logo";
 import { useEventDialog } from "../events/event-dialog";
 import { EVENT_OPTIONS } from "../events/event-meta";
 import { EventRow, headline } from "../events/event-row";
-import { useQuickRepaymentReceived } from "../events/quick-repay";
 import { PageTitle } from "../page-title";
 import { PictureIcon } from "../picture-icon";
 import { BankMark } from "../account-logo";
@@ -124,7 +125,6 @@ export function ActivityView() {
 function ActivityContent() {
   const { status, book, categories, describer, state } = useFinance();
   const { openAdd } = useEventDialog();
-  const theyPaidMe = useQuickRepaymentReceived();
 
   const params = useSearchParams();
   // A link to one specific entry type (say "Lend") sets the Type filter; everything else sets Show.
@@ -155,6 +155,8 @@ function ActivityContent() {
     return new Set(state.people.filter((p) => (owed === "me" ? p.owedToMe.outstandingMinor : p.iOwe.outstandingMinor) > 0).map((p) => p.person.id));
   }, [owed, state.people]);
 
+  const chosenPerson = personId === ALL ? undefined : book.people.find((p) => p.id === personId);
+
   const filtered = useMemo(() => {
     const types = typesFor(group);
     const q = query.trim().toLowerCase();
@@ -164,7 +166,7 @@ function ActivityContent() {
         (e) =>
           (q === "" || `${describer.title(e)} ${describer.subtitle(e)} ${e.description ?? ""} ${e.note ?? ""}`.toLowerCase().includes(q)) &&
           (accountId === ALL || accountIdsUsedBy(e).includes(accountId)) &&
-          (personId === ALL || personIdsUsedBy(e).includes(personId)) &&
+          (personId === ALL || (chosenPerson ? involvesPerson(e, chosenPerson) : personIdsUsedBy(e).includes(personId))) &&
           (!owedPeople || personIdsUsedBy(e).some((id) => owedPeople.has(id))) &&
           matchesShow(group, e, types) &&
           (entryType === ALL || (e.type === entryType && !(entryType === "income" && isMoneyBack(e)))) &&
@@ -181,11 +183,13 @@ function ActivityContent() {
         const byAmount = amountOf(b) - amountOf(a);
         return (sort === "highest" ? byAmount : -byAmount) || byDate;
       });
-  }, [book.events, group, entryType, categoryId, accountId, personId, from, to, origin, query, describer, owedPeople, sort, party]);
+  }, [book.events, group, entryType, categoryId, accountId, personId, chosenPerson, from, to, origin, query, describer, owedPeople, sort, party]);
 
   const hasFilters =
     party !== null || group !== ALL || entryType !== ALL || categoryId !== ALL || accountId !== ALL || personId !== ALL || from !== "" || to !== "" || origin !== ALL || query !== "" || owed !== null;
   const person = personId === ALL ? undefined : state.people.find((p) => p.person.id === personId);
+  // Everything with them, whatever else is filtered: the list below narrows, these totals don't.
+  const together = useMemo(() => (chosenPerson ? personSummary(book.events, chosenPerson) : null), [book.events, chosenPerson]);
 
   // A dashboard link can open a view that isn't on the short menu (e.g. "Money I lent"); it's listed while it's on.
   const extraShow = group !== ALL && !SHOW.some((o) => o.value === group) ? GROUPS.find((g) => `group:${g.id}` === group) : undefined;
@@ -313,28 +317,14 @@ function ActivityContent() {
                   )}
                   {person.owedToMe.outstandingMinor === 0 && person.iOwe.outstandingMinor === 0 && "All settled"}
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  {person.owedToMe.originalMinor > 0 &&
-                    `Lent ${formatRupees(person.owedToMe.originalMinor)}, paid back ${formatRupees(person.owedToMe.receivedMinor)}. `}
-                  {person.iOwe.originalMinor > 0 &&
-                    `Borrowed ${formatRupees(person.iOwe.originalMinor)}, repaid ${formatRupees(person.iOwe.repaidMinor)}.`}
-                </p>
+                {person.offsetMinor > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {formatRupees(person.offsetMinor)} you owed each other cancels out
+                  </p>
+                )}
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {person.owedToMe.outstandingMinor > 0 && (
-                <Button onClick={() => theyPaidMe(person.person.id)}>They paid me back</Button>
-              )}
-              {person.iOwe.outstandingMinor > 0 && (
-                <Button onClick={() => openAdd("repayment_made", { person: person.person.name })}>I paid them back</Button>
-              )}
-              <Button variant="outline" onClick={() => openAdd("lend", { person: person.person.name })}>
-                Lend more
-              </Button>
-              <Button variant="outline" onClick={() => openAdd("borrow", { person: person.person.name })}>
-                Borrow more
-              </Button>
-            </div>
+            {together && <TogetherSummary summary={together} categories={categories} />}
           </CardContent>
         </Card>
       )}
@@ -497,3 +487,56 @@ function ActivityContent() {
   );
 }
 
+
+/** Everything you've had with one person, in a few figures, and what the shared spending was on. */
+function TogetherSummary({ summary: s, categories }: { summary: PersonSummary; categories: Category[] }) {
+  const figures: { label: string; value: number; note?: string }[] = [
+    { label: "You lent", value: s.lentMinor },
+    { label: "They paid back", value: s.theyRepaidMinor },
+    { label: "You borrowed", value: s.borrowedMinor },
+    { label: "You paid back", value: s.youRepaidMinor },
+    {
+      label: s.splits.count === 1 ? "Their share of 1 split" : `Their share of ${s.splits.count} splits`,
+      value: s.splits.theirShareMinor,
+      note: `of ${formatRupees(s.splits.billsMinor)} in bills`,
+    },
+    { label: "You paid for them", value: s.paidForThemMinor },
+    { label: "Paid to them", value: s.paidToThemMinor, note: "payments naming them" },
+    { label: "Received from them", value: s.receivedFromThemMinor, note: "payments naming them" },
+  ].filter((x) => x.value > 0);
+  if (figures.length === 0) return null;
+  const top = s.byCategory.slice(0, 5);
+  return (
+    <div className="grid w-full basis-full gap-3 border-t pt-4" data-testid="person-summary">
+      <p className="text-xs font-medium text-muted-foreground">
+        Everything with them · {s.entries} {s.entries === 1 ? "entry" : "entries"}
+      </p>
+      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {figures.map((x) => (
+          <div key={x.label} className="rounded-xl bg-muted/50 px-3 py-2">
+            <dt className="truncate text-xs text-muted-foreground">{x.label}</dt>
+            <dd className="font-semibold tabular-nums">{formatRupees(x.value)}</dd>
+            {x.note && <dd className="truncate text-[11px] text-muted-foreground">{x.note}</dd>}
+          </div>
+        ))}
+      </dl>
+      {top.length > 0 && (
+        <div className="grid gap-1.5">
+          <p className="text-xs font-medium text-muted-foreground">Where it went</p>
+          <div className="flex flex-wrap gap-1.5">
+            {top.map(({ categoryId, amountMinor }) => {
+              const c = categories.find((x) => x.id === categoryId);
+              return (
+                <span key={categoryId} className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs">
+                  {c && <CategoryIcon category={c} className="size-4" />}
+                  {c?.name ?? "Other"}
+                  <span className="font-medium tabular-nums">{formatRupees(amountMinor)}</span>
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

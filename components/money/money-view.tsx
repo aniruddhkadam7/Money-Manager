@@ -244,6 +244,7 @@ export function MoneyView() {
                   <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
                     <span>
                       Original {formatRupees(p.owedToMe.originalMinor)} · paid back {formatRupees(p.owedToMe.receivedMinor)}
+                      {p.offsetMinor > 0 && <> · less {formatRupees(p.offsetMinor)} you owe them</>}
                     </span>
                     {p.owedToMe.outstandingMinor > 0 && (
                       <button
@@ -284,6 +285,7 @@ export function MoneyView() {
                   <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
                     <span>
                       Borrowed {formatRupees(p.iOwe.originalMinor)} · repaid {formatRupees(p.iOwe.repaidMinor)}
+                      {p.offsetMinor > 0 && <> · less {formatRupees(p.offsetMinor)} they owe you</>}
                     </span>
                     {p.iOwe.outstandingMinor > 0 && (
                       <button

@@ -252,11 +252,13 @@ export function EventForm({
     if (!found) return null;
     const { person } = found;
     const received = type === "repayment_received";
-    const ledgerId = received ? ledgerIds.receivable(person.id) : ledgerIds.payable(person.id);
+    // What's owed after setting what you owe each other against each other (as the People lists show it).
+    const theirs = ledgerIds.receivable(person.id);
+    const mine = ledgerIds.payable(person.id);
     let balance = 0;
     for (const entry of f.ledger.entries) {
       if (entry.date > values.date || entry.sourceId === editing?.id) continue;
-      for (const p of entry.postings) if (p.ledger === ledgerId) balance += p.amountMinor;
+      for (const p of entry.postings) if (p.ledger === theirs || p.ledger === mine) balance += p.amountMinor;
     }
     const owed = Math.max(received ? balance : -balance, 0);
     if (amount <= owed) return null;
