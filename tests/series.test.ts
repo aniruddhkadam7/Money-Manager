@@ -97,6 +97,8 @@ describe("date sampling and ranges", () => {
   it("range starts: fixed windows, and All begins at the first real activity", () => {
     expect(rangeStart("1M", TODAY, null)).toBe("2026-09-04");
     expect(rangeStart("1Y", TODAY, null)).toBe("2025-10-04");
+    expect(rangeStart("MTD", TODAY, null)).toBe("2026-10-01");
+    expect(rangeStart("MTD", "2026-10-01", null)).toBe("2026-10-01");
     expect(rangeStart("ALL", TODAY, "2026-03-15")).toBe("2026-03-15");
     expect(rangeStart("ALL", TODAY, "2026-10-03")).toBe("2026-09-27"); // never less than a week
     expect(rangeStart("ALL", TODAY, null)).toBe("2026-09-27");
