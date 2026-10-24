@@ -6,13 +6,16 @@ import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { formatExactINR } from "@/lib/charts/format";
 import { activityHref } from "@/lib/charts/links";
 import { formatDisplayDate, todayISO } from "@/lib/domain/dates";
-import { DEFAULT_PERIOD, PERIODS, rangeStart, type RangeKey } from "@/lib/finance/series";
+import { DEFAULT_PERIOD, PERIODS, rangeStart, THIS_MONTH, type RangeKey } from "@/lib/finance/series";
 import { HowYouPaid } from "./how-you-paid";
 import { MONEY_BACK_CATEGORY_IDS } from "@/lib/finance/state";
 import { cn } from "@/lib/utils";
 import { CategoryIcon } from "../category-icon";
 import { RangeTabs } from "../charts/primitives";
 import { useFinance } from "../finance-provider";
+
+// Every dashboard period, plus the month so far: totals from the 1st, not a rolling 30 days.
+const SO_FAR_PERIODS = [THIS_MONTH, ...PERIODS];
 
 const rupees = (minor: number) => {
   const sign = minor < 0 ? "−" : "";
@@ -25,7 +28,6 @@ const rupees = (minor: number) => {
  */
 export function SoFarSection() {
   const { book, report, getCategory } = useFinance();
-  // The same periods as every other card on the dashboard.
   const [span, setSpan] = useState<RangeKey>(DEFAULT_PERIOD);
   // Phones show one breakdown at a time; wider screens show both side by side.
   const [side, setSide] = useState<"out" | "in">("out");
@@ -81,7 +83,7 @@ export function SoFarSection() {
             )}
           </p>
         </div>
-        <RangeTabs label="Period" value={span} options={PERIODS} onChange={setSpan} />
+        <RangeTabs label="Period" value={span} options={SO_FAR_PERIODS} onChange={setSpan} />
       </div>
 
       <div className="mt-3 grid grid-cols-3 gap-2 sm:mt-4 sm:grid-cols-4 sm:gap-3">
