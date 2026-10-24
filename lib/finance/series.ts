@@ -7,9 +7,9 @@ import { isAssetAccount, type Book, type Ledger } from "./types";
  * ledger; nothing here is estimated, smoothed or generated.
  */
 
-export type RangeKey = "1M" | "3M" | "6M" | "1Y" | "3Y" | "ALL";
+export type RangeKey = "MTD" | "1M" | "3M" | "6M" | "1Y" | "3Y" | "ALL";
 
-const RANGE_DAYS: Record<Exclude<RangeKey, "ALL">, number> = {
+const RANGE_DAYS: Record<Exclude<RangeKey, "ALL" | "MTD">, number> = {
   "1M": 30,
   "3M": 91,
   "6M": 182,
@@ -22,14 +22,17 @@ const RANGE_DAYS: Record<Exclude<RangeKey, "ALL">, number> = {
  * Month-by-month charts leave out 1M (it would be a single bar).
  */
 export const PERIODS: { value: RangeKey; label: string; words: string }[] = [
+  { value: "MTD", label: "This month", words: "this month" },
   { value: "1M", label: "1M", words: "in the last 30 days" },
   { value: "3M", label: "3M", words: "in the last 3 months" },
   { value: "6M", label: "6M", words: "in the last 6 months" },
   { value: "1Y", label: "1Y", words: "in the last 12 months" },
   { value: "ALL", label: "All", words: "since you started" },
 ];
-export const MONTHLY_PERIODS = PERIODS.filter((p) => p.value !== "1M");
-export const DEFAULT_PERIOD: RangeKey = "6M";
+export const MONTHLY_PERIODS = PERIODS.filter((p) => p.value !== "1M" && p.value !== "MTD");
+export const DEFAULT_PERIOD: RangeKey = "MTD";
+/** Default for month-by-month charts, which have no single-month option. */
+export const MONTHLY_DEFAULT_PERIOD: RangeKey = "6M";
 export const periodWords = (range: RangeKey) => PERIODS.find((p) => p.value === range)?.words ?? "";
 
 /** How many calendar months (ending with `endYm`) a period covers on a month-by-month chart. */
@@ -38,7 +41,7 @@ export function monthsInPeriod(range: RangeKey, endYm: string, firstActivity: st
   if (range === "6M") return 6;
   if (range === "1Y") return 12;
   if (range === "3Y") return 36;
-  if (range === "1M") return 1;
+  if (range === "1M" || range === "MTD") return 1;
   if (!firstActivity) return 1;
   const [y0, m0] = firstActivity.slice(0, 7).split("-").map(Number);
   const [y1, m1] = endYm.split("-").map(Number);
@@ -57,6 +60,7 @@ export function firstActivityDate(ledger: Ledger): string | null {
 
 /** Start date for a chart range. "All" starts at the first real activity, never less than a week back. */
 export function rangeStart(range: RangeKey, today: string, firstActivity: string | null): string {
+  if (range === "MTD") return monthStart(today.slice(0, 7));
   if (range !== "ALL") return addDays(today, -RANGE_DAYS[range]);
   const week = addDays(today, -7);
   return firstActivity && firstActivity < week ? firstActivity : week;

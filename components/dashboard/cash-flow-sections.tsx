@@ -6,7 +6,7 @@ import { activityHref } from "@/lib/charts/links";
 import { formatBps, formatCompactINR, formatExactINR } from "@/lib/charts/format";
 import { formatMonthLong, formatMonthShort, monthEnd, monthStart } from "@/lib/domain/dates";
 import type { DashboardModel } from "@/lib/finance/dashboard-model";
-import { changeBps, DEFAULT_PERIOD, MONTHLY_PERIODS, monthlySummaries, monthsInPeriod, type MonthlyPoint, type RangeKey } from "@/lib/finance/series";
+import { changeBps, MONTHLY_DEFAULT_PERIOD, MONTHLY_PERIODS, monthlySummaries, monthsInPeriod, type MonthlyPoint, type RangeKey } from "@/lib/finance/series";
 import { ColumnChart, type Column } from "../charts/column-chart";
 import { ChartCard, EmptyChart, RangeTabs } from "../charts/primitives";
 import { TooltipCard, TooltipHint, TooltipRow, TooltipTitle } from "../charts/tooltip";
@@ -54,7 +54,7 @@ const signed = (bps: number) => `${bps > 0 ? "+" : bps < 0 ? "−" : ""}${format
 /** Am I spending more than before? Month by month; this month's total and its change are in the summary at the top. */
 export function SpendingSection({ model }: { model: DashboardModel }) {
   const router = useRouter();
-  const [span, setSpan] = useState<RangeKey>(DEFAULT_PERIOD);
+  const [span, setSpan] = useState<RangeKey>(MONTHLY_DEFAULT_PERIOD);
   const months = usePeriodMonths(model, span);
   const phone = usePhone();
 

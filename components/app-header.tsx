@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { CalendarDays, FileUp, LayoutDashboard, PiggyBank, Plus, RefreshCw, TrendingUp, Wallet } from "lucide-react";
+import { CalendarDays, FileUp, LayoutDashboard, PiggyBank, Plus, RefreshCw, Wallet } from "lucide-react";
 import { flush } from "@/lib/cloud/sync";
 import { Button } from "@/components/ui/button";
 import { LiquidButton, LiquidGlass } from "@/components/ui/liquid-glass-button";
@@ -74,6 +74,11 @@ export function AppHeader() {
             <LiquidButton size="default" className="hidden rounded-full font-semibold sm:inline-flex" onClick={() => openAdd()}>
               <Plus /> Add
             </LiquidButton>
+            <Button asChild variant="ghost" size="icon" className="sm:hidden">
+              <Link href="/import" aria-label="Import statement" title="Import statement">
+                <FileUp />
+              </Link>
+            </Button>
             <RefreshButton />
             <ProfileMenu />
           </div>
@@ -89,11 +94,8 @@ const TABS = [
   // Activity opens on its calendar; the list is its other view (Calendar / Statement), so the tab stays lit on it too.
   { href: "/calendar", label: "Calendar", icon: CalendarDays, also: "/activity" },
   { href: "/money", label: "Money", icon: Wallet },
-  // "Invest", not "Investments": seven places share a phone's width.
+  // "Invest", not "Investments": five places share a phone's width.
   { href: "/investments", label: "Invest", icon: PiggyBank },
-  // Sector performance is a page within Market, so the tab stays lit there.
-  { href: "/market", label: "Market", icon: TrendingUp, also: "/market/sectors" },
-  { href: "/import", label: "Import", icon: FileUp },
 ];
 
 /** Past the top of the page, scrolling down shrinks the bar (as Instagram does); scrolling up or reaching the top brings it back. */
@@ -130,8 +132,8 @@ function useCompactOnScroll(pathname: string) {
 /** An iOS-like glide: quick to start, long soft settle. */
 const EASE = "duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none";
 
-/** The bar's places, left to right: three tabs, the + button (null), three tabs. */
-const SLOTS = [TABS[0], TABS[1], TABS[2], null, TABS[3], TABS[4], TABS[5]] as const;
+/** The bar's places, left to right: two tabs, the + button (null), two tabs, so the + sits in the middle. Import lives in the top bar on phones. */
+const SLOTS = [TABS[0], TABS[1], null, TABS[2], TABS[3]] as const;
 const GLIDE = "cubic-bezier(0.32, 0.72, 0, 1)";
 
 /**
@@ -325,7 +327,7 @@ function MobileNav({ pathname, onAdd }: { pathname: string; onAdd: () => void })
           t ? (
             tab(t, slot)
           ) : (
-            // Narrower than a tab (it's only the button), so seven places still fit a small phone.
+            // Narrower than a tab (it's only the button), so five places still fit a small phone.
             <div key="add" ref={(el) => void (slotRefs.current[slot] = el)} className="flex w-14 shrink-0 items-center justify-center">
               {/* White liquid glass, a shade lighter than the bar, centred in it; the green + marks the main action. */}
               <LiquidButton
