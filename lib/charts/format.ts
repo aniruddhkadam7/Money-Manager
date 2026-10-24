@@ -1,4 +1,5 @@
-/** Indian-style compact money for chart axes and headlines. Input is paise. */
+/** Indian-style compact money for chart axes and headlines. Input is paise. Every formatter here honors privacy mode. */
+import { shield } from "../privacy";
 
 function trim(n: number, decimals: number): string {
   return n.toFixed(decimals).replace(/\.?0+$/, "");
@@ -6,6 +7,10 @@ function trim(n: number, decimals: number): string {
 
 /** ₹850, ₹52K, ₹1.2L, ₹18.4L, ₹2.15Cr. For axes and tight spaces. */
 export function formatCompactINR(minor: number): string {
+  return shield(compactINR(minor));
+}
+
+function compactINR(minor: number): string {
   const rupees = Math.abs(minor) / 100;
   const sign = minor < 0 ? "−" : "";
   if (rupees >= 1e7) return `${sign}₹${trim(rupees / 1e7, 2)}Cr`;
@@ -22,7 +27,7 @@ export function formatCompactINR(minor: number): string {
 export function formatHeadlineINR(minor: number): string {
   const rupees = Math.abs(minor) / 100;
   const sign = minor < 0 ? "−" : "";
-  return `${sign}₹${Math.round(rupees).toLocaleString("en-IN")}`;
+  return shield(`${sign}₹${Math.round(rupees).toLocaleString("en-IN")}`);
 }
 
 /** Exact rupees with Indian grouping: ₹18,42,500. */
@@ -33,14 +38,14 @@ export function formatExactINR(minor: number): string {
     minimumFractionDigits: abs % 100 === 0 ? 0 : 2,
     maximumFractionDigits: 2,
   });
-  return `${sign}₹${text}`;
+  return shield(`${sign}₹${text}`);
 }
 
 /** "+₹42,500" / "−₹1,200" / "₹0" */
 export function formatSignedINR(minor: number, exact = true): string {
   if (minor === 0) return "₹0";
   const body = exact ? formatExactINR(Math.abs(minor)) : formatCompactINR(Math.abs(minor));
-  return `${minor > 0 ? "+" : "−"}${body}`;
+  return shield(`${minor > 0 ? "+" : "−"}${body}`);
 }
 
 /** Basis points as a percentage: 4630 -> "46.3%". Pass decimals=0 for "46%". */

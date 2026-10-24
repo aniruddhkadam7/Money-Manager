@@ -19,6 +19,7 @@ import { CategoriesList } from "./money/manage-lists";
 import { ResetDialog } from "./money/reset-app";
 import { useFinance } from "./finance-provider";
 import { cn } from "@/lib/utils";
+import { setPrivate, usePrivate } from "@/lib/privacy";
 import { PasscodePad } from "./app-lock";
 import { LOGIN_DOMAIN, usernameFor } from "./cloud-gate";
 import { SYNC_LABEL, useSyncStatus } from "./cloud-status";
@@ -208,6 +209,7 @@ function ProfileBody({ me, profile, user }: { me: Identity; profile: Profile; us
 
       <Group title="Preferences">
         <ThemeRow />
+        <PrivacyRow />
         <NavRow
           icon={Tags}
           tint="bg-orange-500"
@@ -280,6 +282,23 @@ function NavRow({
       {value && <span className="min-w-0 max-w-[45%] truncate text-sm text-muted-foreground">{value}</span>}
       {chevron && <ChevronRight className="size-4 shrink-0 text-muted-foreground/70" />}
     </button>
+  );
+}
+
+/** Hides every amount (net worth, loans, balances) so the screen can be shown to others. Saved on this device only. */
+function PrivacyRow() {
+  const hidden = usePrivate();
+  return (
+    <div className="flex items-center gap-3 px-3.5 py-2.5">
+      <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-slate-700 text-white">
+        {hidden ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[15px] font-medium">Privacy mode</span>
+        <span className="block text-xs text-muted-foreground">Hides all amounts, like net worth and loans, on this device.</span>
+      </span>
+      <Switch checked={hidden} aria-label="Privacy mode" onCheckedChange={setPrivate} />
+    </div>
   );
 }
 

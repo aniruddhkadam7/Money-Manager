@@ -103,3 +103,38 @@ export function spendLevels(days: CalendarDay[]): Map<string, SpendLevel> {
   const top = sorted[Math.ceil(sorted.length * 0.9) - 1] ?? 0;
   return new Map(spending.map((d) => [d.date, Math.max(1, Math.ceil(Math.min(1, d.expensesMinor / top) * 4)) as SpendLevel]));
 }
+
+/** How long the stretch of days without spending runs, and the best one. */
+export interface NoSpendStreaks {
+  /** Days in a row without spending, counting back from today (today counts while nothing is spent yet). */
+  current: number;
+  best: number;
+}
+
+/** Streaks look back this far; older history only slows the page down. */
+const STREAK_LOOKBACK_DAYS = 365;
+
+/** A day without spending: nothing went out (a day with only refunds or transfers counts). */
+export const isNoSpendDay = (d: Pick<CalendarDay, "expensesMinor">) => d.expensesMinor <= 0;
+
+/**
+ * Runs of days without spending, from the first recorded entry (earlier days weren't being tracked) to today,
+ * over at most the past year.
+ */
+export function noSpendStreaks(book: Book, ledger: Ledger, today: string): NoSpendStreaks {
+  const first = book.events.reduce((min, e) => (e.date < min ? e.date : min), today);
+  const start = [first, addDays(today, -(STREAK_LOOKBACK_DAYS - 1))].sort()[1];
+  const free = new Set<string>();
+  for (let ym = start.slice(0, 7); ym <= today.slice(0, 7); ym = shiftMonth(ym, 1)) {
+    for (const d of calendarMonth(book, ledger, ym).flat()) {
+      if (d.inMonth && d.date >= start && d.date <= today && isNoSpendDay(d)) free.add(d.date);
+    }
+  }
+  let best = 0;
+  let run = 0;
+  for (let date = start; date <= today; date = addDays(date, 1)) {
+    run = free.has(date) ? run + 1 : 0;
+    best = Math.max(best, run);
+  }
+  return { current: run, best };
+}

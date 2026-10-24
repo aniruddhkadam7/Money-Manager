@@ -1,3 +1,4 @@
+import { shield } from "../privacy";
 import { idOf } from "./engine";
 import { paymentMethodOf } from "./payment-method";
 import { isAssetAccount, type Account, type Book, type FinancialEvent, type LedgerEntry } from "./types";
@@ -165,11 +166,11 @@ export function makeDescriber(book: Book, categoryName: (id: string) => string):
 /** A share price, always with paise as brokers show it: ₹2,850.00. */
 export function formatPrice(minor: number): string {
   const text = `₹${(Math.abs(minor) / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  return minor < 0 ? `−${text}` : text;
+  return shield(minor < 0 ? `−${text}` : text);
 }
 
 export function formatRupees(minor: number): string {
   const abs = Math.abs(minor);
   const text = `₹${(abs / 100).toLocaleString("en-IN", { minimumFractionDigits: abs % 100 === 0 ? 0 : 2, maximumFractionDigits: 2 })}`;
-  return minor < 0 ? `−${text}` : text;
+  return shield(minor < 0 ? `−${text}` : text);
 }

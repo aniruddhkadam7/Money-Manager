@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calendarMonth, monthPace, spendLevels } from "@/lib/finance/calendar";
+import { calendarMonth, monthPace, noSpendStreaks, spendLevels } from "@/lib/finance/calendar";
 import { cardDueDates } from "@/lib/finance/card-bill-status";
 import { buildLedger } from "@/lib/finance/engine";
 import { periodReport } from "@/lib/finance/state";
@@ -121,5 +121,17 @@ describe("spendLevels", () => {
   it("leaves out days with no spending, money back, or outside the month", () => {
     const levels = spendLevels([d("2026-10-01", 0), d("2026-10-02", -500), d("2026-09-30", 9000, false), d("2026-10-03", 100)]);
     expect([...levels]).toEqual([["2026-10-03", 4]]);
+  });
+});
+
+describe("noSpendStreaks", () => {
+  // Spending on 2 Oct (and a refund-only day on 4 Oct); the first entry is 1 Oct.
+  it("counts days without spending back from today, and the best run", () => {
+    expect(noSpendStreaks(book, ledger, "2026-10-08")).toEqual({ current: 6, best: 6 });
+    expect(noSpendStreaks(book, ledger, "2026-10-02")).toEqual({ current: 0, best: 1 });
+  });
+
+  it("ignores days before the first entry", () => {
+    expect(noSpendStreaks(book, ledger, "2026-10-01")).toEqual({ current: 1, best: 1 });
   });
 });

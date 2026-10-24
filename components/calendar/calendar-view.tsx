@@ -3,13 +3,13 @@
 import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, CreditCard, Plus } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, CreditCard, Flame, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { formatCompactINR, formatExactINR } from "@/lib/charts/format";
 import { activityHref } from "@/lib/charts/links";
 import { daysBetween, formatMonthLong, formatMonthShort, formatWeekdayDate, monthEnd, monthKey, monthStart, shiftMonth } from "@/lib/domain/dates";
-import { calendarMonth, monthPace, spendLevels, type CalendarCardDue, type CalendarDay, type SpendLevel } from "@/lib/finance/calendar";
+import { calendarMonth, isNoSpendDay, monthPace, noSpendStreaks, spendLevels, type CalendarCardDue, type CalendarDay, type SpendLevel } from "@/lib/finance/calendar";
 import { cardDueDates } from "@/lib/finance/card-bill-status";
 import { chronological } from "@/lib/finance/order";
 import { cn } from "@/lib/utils";
@@ -101,6 +101,14 @@ export function CalendarBoard({ initialMonth }: { initialMonth?: string }) {
   );
   const selectedDay = weeks.flat().find((d) => d.date === selected);
   const heat = useMemo(() => spendLevels(weeks.flat()), [weeks]);
+
+  // Days with nothing spent, from the first entry (earlier days weren't tracked) up to today.
+  const firstEntry = useMemo(() => book.events.reduce((min, e) => (e.date < min ? e.date : min), today), [book.events, today]);
+  const streaks = useMemo(() => noSpendStreaks(book, ledger, today), [book, ledger, today]);
+  const noSpend = useMemo(
+    () => new Set(weeks.flat().filter((d) => d.inMonth && d.date >= firstEntry && d.date <= today && isNoSpendDay(d)).map((d) => d.date)),
+    [weeks, firstEntry, today],
+  );
 
   // The due dates card statements print.
   const dues = useMemo<CalendarCardDue[]>(
@@ -218,6 +226,24 @@ export function CalendarBoard({ initialMonth }: { initialMonth?: string }) {
             )}
           </div>
 
+          {book.events.length > 0 && ym <= monthKey(today) && (
+            <p className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 px-1 text-xs text-muted-foreground sm:text-sm" data-testid="no-spend">
+              <span className="inline-flex items-center gap-1">
+                <Check className="size-3.5 text-emerald-600" />
+                <strong className="font-semibold text-foreground">{noSpend.size}</strong> no-spend {noSpend.size === 1 ? "day" : "days"} this month
+              </span>
+              {streaks.current > 0 ? (
+                <span className="inline-flex items-center gap-1">
+                  <Flame className="size-3.5 text-orange-500" />
+                  <strong className="font-semibold text-foreground">{streaks.current}</strong>-day streak
+                  {streaks.best > streaks.current && <span> · best {streaks.best}</span>}
+                </span>
+              ) : (
+                streaks.best > 0 && <span>Best streak {streaks.best} {streaks.best === 1 ? "day" : "days"}</span>
+              )}
+            </p>
+          )}
+
           <div
             role="grid"
             aria-label={`${formatMonthLong(ym)} calendar`}
@@ -244,6 +270,7 @@ export function CalendarBoard({ initialMonth }: { initialMonth?: string }) {
                     day={d}
                     dues={duesByDay.get(d.date) ?? []}
                     heat={heat.get(d.date) ?? 0}
+                    noSpend={noSpend.has(d.date)}
                     today={d.date === today}
                     selected={d.date === selected}
                     onPick={() => pick(d)}
@@ -344,6 +371,7 @@ function DayCell({
   day,
   dues,
   heat,
+  noSpend,
   today,
   selected,
   onPick,
@@ -351,6 +379,7 @@ function DayCell({
   day: CalendarDay;
   dues: CalendarCardDue[];
   heat: SpendLevel;
+  noSpend: boolean;
   today: boolean;
   selected: boolean;
   onPick: () => void;
@@ -363,6 +392,7 @@ function DayCell({
     day.incomeMinor > 0 && `income ${formatExactINR(day.incomeMinor)}`,
     day.expensesMinor > 0 && `spent ${formatExactINR(day.expensesMinor)}`,
     day.expensesMinor < 0 && `${formatExactINR(-day.expensesMinor)} came back`,
+    noSpend && "no spending",
     day.entryCount > 0 && `${day.entryCount} ${day.entryCount === 1 ? "entry" : "entries"}`,
     dues.length > 0 && (owedOnCards > 0 ? `card bill due, ${formatExactINR(owedOnCards)} left to pay` : "card bill due"),
   ]
@@ -395,6 +425,7 @@ function DayCell({
           {dayNumber}
         </span>
         <span className={cn("flex items-center gap-0.5 pt-0.5", !day.inMonth && "opacity-60")} aria-hidden>
+          {noSpend && <Check className="size-3 text-emerald-600" />}
           {dues.length > 0 &&
             (owedOnCards > 0 ? <span className="size-2 rounded-full bg-red-600 ring-2 ring-card" /> : <CreditCard className="size-3 text-muted-foreground" />)}
         </span>

@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { shield } from "@/lib/privacy";
 import { formatBps, formatExactINR, formatSignedINR } from "@/lib/charts/format";
 import { activityHref, monthFilter } from "@/lib/charts/links";
 import type { DashboardModel } from "@/lib/finance/dashboard-model";
@@ -52,7 +53,7 @@ function Metric({ label, value, sub, subTone, title, href, onHow }: { label: str
 /** Exact rupees, no "L" / "Cr" shortening: ₹3,60,245. Paise are shown in the tooltip. */
 function formatHeadlineINR(minor: number): string {
   const sign = minor < 0 ? "−" : "";
-  return `${sign}₹${Math.round(Math.abs(minor) / 100).toLocaleString("en-IN")}`;
+  return shield(`${sign}₹${Math.round(Math.abs(minor) / 100).toLocaleString("en-IN")}`);
 }
 
 /** The 10-second answer: how much am I worth, and how is this month going. */

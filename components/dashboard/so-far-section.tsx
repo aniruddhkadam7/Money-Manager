@@ -11,12 +11,13 @@ import { HowYouPaid } from "./how-you-paid";
 import { MONEY_BACK_CATEGORY_IDS } from "@/lib/finance/state";
 import { cn } from "@/lib/utils";
 import { CategoryIcon } from "../category-icon";
+import { shield } from "@/lib/privacy";
 import { RangeTabs } from "../charts/primitives";
 import { useFinance } from "../finance-provider";
 
 const rupees = (minor: number) => {
   const sign = minor < 0 ? "−" : "";
-  return `${sign}₹${Math.round(Math.abs(minor) / 100).toLocaleString("en-IN")}`;
+  return shield(`${sign}₹${Math.round(Math.abs(minor) / 100).toLocaleString("en-IN")}`);
 };
 
 /**
