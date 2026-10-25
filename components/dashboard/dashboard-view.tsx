@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { buildDashboardModel } from "@/lib/finance/dashboard-model";
 import { useEventDialog } from "../events/event-dialog";
 import { useFinance } from "../finance-provider";
+import { DueSoon } from "../reminders";
 import { useBalances } from "../statements/use-statement-checks";
 import { AccountsSection } from "./accounts-section";
 import { AssetsLiabilitiesSection } from "./assets-liabilities-section";
@@ -70,6 +71,9 @@ export function DashboardView() {
       <div className="col-span-full">
         <SummaryHero model={model} state={state} book={book} />
       </div>
+
+      {/* Bills coming up: card dues and renewals within days */}
+      <DueSoon className="col-span-full" />
 
       {/* Each bank account and card: logo, available balance / to pay, this month's spending */}
       <div className="col-span-full">

@@ -2,12 +2,16 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { CalendarClock } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { formatExactINR } from "@/lib/charts/format";
+import { isStopped, useBills } from "@/lib/finance/bills";
 import { activityHref } from "@/lib/charts/links";
 import { daysBetween, formatDayMonth } from "@/lib/domain/dates";
 import type { DashboardModel } from "@/lib/finance/dashboard-model";
 import type { Frequency } from "@/lib/finance/recurring";
 import { cn } from "@/lib/utils";
+import { BillsDialog } from "../bills-manager";
 import { BrandLogo } from "../brand-logo";
 import { CategoryIcon } from "../category-icon";
 import { ChartCard, EmptyChart } from "../charts/primitives";
@@ -27,13 +31,23 @@ function due(days: number): string {
 /** Services you keep paying for, found automatically from your history (including imported statements). */
 export function SubscriptionsSection({ model }: { model: DashboardModel }) {
   const { getCategory, today } = useFinance();
-  const subs = model.subscriptions;
+  const { stopped } = useBills();
+  const [managing, setManaging] = useState(false);
+  // Ones marked not active (a one-off, or cancelled) are left out, and their cost with them.
+  const subs = model.subscriptions.filter((c) => !isStopped(stopped, `sub:${c.key}`, c.lastDate));
   const [all, setAll] = useState(false);
   const top = usePhone() ? 4 : 6;
   const monthly = subs.reduce((t, c) => t + c.monthlyEquivalentMinor, 0);
 
   return (
-    <ChartCard title="Subscriptions">
+    <ChartCard
+      title="Subscriptions"
+      action={
+        <Button size="sm" variant="ghost" onClick={() => setManaging(true)}>
+          <CalendarClock /> Manage
+        </Button>
+      }
+    >
       {subs.length === 0 ? (
         <EmptyChart height={200}>
           Subscriptions show up here once charged a couple of months in a row.
@@ -80,6 +94,7 @@ export function SubscriptionsSection({ model }: { model: DashboardModel }) {
           )}
         </>
       )}
+      {managing && <BillsDialog onClose={() => setManaging(false)} />}
     </ChartCard>
   );
 }

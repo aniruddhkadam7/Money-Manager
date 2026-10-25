@@ -3,21 +3,24 @@
 import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Check, ChevronLeft, ChevronRight, CreditCard, Flame, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, CreditCard, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { formatCompactINR, formatExactINR } from "@/lib/charts/format";
 import { activityHref } from "@/lib/charts/links";
 import { daysBetween, formatMonthLong, formatMonthShort, formatWeekdayDate, monthEnd, monthKey, monthStart, shiftMonth } from "@/lib/domain/dates";
-import { calendarMonth, isNoSpendDay, monthPace, noSpendStreaks, spendLevels, type CalendarCardDue, type CalendarDay, type SpendLevel } from "@/lib/finance/calendar";
+import { calendarMonth, monthPace, spendLevels, type CalendarCardDue, type CalendarDay, type SpendLevel } from "@/lib/finance/calendar";
 import { cardDueDates } from "@/lib/finance/card-bill-status";
 import { chronological } from "@/lib/finance/order";
 import { cn } from "@/lib/utils";
+import { billDatesBetween, dueWording, type Reminder } from "@/lib/finance/reminders";
 import { useEventDialog } from "../events/event-dialog";
 import { EventRow } from "../events/event-row";
 import { useFinance } from "../finance-provider";
 import { PageTitle } from "../page-title";
 import { PictureIcon } from "../picture-icon";
+import { ReminderLogo } from "../reminder-logo";
+import { useReminders } from "../reminders";
 import { useStatements } from "../statements/statements-provider";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -102,14 +105,6 @@ export function CalendarBoard({ initialMonth }: { initialMonth?: string }) {
   const selectedDay = weeks.flat().find((d) => d.date === selected);
   const heat = useMemo(() => spendLevels(weeks.flat()), [weeks]);
 
-  // Days with nothing spent, from the first entry (earlier days weren't tracked) up to today.
-  const firstEntry = useMemo(() => book.events.reduce((min, e) => (e.date < min ? e.date : min), today), [book.events, today]);
-  const streaks = useMemo(() => noSpendStreaks(book, ledger, today), [book, ledger, today]);
-  const noSpend = useMemo(
-    () => new Set(weeks.flat().filter((d) => d.inMonth && d.date >= firstEntry && d.date <= today && isNoSpendDay(d)).map((d) => d.date)),
-    [weeks, firstEntry, today],
-  );
-
   // The due dates card statements print.
   const dues = useMemo<CalendarCardDue[]>(
     () =>
@@ -127,6 +122,14 @@ export function CalendarBoard({ initialMonth }: { initialMonth?: string }) {
   const duesByDay = useMemo(() => byDate(dues, (d) => d.dueDate), [dues]);
   const pace = useMemo(() => monthPace(book, ledger, ym, today, totals.spent), [book, ledger, ym, today, totals.spent]);
   const dayDues = (selected && duesByDay.get(selected)) || [];
+  // Your own bills and renewing subscriptions, on the days they fall due (repeating ones on every date they repeat to).
+  // Card bills are already drawn from their statements above.
+  const tracked = useReminders(true);
+  const billsByDay = useMemo(
+    () => billDatesBetween(tracked.filter((r) => r.kind !== "card"), weeks[0][0].date, weeks[weeks.length - 1][6].date),
+    [tracked, weeks],
+  );
+  const dayBills = (selected && billsByDay.get(selected)) || [];
 
   const goTo = (next: string) => {
     setYm(next);
@@ -226,24 +229,6 @@ export function CalendarBoard({ initialMonth }: { initialMonth?: string }) {
             )}
           </div>
 
-          {book.events.length > 0 && ym <= monthKey(today) && (
-            <p className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 px-1 text-xs text-muted-foreground sm:text-sm" data-testid="no-spend">
-              <span className="inline-flex items-center gap-1">
-                <Check className="size-3.5 text-emerald-600" />
-                <strong className="font-semibold text-foreground">{noSpend.size}</strong> no-spend {noSpend.size === 1 ? "day" : "days"} this month
-              </span>
-              {streaks.current > 0 ? (
-                <span className="inline-flex items-center gap-1">
-                  <Flame className="size-3.5 text-orange-500" />
-                  <strong className="font-semibold text-foreground">{streaks.current}</strong>-day streak
-                  {streaks.best > streaks.current && <span> · best {streaks.best}</span>}
-                </span>
-              ) : (
-                streaks.best > 0 && <span>Best streak {streaks.best} {streaks.best === 1 ? "day" : "days"}</span>
-              )}
-            </p>
-          )}
-
           <div
             role="grid"
             aria-label={`${formatMonthLong(ym)} calendar`}
@@ -269,8 +254,8 @@ export function CalendarBoard({ initialMonth }: { initialMonth?: string }) {
                     key={d.date}
                     day={d}
                     dues={duesByDay.get(d.date) ?? []}
+                    bills={billsByDay.get(d.date) ?? []}
                     heat={heat.get(d.date) ?? 0}
-                    noSpend={noSpend.has(d.date)}
                     today={d.date === today}
                     selected={d.date === selected}
                     onPick={() => pick(d)}
@@ -290,7 +275,7 @@ export function CalendarBoard({ initialMonth }: { initialMonth?: string }) {
                 <h2 className="font-semibold">{formatWeekdayDate(selected)}</h2>
                 <p className="text-sm text-muted-foreground">
                   {dayEvents.length === 0 ? (
-                    dayDues.length > 0 ? "Nothing recorded yet" : "Nothing recorded"
+                    dayDues.length + dayBills.length > 0 ? "Nothing recorded yet" : "Nothing recorded"
                   ) : (
                     <>
                       {dayEvents.length} {dayEvents.length === 1 ? "entry" : "entries"}
@@ -305,7 +290,7 @@ export function CalendarBoard({ initialMonth }: { initialMonth?: string }) {
                 <Plus /> Add
               </Button>
             </div>
-            {dayEvents.length + dayDues.length > 0 ? (
+            {dayEvents.length + dayDues.length + dayBills.length > 0 ? (
               <div>
                 {dayEvents.length > 0 && (
                   <ul className="divide-y py-1">
@@ -314,8 +299,18 @@ export function CalendarBoard({ initialMonth }: { initialMonth?: string }) {
                     ))}
                   </ul>
                 )}
+                {dayBills.length > 0 && (
+                  <section aria-label="Bills due" className={cn(dayEvents.length > 0 && "border-t")}>
+                    <h3 className="px-4 pt-3 text-xs font-medium uppercase tracking-wide text-muted-foreground sm:px-5">Bills due</h3>
+                    <ul className="divide-y py-1">
+                      {dayBills.map((r) => (
+                        <BillDueRow key={r.id} bill={r} today={today} date={selected!} />
+                      ))}
+                    </ul>
+                  </section>
+                )}
                 {dayDues.length > 0 && (
-                  <section aria-label="Due" className={cn(dayEvents.length > 0 && "border-t")}>
+                  <section aria-label="Due" className={cn(dayEvents.length + dayBills.length > 0 && "border-t")}>
                     <h3 className="px-4 pt-3 text-xs font-medium uppercase tracking-wide text-muted-foreground sm:px-5">Due</h3>
                     <ul className="divide-y py-1">
                       {dayDues.map((d) => (
@@ -334,6 +329,23 @@ export function CalendarBoard({ initialMonth }: { initialMonth?: string }) {
         )}
       </Card>
     </div>
+  );
+}
+
+/** A bill you track, or a subscription renewing, falling on the selected day. */
+function BillDueRow({ bill, today, date }: { bill: Reminder; today: string; date: string }) {
+  const days = daysBetween(today, date);
+  return (
+    <li className="flex items-center gap-3 px-3 py-3 sm:px-5">
+      <ReminderLogo r={bill} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium">{bill.title}</span>
+        <span className={cn("block text-xs font-medium", days < 0 ? "text-amber-700" : "text-muted-foreground")}>
+          {bill.kind === "subscription" ? (days < 0 ? "Renewal not recorded yet" : days === 0 ? "Renews today" : `Renews ${dueWording(days).replace("Due ", "")}`) : dueWording(days)}
+        </span>
+      </span>
+      {bill.amountMinor > 0 && <span className="text-sm font-semibold tabular-nums">{formatExactINR(bill.amountMinor)}</span>}
+    </li>
   );
 }
 
@@ -370,16 +382,16 @@ function CardDueRow({ due, today }: { due: CalendarCardDue; today: string }) {
 function DayCell({
   day,
   dues,
+  bills,
   heat,
-  noSpend,
   today,
   selected,
   onPick,
 }: {
   day: CalendarDay;
   dues: CalendarCardDue[];
+  bills: Reminder[];
   heat: SpendLevel;
-  noSpend: boolean;
   today: boolean;
   selected: boolean;
   onPick: () => void;
@@ -392,8 +404,8 @@ function DayCell({
     day.incomeMinor > 0 && `income ${formatExactINR(day.incomeMinor)}`,
     day.expensesMinor > 0 && `spent ${formatExactINR(day.expensesMinor)}`,
     day.expensesMinor < 0 && `${formatExactINR(-day.expensesMinor)} came back`,
-    noSpend && "no spending",
     day.entryCount > 0 && `${day.entryCount} ${day.entryCount === 1 ? "entry" : "entries"}`,
+    bills.length > 0 && `due: ${bills.map((b) => b.title).join(", ")}`,
     dues.length > 0 && (owedOnCards > 0 ? `card bill due, ${formatExactINR(owedOnCards)} left to pay` : "card bill due"),
   ]
     .filter(Boolean)
@@ -425,11 +437,22 @@ function DayCell({
           {dayNumber}
         </span>
         <span className={cn("flex items-center gap-0.5 pt-0.5", !day.inMonth && "opacity-60")} aria-hidden>
-          {noSpend && <Check className="size-3 text-emerald-600" />}
+          {bills.length > 0 && <span className="size-2 rounded-full bg-teal-500 ring-2 ring-card sm:hidden" />}
           {dues.length > 0 &&
             (owedOnCards > 0 ? <span className="size-2 rounded-full bg-red-600 ring-2 ring-card" /> : <CreditCard className="size-3 text-muted-foreground" />)}
         </span>
       </span>
+      {/* Bigger screens have room to name what's due. */}
+      {bills.length > 0 && (
+        <span className={cn("hidden min-w-0 gap-0.5 sm:grid", !day.inMonth && "opacity-60")} aria-hidden>
+          {bills.slice(0, 2).map((r) => (
+            <span key={r.id} className="truncate rounded bg-teal-500/15 px-1 text-[10px] font-medium leading-4 text-teal-700" title={r.title}>
+              {r.title}
+            </span>
+          ))}
+          {bills.length > 2 && <span className="px-1 text-[10px] text-muted-foreground">+{bills.length - 2} more</span>}
+        </span>
+      )}
       <span className={cn("mt-auto grid min-w-0 text-right text-[10px] font-medium leading-tight tabular-nums sm:text-xs", !day.inMonth && "opacity-60")}>
         {day.incomeMinor > 0 && <span className="truncate text-emerald-700">+{formatCompactINR(day.incomeMinor)}</span>}
         {day.expensesMinor > 0 && <span className="truncate text-red-600">−{formatCompactINR(day.expensesMinor)}</span>}

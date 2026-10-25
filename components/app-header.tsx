@@ -10,6 +10,7 @@ import { LiquidButton, LiquidGlass } from "@/components/ui/liquid-glass-button";
 import { cn } from "@/lib/utils";
 import { BackButton } from "./back-button";
 import { ProfileMenu } from "./profile-menu";
+import { NotificationsBell } from "./reminders";
 import { useEventDialog } from "./events/event-dialog";
 
 const NAV = [
@@ -79,6 +80,7 @@ export function AppHeader() {
                 <FileUp />
               </Link>
             </Button>
+            <NotificationsBell />
             <RefreshButton />
             <ProfileMenu />
           </div>

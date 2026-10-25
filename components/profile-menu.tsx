@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Camera, ChevronLeft, ChevronRight, Cloud, Eye, EyeOff, KeyRound, Loader2, LockKeyhole, LogOut, Monitor, Moon, Pencil, RotateCcw, ShieldCheck, Sun, SunMoon, Tags, Trash2, UserRound } from "lucide-react";
+import { Bell, CalendarClock, Camera, ChevronLeft, ChevronRight, Cloud, Eye, EyeOff, KeyRound, Loader2, LockKeyhole, LogOut, Monitor, Moon, Pencil, RotateCcw, ShieldCheck, Sun, SunMoon, Tags, Trash2, UserRound } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -20,6 +20,8 @@ import { ResetDialog } from "./money/reset-app";
 import { useFinance } from "./finance-provider";
 import { cn } from "@/lib/utils";
 import { setPrivate, usePrivate } from "@/lib/privacy";
+import { disableReminders, enableReminders, useRemindersOn } from "@/lib/reminder-settings";
+import { BillsDialog } from "./bills-manager";
 import { PasscodePad } from "./app-lock";
 import { LOGIN_DOMAIN, usernameFor } from "./cloud-gate";
 import { SYNC_LABEL, useSyncStatus } from "./cloud-status";
@@ -210,6 +212,8 @@ function ProfileBody({ me, profile, user }: { me: Identity; profile: Profile; us
       <Group title="Preferences">
         <ThemeRow />
         <PrivacyRow />
+        <BillsRow />
+        <RemindersRow />
         <NavRow
           icon={Tags}
           tint="bg-orange-500"
@@ -282,6 +286,48 @@ function NavRow({
       {value && <span className="min-w-0 max-w-[45%] truncate text-sm text-muted-foreground">{value}</span>}
       {chevron && <ChevronRight className="size-4 shrink-0 text-muted-foreground/70" />}
     </button>
+  );
+}
+
+/** Opens the bills and their due dates: the ones found from statements, and your own (rent, EMI, insurance). */
+function BillsRow() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <NavRow icon={CalendarClock} tint="bg-teal-600" label="Bills & due dates" value="Add and move dates" onClick={() => setOpen(true)} />
+      {open && <BillsDialog onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+/**
+ * Reminders always work inside the app (the bell and a message when a bill gets close). This switch adds pop-up
+ * notifications from the device too. Saved on this device only, since permission is per browser.
+ */
+function RemindersRow() {
+  const on = useRemindersOn();
+  const [note, setNote] = useState<string | null>(null);
+  const toggle = async (next: boolean) => {
+    setNote(null);
+    if (!next) return disableReminders();
+    const result = await enableReminders();
+    if (result === "denied") setNote("This browser is blocking pop-ups for the site, so they stay off. Reminders still show inside the app. To get pop-ups, allow notifications in the browser's site settings.");
+    if (result === "unsupported") setNote("This browser can't show pop-ups (on iPhone, add the app to the Home Screen first). Reminders still show inside the app.");
+  };
+  return (
+    <div className="px-3.5 py-2.5">
+      <div className="flex items-center gap-3">
+        <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-amber-500 text-white">
+          <Bell className="size-4" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[15px] font-medium">Pop-up notifications</span>
+          <span className="block text-xs text-muted-foreground">Bill reminders already show in the app (the bell and a message). Turn this on for a device pop-up too.</span>
+        </span>
+        <Switch checked={on} aria-label="Pop-up notifications" onCheckedChange={toggle} />
+      </div>
+      {note && <p className="mt-2 text-xs text-amber-700">{note}</p>}
+    </div>
   );
 }
 
