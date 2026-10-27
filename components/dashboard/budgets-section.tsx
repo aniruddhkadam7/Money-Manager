@@ -1,13 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Leaf, Pencil, Plus } from "lucide-react";
+import { Pencil, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { formatExactINR } from "@/lib/charts/format";
 import { activityHref } from "@/lib/charts/links";
+import { familyIds } from "@/lib/domain/categories";
 import { monthEnd, monthKey, monthStart } from "@/lib/domain/dates";
 import { minorToInputString, parseAmountToMinor } from "@/lib/domain/money";
 import { budgetLines, saveBudgets, useBudgets, type BudgetLine, type Budgets } from "@/lib/finance/budgets";
@@ -19,35 +20,98 @@ import { useFinance } from "../finance-provider";
 
 /** This month's budgets against what was spent, the most stretched first. */
 function useMonthBudgetLines(): BudgetLine[] {
-  const { book, ledger, today } = useFinance();
+  const { book, ledger, today, expenseCategories } = useFinance();
   const budgets = useBudgets();
   return useMemo(() => {
     const ym = monthKey(today);
-    return budgetLines(budgets, periodReport(book, ledger, monthStart(ym), monthEnd(ym)).expensesByCategory);
-  }, [budgets, book, ledger, today]);
+    const spent = periodReport(book, ledger, monthStart(ym), monthEnd(ym)).expensesByCategory;
+    // A main category's budget counts what was spent on its subcategories too.
+    const rolledUp = Object.keys(budgets).map((id) => {
+      const family = new Set(familyIds(id, expenseCategories));
+      return { categoryId: id, amountMinor: spent.filter((s) => family.has(s.categoryId)).reduce((t, s) => t + s.amountMinor, 0) };
+    });
+    return budgetLines(budgets, rolledUp);
+  }, [budgets, book, ledger, today, expenseCategories]);
 }
 
-/** One calm sentence about a budget: how much is left, or how far past it went. */
-function sentence(name: string, l: BudgetLine): string {
-  if (l.state === "over") return `${name} is ${formatExactINR(l.spentMinor - l.limitMinor)} past its ${formatExactINR(l.limitMinor)} plan this month.`;
-  if (l.state === "near") return `${name} is at ${Math.round(l.ratio * 100)}% of its ${formatExactINR(l.limitMinor)} plan, with ${formatExactINR(l.limitMinor - l.spentMinor)} left this month.`;
-  return `${formatExactINR(l.limitMinor - l.spentMinor)} left for ${name}.`;
+const CHART_HEIGHT = 140;
+
+/** Short rupee amounts (₹1.2k) so labels never crowd neighbouring bars. */
+function compactINR(minor: number): string {
+  const rupees = Math.round(minor / 100);
+  if (rupees >= 100000) return `₹${+(rupees / 100000).toFixed(1)}L`;
+  if (rupees >= 1000) return `₹${+(rupees / 1000).toFixed(1)}k`;
+  return `₹${rupees}`;
 }
 
-/** A soft heads-up on Home when a budget is getting full. Nothing shows while all of them are comfortable. */
-export function BudgetNudge({ className }: { className?: string }) {
-  const { getCategory } = useFinance();
-  const lines = useMonthBudgetLines().filter((l) => l.state !== "ok");
-  if (lines.length === 0) return null;
-  const first = lines[0];
+/** One vertical bar per category: the grey track is the budget, the fill is what's spent, red pokes above it when over. */
+function BudgetColumns({ line, category, scaleMinor, index, dense }: { line: BudgetLine; category: ReturnType<ReturnType<typeof useFinance>["getCategory"]>; scaleMinor: number; index: number; dense: boolean }) {
+  const { limitMinor, spentMinor, state } = line;
+  const px = (minor: number) => Math.round((minor / scaleMinor) * CHART_HEIGHT);
+  const trackPx = Math.max(4, px(limitMinor));
+  const fillPx = Math.min(trackPx, px(Math.min(spentMinor, limitMinor)));
+  const overPx = px(Math.max(0, spentMinor - limitMinor));
+  // Bars grow up from the baseline once mounted, staggered by position.
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setShown(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  const grow = (ms: number) => ({ transition: `height 800ms cubic-bezier(0.22, 1, 0.36, 1) ${ms}ms` });
+  const fillGradient = state === "near" ? "from-amber-400 to-orange-500" : "from-emerald-400 to-teal-500";
+
   return (
-    <a href="#budgets" className={cn("flex items-center gap-2 rounded-2xl bg-amber-50 p-3 text-sm text-amber-900 hover:bg-amber-100", className)}>
-      <Leaf className="size-4 shrink-0" />
-      <span>
-        {sentence(getCategory(first.categoryId).name, first)}
-        {lines.length > 1 && ` And ${lines.length - 1} more ${lines.length === 2 ? "budget is" : "budgets are"} close.`}
-      </span>
-    </a>
+    <li className="min-w-0">
+      <Link
+        href={activityHref({ category: line.categoryId })}
+        aria-label={`${category.name}: spent ${formatExactINR(spentMinor)} of a ${formatExactINR(limitMinor)} budget`}
+        title={`${category.name}: ${formatExactINR(spentMinor)} of ${formatExactINR(limitMinor)}`}
+        className="group block rounded-2xl px-0 py-1.5 outline-none transition-colors hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <div className="flex flex-col items-center justify-end" style={{ height: CHART_HEIGHT + 18 }}>
+          <span
+            className={cn(
+              "mb-1 text-[11px] font-semibold tabular-nums transition-opacity duration-700",
+              shown ? "opacity-100" : "opacity-0",
+              state === "over" ? "text-rose-600" : "text-slate-900",
+            )}
+          >
+            {compactINR(spentMinor)}
+          </span>
+          <div className="flex w-full max-w-11 flex-col justify-end transition-transform duration-300 group-hover:scale-105">
+            {overPx > 0 && (
+              <div
+                className="rounded-t-xl bg-gradient-to-t from-rose-500 to-red-400 shadow-[0_0_14px_rgba(244,63,94,0.55)]"
+                style={{ height: shown ? overPx : 0, ...grow(index * 90 + 500) }}
+              />
+            )}
+            <div
+              className={cn(
+                "flex flex-col justify-end overflow-hidden bg-gradient-to-t from-slate-100 to-slate-200 ring-1 ring-inset ring-slate-200/70",
+                overPx > 0 ? "" : "rounded-t-xl",
+              )}
+              style={{ height: trackPx }}
+            >
+              <div
+                className={cn("bg-gradient-to-t", fillGradient)}
+                style={{ height: shown ? fillPx : 0, ...grow(index * 90) }}
+              />
+            </div>
+          </div>
+        </div>
+        <div className="h-px bg-slate-200" />
+        {dense ? (
+          <p
+            className="mx-auto mt-2 h-16 overflow-hidden text-[11px] font-medium text-slate-700"
+            style={{ writingMode: "vertical-rl", transform: "rotate(180deg)", textOverflow: "ellipsis" }}
+          >
+            {category.name}
+          </p>
+        ) : (
+          <p className="mt-2 w-full truncate text-center text-[11px] font-medium text-slate-700">{category.name}</p>
+        )}
+      </Link>
+    </li>
   );
 }
 
@@ -55,6 +119,8 @@ export function BudgetsSection() {
   const { getCategory } = useFinance();
   const lines = useMonthBudgetLines();
   const [editing, setEditing] = useState(false);
+  // One shared scale so every category's bars are comparable.
+  const scaleMinor = Math.max(1, ...lines.map((l) => Math.max(l.limitMinor, l.spentMinor)));
 
   return (
     <div id="budgets" className="min-w-0 scroll-mt-24 [&>section]:h-full">
@@ -71,45 +137,18 @@ export function BudgetsSection() {
             Pick a monthly amount for the things you want to keep an eye on, like Food. You&apos;ll get a quiet note when one is nearly used up.
           </p>
         ) : (
-          <ul className="grid gap-3" data-testid="budgets-list">
-            {lines.map((l) => {
-              const category = getCategory(l.categoryId);
-              return (
-                <li key={l.categoryId}>
-                  <Link
-                    href={activityHref({ category: l.categoryId })}
-                    className="-mx-2 block rounded-xl px-2 py-1.5 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <div className="flex items-center gap-3">
-                      <CategoryIcon category={category} tile className="!size-9 !rounded-lg" />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-baseline justify-between gap-2">
-                          <p className="truncate text-[15px] font-medium text-slate-900">{category.name}</p>
-                          <p className="shrink-0 text-xs tabular-nums text-slate-500">
-                            {formatExactINR(l.spentMinor)} of {formatExactINR(l.limitMinor)}
-                          </p>
-                        </div>
-                        <div
-                          role="progressbar"
-                          aria-label={`${category.name} budget`}
-                          aria-valuemin={0}
-                          aria-valuemax={100}
-                          aria-valuenow={Math.min(100, Math.round(l.ratio * 100))}
-                          className="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-100"
-                        >
-                          <div
-                            className={cn("h-full rounded-full", l.state === "ok" ? "bg-emerald-500" : "bg-amber-500")}
-                            style={{ width: `${Math.min(100, l.ratio * 100)}%` }}
-                          />
-                        </div>
-                        {l.state !== "ok" && <p className="mt-1 text-xs text-amber-700">{sentence(category.name, l)}</p>}
-                      </div>
-                    </div>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
+          <div>
+            <div className="mb-3 flex items-center gap-4 text-xs text-slate-500">
+              <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-slate-200" /> Budget</span>
+              <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-gradient-to-t from-emerald-400 to-teal-500" /> Spent</span>
+              <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-gradient-to-t from-rose-500 to-red-400" /> Over budget</span>
+            </div>
+            <ul className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${lines.length}, minmax(0, 1fr))` }} data-testid="budgets-list">
+              {lines.map((l, i) => (
+                <BudgetColumns key={l.categoryId} line={l} category={getCategory(l.categoryId)} scaleMinor={scaleMinor} index={i} dense={lines.length > 6} />
+              ))}
+            </ul>
+          </div>
         )}
       </ChartCard>
       {editing && <BudgetsDialog onClose={() => setEditing(false)} />}
@@ -148,7 +187,7 @@ function BudgetsDialog({ onClose }: { onClose: () => void }) {
           {expenseCategories.map((c) => (
             <label key={c.id} className="flex items-center gap-3">
               <CategoryIcon category={c} tile className="!size-8 !rounded-lg" />
-              <span className="min-w-0 flex-1 truncate text-sm font-medium">{c.name}</span>
+              <span className="min-w-0 flex-1 truncate text-sm font-medium">{c.parentId ? `↳ ${c.name}` : c.name}</span>
               <span className="relative w-32 shrink-0">
                 <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">₹</span>
                 <Input

@@ -79,18 +79,21 @@ export class LocalStorageExpenseRepository implements ExpenseRepository {
     ];
   }
 
-  async addCategory(name: string): Promise<Category> {
+  async addCategory(name: string, parentId?: string): Promise<Category> {
     const trimmed = name.trim();
     const custom = read<Category[]>(CUSTOM_CATEGORIES_KEY, []);
-    const existing = [...DEFAULT_CATEGORIES, ...custom].find(
-      (c) => c.name.toLowerCase() === trimmed.toLowerCase(),
-    );
+    const all = [...DEFAULT_CATEGORIES, ...custom];
+    const existing = all.find((c) => c.name.toLowerCase() === trimmed.toLowerCase());
     if (existing) return existing;
+
+    const parent = parentId ? all.find((c) => c.id === parentId) : undefined;
+    if (parentId && (!parent || parent.parentId)) throw new Error("Pick a main category to put it under");
 
     const category: Category = {
       id: `custom-${newId()}`,
       name: trimmed,
-      color: colorForCustomCategory(custom.length),
+      color: parent ? parent.color : colorForCustomCategory(custom.length),
+      ...(parent ? { icon: parent.icon, parentId: parent.id } : {}),
       isDefault: false,
     };
     write(CUSTOM_CATEGORIES_KEY, [...custom, category]);
@@ -113,6 +116,7 @@ export class LocalStorageExpenseRepository implements ExpenseRepository {
   async deleteCategory(id: string): Promise<void> {
     const custom = read<Category[]>(CUSTOM_CATEGORIES_KEY, []);
     if (!custom.some((c) => c.id === id)) throw new Error("Only your own categories can be removed");
+    if (custom.some((c) => c.parentId === id)) throw new Error("Remove its subcategories first");
     write(CUSTOM_CATEGORIES_KEY, custom.filter((c) => c.id !== id));
   }
 }

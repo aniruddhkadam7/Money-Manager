@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, ChevronRight } from "lucide-react";
 import { formatExactINR } from "@/lib/charts/format";
 import { activityHref } from "@/lib/charts/links";
+import { rollUpByParent } from "@/lib/domain/categories";
 import { formatDisplayDate, todayISO } from "@/lib/domain/dates";
 import { DEFAULT_PERIOD, PERIODS, rangeStart, type RangeKey } from "@/lib/finance/series";
 import { HowYouPaid } from "./how-you-paid";
@@ -25,7 +26,7 @@ const rupees = (minor: number) => {
  * straight from the same engine report the rest of the app uses. Every row opens the entries behind it.
  */
 export function SoFarSection() {
-  const { book, report, getCategory } = useFinance();
+  const { book, report, getCategory, categories } = useFinance();
   // The same periods as every other card on the dashboard.
   const [span, setSpan] = useState<RangeKey>(DEFAULT_PERIOD);
   // Phones show one breakdown at a time; wider screens show both side by side.
@@ -54,10 +55,10 @@ export function SoFarSection() {
   const slots = useMemo(() => {
     const first = book.events.reduce((m, e) => (e.date < m ? e.date : m), todayISO());
     const all = report(first, todayISO());
-    const rank = (list: Row[]) => new Map([...list].filter((c) => c.amountMinor > 0).sort((a, b) => b.amountMinor - a.amountMinor).map((c, i) => [c.categoryId, i] as const));
+    const rank = (list: Row[]) => new Map([...rollUpByParent(list.filter((c) => c.amountMinor > 0), categories)].sort((a, b) => b.amountMinor - a.amountMinor).map((c, i) => [c.categoryId, i] as const));
     return { spent: rank(all.expensesByCategory), earned: rank(all.incomeByCategory.filter((c) => !MONEY_BACK_CATEGORY_IDS.has(c.categoryId))) };
-  }, [book.events, report]);
-  const spent = [...r.expensesByCategory].filter((c) => c.amountMinor > 0).sort((a, b) => b.amountMinor - a.amountMinor);
+  }, [book.events, report, categories]);
+  const spent = rollUpByParent([...r.expensesByCategory].filter((c) => c.amountMinor > 0), categories);
   const earned = [...r.incomeByCategory].filter((c) => c.amountMinor > 0 && !MONEY_BACK_CATEGORY_IDS.has(c.categoryId)).sort((a, b) => b.amountMinor - a.amountMinor);
   const flow = Object.values(r.cashFlow);
   const cameIn = flow.reduce((t, f) => t + f.inflowMinor, 0);
@@ -168,7 +169,7 @@ const REST_COLOR = "#a3a29d";
 const PHONE_ROWS = 5;
 const REST_ID = "__rest";
 
-type Row = { categoryId: string; amountMinor: number };
+type Row = { categoryId: string; amountMinor: number; children?: Row[] };
 type Slice = { id: string; label: string; amount: number; color: string };
 
 const pctText = (part: number, total: number) => {
@@ -209,6 +210,14 @@ function Breakdown({
   const [hover, setHover] = useState<string | null>(null);
   // Phones list the top few; the rest open on request.
   const [all, setAll] = useState(false);
+  // Main categories whose subcategories are showing; they start folded.
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const toggleOpen = (id: string) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
   const total = rows.reduce((t, r) => t + r.amountMinor, 0);
   const shownTotal = net?.minor ?? total;
   const moneyBack = total - shownTotal;
@@ -283,20 +292,47 @@ function Breakdown({
                 const cat = getCategory(c.categoryId);
                 return (
                   <li key={c.categoryId} className={cn(!all && i >= PHONE_ROWS && "max-sm:hidden")}>
-                    <Link
-                      href={hrefFor(c.categoryId)}
-                      onMouseEnter={() => setHover(c.categoryId)}
-                      onMouseLeave={() => setHover(null)}
-                      className={cn("flex items-center gap-3 px-3 py-2 text-sm hover:bg-muted/60", hover === c.categoryId && "bg-muted/60")}
-                    >
-                      <CategoryIcon category={cat} />
-                      <span className="min-w-0 flex-1 truncate">{cat.name}</span>
-                      <span className="flex w-14 shrink-0 items-center gap-1.5 rounded-md bg-muted px-1.5 py-0.5 text-xs font-semibold tabular-nums">
-                        <span className="size-2 shrink-0 rounded-full" style={{ background: colorOf(c.categoryId) }} />
-                        <span className="flex-1 text-center">{pctText(c.amountMinor, total)}</span>
-                      </span>
-                      <span className="min-w-0 flex-1 text-right font-medium tabular-nums">{rupees(c.amountMinor)}</span>
-                    </Link>
+                    <div className="flex items-center">
+                      {c.children && c.children.length > 0 ? (
+                        <button
+                          type="button"
+                          aria-label={`${open.has(c.categoryId) ? "Hide" : "Show"} ${cat.name} subcategories`}
+                          aria-expanded={open.has(c.categoryId)}
+                          onClick={() => toggleOpen(c.categoryId)}
+                          className="ml-1 grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted"
+                        >
+                          <ChevronRight className={cn("size-4 transition-transform", open.has(c.categoryId) && "rotate-90")} />
+                        </button>
+                      ) : (
+                        <span className="ml-1 size-7 shrink-0" />
+                      )}
+                      <Link
+                        href={hrefFor(c.categoryId)}
+                        onMouseEnter={() => setHover(c.categoryId)}
+                        onMouseLeave={() => setHover(null)}
+                        className={cn("flex min-w-0 flex-1 items-center gap-3 py-2 pl-1 pr-3 text-sm hover:bg-muted/60", hover === c.categoryId && "bg-muted/60")}
+                      >
+                        <CategoryIcon category={cat} />
+                        <span className="min-w-0 flex-1 truncate">{cat.name}</span>
+                        <span className="flex w-14 shrink-0 items-center gap-1.5 rounded-md bg-muted px-1.5 py-0.5 text-xs font-semibold tabular-nums">
+                          <span className="size-2 shrink-0 rounded-full" style={{ background: colorOf(c.categoryId) }} />
+                          <span className="flex-1 text-center">{pctText(c.amountMinor, total)}</span>
+                        </span>
+                        <span className="min-w-0 flex-1 text-right font-medium tabular-nums">{rupees(c.amountMinor)}</span>
+                      </Link>
+                    </div>
+                    {c.children && c.children.length > 0 && open.has(c.categoryId) && c.children.map((s) => (
+                      <Link
+                        key={s.categoryId}
+                        href={hrefFor(s.categoryId)}
+                        className="flex items-center gap-3 py-1.5 pl-9 pr-3 text-xs text-muted-foreground hover:bg-muted/60"
+                      >
+                        <span aria-hidden>↳</span>
+                        <span className="min-w-0 flex-1 truncate">{getCategory(s.categoryId).name}</span>
+                        <span className="w-14 shrink-0 text-center tabular-nums">{pctText(s.amountMinor, total)}</span>
+                        <span className="min-w-0 flex-1 text-right font-medium tabular-nums">{rupees(s.amountMinor)}</span>
+                      </Link>
+                    ))}
                   </li>
                 );
               })}

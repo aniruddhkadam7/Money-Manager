@@ -189,23 +189,75 @@ export function PeopleList({ className }: { className?: string }) {
   );
 }
 
-/** Spending categories you added: rename or remove them. The built-in ones are listed below them. Lives in the profile's settings. */
+/** Spending categories you added: rename or remove them, or add a subcategory (e.g. Hair care under Health). The built-in ones are listed below them. Lives in the profile's settings. */
 export function CategoriesList() {
   const f = useFinance();
   const custom = f.expenseCategories.filter((c) => !c.isDefault);
   const builtIn = f.expenseCategories.filter((c) => c.isDefault);
+  const parents = f.expenseCategories.filter((c) => !c.parentId);
+  const [parentId, setParentId] = useState("");
+  const [name, setName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function addSub() {
+    const trimmed = name.trim();
+    if (!parentId) return setError("Choose the main category first.");
+    if (!trimmed) return setError("Enter a name.");
+    if (f.expenseCategories.some((c) => c.name.toLowerCase() === trimmed.toLowerCase())) {
+      return setError(`You already have a category called “${trimmed}”.`);
+    }
+    setBusy(true);
+    try {
+      await f.addCategory(trimmed, parentId);
+      setName("");
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't add it.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <div className="overflow-hidden rounded-xl border">
+      <form
+        className="grid gap-2 border-b p-3 sm:grid-cols-[1fr_1fr_auto]"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void addSub();
+        }}
+      >
+        <select
+          aria-label="Main category"
+          value={parentId}
+          onChange={(e) => setParentId(e.target.value)}
+          className="h-9 rounded-md border border-input bg-transparent px-2 text-sm"
+        >
+          <option value="">Under which category?</option>
+          {parents.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+        <Input value={name} maxLength={30} placeholder="Subcategory, e.g. Hair care" aria-label="Subcategory name" onChange={(e) => setName(e.target.value)} />
+        <Button type="submit" disabled={busy}>
+          Add
+        </Button>
+        {error && <p className="rounded-lg bg-red-50 px-3 py-1.5 text-xs text-red-800 sm:col-span-3">{error}</p>}
+      </form>
       <ul className="divide-y">
         {custom.map((c) => {
           const used = f.categoryUsage(c.id);
+          const parent = c.parentId ? f.expenseCategories.find((x) => x.id === c.parentId) : undefined;
+          const usage = used > 0 ? `Used in ${used} ${used === 1 ? "entry" : "entries"}` : "Not used yet";
           return (
             <ManagedRow
               key={c.id}
               lead={<CategoryIcon category={c} tile className="!size-9 !rounded-lg" />}
               name={c.name}
-              detail={used > 0 ? `Used in ${used} ${used === 1 ? "entry" : "entries"}` : "Not used yet"}
+              detail={parent ? `Under ${parent.name} · ${usage}` : usage}
               onRename={async (name) => {
                 const r = await f.renameCategory(c.id, name);
                 return r.ok ? null : r.message;

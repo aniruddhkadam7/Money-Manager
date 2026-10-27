@@ -5,6 +5,7 @@ import { Check, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { categoryLabel } from "@/lib/domain/categories";
 import type { AccountType } from "@/lib/finance/types";
 import type { StatementEventType } from "@/lib/statements/types";
 import { cn } from "@/lib/utils";
@@ -169,7 +170,7 @@ export function CategorySelect({
   ariaLabel: string;
   placeholder?: string;
 }) {
-  const { addCategory } = useFinance();
+  const { addCategory, expenseCategories } = useFinance();
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -206,11 +207,14 @@ export function CategorySelect({
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
-        {names.map((name) => (
-          <SelectItem key={name} value={name}>
-            {name}
-          </SelectItem>
-        ))}
+        {names.map((name) => {
+          const c = expenseCategories.find((x) => x.name === name);
+          return (
+            <SelectItem key={name} value={name}>
+              {c ? categoryLabel(c, expenseCategories) : name}
+            </SelectItem>
+          );
+        })}
         {allowNew && <NewItem>New category…</NewItem>}
       </SelectContent>
     </Select>

@@ -14,6 +14,7 @@ import { formatRupees } from "@/lib/finance/describe";
 import { involvesPerson, personSummary, type PersonSummary } from "@/lib/finance/person-summary";
 import { chronological } from "@/lib/finance/order";
 import { isMoneyBack } from "@/lib/finance/state";
+import { categoryLabel, familyIds } from "@/lib/domain/categories";
 import type { Category } from "@/lib/domain/types";
 import type { EventType, FinancialEvent } from "@/lib/finance/types";
 import { cn, scrollPage } from "@/lib/utils";
@@ -157,6 +158,7 @@ function ActivityContent() {
 
   const chosenPerson = personId === ALL ? undefined : book.people.find((p) => p.id === personId);
 
+  const categoryFamily = useMemo(() => new Set(familyIds(categoryId, categories)), [categoryId, categories]);
   const filtered = useMemo(() => {
     const types = typesFor(group);
     const q = query.trim().toLowerCase();
@@ -171,7 +173,7 @@ function ActivityContent() {
           matchesShow(group, e, types) &&
           (entryType === ALL || (e.type === entryType && !(entryType === "income" && isMoneyBack(e)))) &&
           (!party || partyNameOf(e, describer.title(e)) === party.key) &&
-          (categoryId === ALL || categoryOf(e) === categoryId) &&
+          (categoryId === ALL || categoryFamily.has(categoryOf(e) ?? "")) &&
           (!from || e.date >= from) &&
           (!to || e.date <= to) &&
           (origin === ALL || (origin === "statement") === fromStatement(e)),
@@ -183,7 +185,7 @@ function ActivityContent() {
         const byAmount = amountOf(b) - amountOf(a);
         return (sort === "highest" ? byAmount : -byAmount) || byDate;
       });
-  }, [book.events, group, entryType, categoryId, accountId, personId, chosenPerson, from, to, origin, query, describer, owedPeople, sort, party]);
+  }, [book.events, group, entryType, categoryId, categoryFamily, accountId, personId, chosenPerson, from, to, origin, query, describer, owedPeople, sort, party]);
 
   const hasFilters =
     party !== null || group !== ALL || entryType !== ALL || categoryId !== ALL || accountId !== ALL || personId !== ALL || from !== "" || to !== "" || origin !== ALL || query !== "" || owed !== null;
@@ -199,7 +201,7 @@ function ActivityContent() {
   ];
   const categoryOptions: SearchableOption[] = [
     { value: ALL, label: "All categories" },
-    ...categories.map((c) => ({ value: c.id, label: c.name, icon: <CategoryIcon category={c} /> })),
+    ...categories.map((c) => ({ value: c.id, label: categoryLabel(c, categories), icon: <CategoryIcon category={c} /> })),
   ];
   const accountOptions: SearchableOption[] = [{ value: ALL, label: "All accounts" }, ...book.accounts.map((a) => ({ value: a.id, label: a.name, icon: <BankMark name={a.name} accountId={a.id} /> }))];
   const personOptions: SearchableOption[] = [{ value: ALL, label: "Everyone" }, ...book.people.map((p) => ({ value: p.id, label: p.name }))];

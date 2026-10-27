@@ -98,9 +98,18 @@ export function upcomingBills(
     });
   }
 
+  // A bill you added for the same service replaces the detected subscription, so it isn't listed twice.
+  const squash = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const ownNames = data.bills.map((b) => squash(b.name)).filter((n) => n.length >= 3);
+  const covered = (name: string) => {
+    const n = squash(name);
+    return n.length >= 3 && ownNames.some((o) => o === n || o.includes(n) || n.includes(o));
+  };
+
   for (const s of subscriptions) {
     const baseKey = `sub:${s.key}`;
     if (isStopped(data.stopped, baseKey, s.lastDate)) continue; // not active: a one-off, or cancelled (until it charges again)
+    if (covered(s.name)) continue;
     const { date, moved } = dateOf(baseKey, s.nextDate);
     const days = daysBetween(today, date);
     if (!all && (days < 0 || days > SUBSCRIPTION_WINDOW_DAYS)) continue;

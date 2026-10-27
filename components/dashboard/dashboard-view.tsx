@@ -11,7 +11,7 @@ import { DueSoon } from "../reminders";
 import { useBalances } from "../statements/use-statement-checks";
 import { AccountsSection } from "./accounts-section";
 import { AssetsLiabilitiesSection } from "./assets-liabilities-section";
-import { BudgetNudge, BudgetsSection } from "./budgets-section";
+import { BudgetsSection } from "./budgets-section";
 import { SpendingSection } from "./cash-flow-sections";
 import { InvestmentSection } from "./investment-section";
 import { SamePeopleBanner } from "../money/same-people-banner";
@@ -86,7 +86,6 @@ export function DashboardView() {
       </div>
 
       <SamePeopleBanner className="col-span-full" />
-      <BudgetNudge className="col-span-full" />
 
       {/* Who pays me, who owes me, whom do I owe */}
       {hasPartyData(state, book.events.some((e) => e.type === "income")) && <TopParties state={state} />}

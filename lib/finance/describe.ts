@@ -1,4 +1,5 @@
 import { shield } from "../privacy";
+import { brandFor } from "./brands";
 import { idOf } from "./engine";
 import { paymentMethodOf } from "./payment-method";
 import { isAssetAccount, type Account, type Book, type FinancialEvent, type LedgerEntry } from "./types";
@@ -29,6 +30,17 @@ export interface Describer {
   effects(entry: LedgerEntry): EntryEffects;
 }
 
+/** Words banks add around a shop's name; a description that is only the shop plus these reads as the shop. */
+const FILLER = /\b(pay(me|ments?)?|upi|india|internet|technologies|pvt|private|ltd|limited|llp|online|retail)\b/g;
+
+/** "Fli Kart" and "Flipkart Payme" are both Flipkart; "Swiggy Instamart" stays as written. */
+export function canonicalShopName(description: string): string | null {
+  const brand = brandFor(description);
+  if (!brand || brand.subscription) return null;
+  const rest = description.toLowerCase().replace(brand.re, " ").replace(FILLER, " ").replace(/[^a-z0-9]/g, "");
+  return rest === "" ? brand.name : null;
+}
+
 export function makeDescriber(book: Book, categoryName: (id: string) => string): Describer {
   const accounts = new Map<string, Account>(book.accounts.map((a) => [a.id, a]));
   const people = new Map(book.people.map((p) => [p.id, p.name]));
@@ -49,7 +61,7 @@ export function makeDescriber(book: Book, categoryName: (id: string) => string):
   const title = (e: FinancialEvent): string => {
     switch (e.type) {
       case "expense":
-        return e.description || categoryName(e.categoryId);
+        return (e.description && canonicalShopName(e.description)) || e.description || categoryName(e.categoryId);
       case "income":
         return e.description || `${categoryName(e.categoryId)} received`;
       case "transfer": {

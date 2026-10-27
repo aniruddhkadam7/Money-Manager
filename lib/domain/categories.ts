@@ -38,6 +38,55 @@ export const FALLBACK_CATEGORY: Category = {
   isDefault: true,
 };
 
+/** Puts each subcategory right after its parent; everything else keeps its order. Orphans stay at the end. */
+export function orderWithChildren(list: Category[]): Category[] {
+  const ids = new Set(list.map((c) => c.id));
+  const top = list.filter((c) => !c.parentId || !ids.has(c.parentId));
+  return top.flatMap((c) => [c, ...list.filter((x) => x.parentId === c.id)]);
+}
+
+/** "Health › Hair care" for a subcategory, the plain name otherwise. */
+export function categoryLabel(c: Category, list: Category[]): string {
+  const parent = c.parentId ? list.find((x) => x.id === c.parentId) : undefined;
+  return parent ? `${parent.name} › ${c.name}` : c.name;
+}
+
+/** The category and all of its subcategories. */
+export function familyIds(id: string, list: Category[]): string[] {
+  return [id, ...list.filter((c) => c.parentId === id).map((c) => c.id)];
+}
+
+export type RolledRow<T extends { categoryId: string; amountMinor: number }> = T & { children: T[] };
+
+/**
+ * Folds subcategory amounts into their parent: one row per main category (its own spend plus its
+ * subcategories'), each carrying its subcategory rows. Biggest first at both levels.
+ */
+export function rollUpByParent<T extends { categoryId: string; amountMinor: number }>(rows: T[], list: Category[]): RolledRow<T>[] {
+  const parentOf = (id: string) => {
+    const p = list.find((c) => c.id === id)?.parentId;
+    return p && list.some((c) => c.id === p) ? p : undefined;
+  };
+  const bigFirst = (a: T, b: T) => b.amountMinor - a.amountMinor;
+  const children = new Map<string, T[]>();
+  for (const r of rows) {
+    const p = parentOf(r.categoryId);
+    if (p) children.set(p, [...(children.get(p) ?? []), r]);
+  }
+  const tops = new Map<string, RolledRow<T>>();
+  for (const r of rows) {
+    if (parentOf(r.categoryId)) continue;
+    tops.set(r.categoryId, { ...r, children: (children.get(r.categoryId) ?? []).sort(bigFirst) });
+  }
+  for (const [p, kids] of children) {
+    const sum = kids.reduce((t, k) => t + k.amountMinor, 0);
+    const own = tops.get(p);
+    if (own) own.amountMinor += sum;
+    else tops.set(p, { ...kids[0], categoryId: p, amountMinor: sum, children: kids.sort(bigFirst) });
+  }
+  return [...tops.values()].sort(bigFirst);
+}
+
 const CUSTOM_COLORS = ["#f43f5e", "#06b6d4", "#84cc16", "#d946ef", "#f59e0b"];
 
 export function colorForCustomCategory(index: number): string {

@@ -35,7 +35,7 @@ export const BRANDS: Brand[] = [
   b("chatgpt", "ChatGPT", "chatgpt.com", /openai|chatgpt/),
   b("claude", "Claude", "claude.ai", /anthropic|claude\.ai|\bclaude\b/),
   b("github", "GitHub", "github.com", /github/),
-  b("godaddy", "GoDaddy", "godaddy.com", /godaddy|go daddy/),
+  b("godaddy", "GoDaddy", "godaddy.com", /go\s*d\s*a?\s*d\s*d\s*y/),
   b("hostinger", "Hostinger", "hostinger.in", /hostinger/),
   b("linkedin", "LinkedIn", "linkedin.com", /linkedin/),
   b("audible", "Audible", "audible.in", /audible/),
@@ -66,7 +66,7 @@ export const BRANDS: Brand[] = [
   b("swiggyapp", "Swiggy", "swiggy.com", /swiggy/, false),
   b("zomatoapp", "Zomato", "zomato.com", /zomato/, false),
   b("amazon", "Amazon", "amazon.in", /amazon|amzn/, false),
-  b("flipkart", "Flipkart", "flipkart.com", /flipkart/, false),
+  b("flipkart", "Flipkart", "flipkart.com", /fli\s*p?\s*kart|flipkar\b/, false),
   b("uber", "Uber", "uber.com", /\buber\b/, false),
   b("ola", "Ola", "olacabs.in", /\bola\b|olacabs/, false),
   b("irctc", "IRCTC", "irctc.com", /irctc/, false),
@@ -79,6 +79,7 @@ export const BRANDS: Brand[] = [
   b("redbus", "redBus", "redbus.in", /redbus/, false),
   b("zerodha", "Zerodha", "zerodha.com", /zerodha/, false),
   b("groww", "Groww", "groww.in", /groww/, false),
+  b("1mg", "Tata 1mg", "1mg.com", /\b1mg\b|tata 1\s?mg/, false),
   // Employers and companies that pay you or reimburse you.
   // "EY" only on its own (or EY LLP / GDS / India): a bank line like "PAN EY TEA STALL" is not EY.
   b("ey", "EY", "ey.com", /^\s*ey(\s+(llp|gds|india|global|services))?\s*$|ernst\s*(&|and)?\s*young/, false),

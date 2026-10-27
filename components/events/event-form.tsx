@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { categoryLabel } from "@/lib/domain/categories";
 import { todayISO } from "@/lib/domain/dates";
 import { minorToInputString, parseAmountToMinor } from "@/lib/domain/money";
 import { ensurePerson } from "@/lib/finance/book-ops";
@@ -102,7 +103,15 @@ export function EventForm({
   const option = eventOption(type);
   const personName = (id: string) => f.book.people.find((p) => p.id === id)?.name ?? "";
   const accountName = (id: string) => f.book.accounts.find((a) => a.id === id)?.name ?? "";
-
+  // Names already used in your records (latest spelling wins), offered while typing for consistency.
+  const knownDescriptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const e of [...f.book.events].sort((a, b) => a.date.localeCompare(b.date))) {
+      const d = (e.description ?? "").trim();
+      if (d) seen.set(d.toLowerCase(), d);
+    }
+    return [...seen.values()];
+  }, [f.book.events]);
   const accountsFor = (types: AccountType[]) => f.book.accounts.filter((a) => types.includes(a.type));
   const mainAccounts = accountsFor(spec.accountTypes);
   const toAccounts = accountsFor(["bank", "cash", "credit_card", "loan"]);
@@ -117,6 +126,7 @@ export function EventForm({
   const [pickingCategory, setPickingCategory] = useState(false);
   const [addingCategory, setAddingCategory] = useState(false);
   const [newCategory, setNewCategory] = useState("");
+  const [newParent, setNewParent] = useState("");
   // A repayment larger than what was owed is saved only once confirmed, for exactly these values.
   const [overpayConfirmed, setOverpayConfirmed] = useState<string | null>(null);
 
@@ -300,9 +310,10 @@ export function EventForm({
   async function handleAddCategory() {
     const name = newCategory.trim();
     if (!name) return;
-    const created = await f.addCategory(name);
+    const created = await f.addCategory(name, newParent || undefined);
     set("categoryId", created.id);
     setNewCategory("");
+    setNewParent("");
     setAddingCategory(false);
     setPickingCategory(false);
   }
@@ -311,6 +322,7 @@ export function EventForm({
     setPickingCategory(false);
     setAddingCategory(false);
     setNewCategory("");
+    setNewParent("");
   }
 
   /**
@@ -356,7 +368,9 @@ export function EventForm({
                   }`}
                 >
                   <CategoryIcon category={c} className="size-5 shrink-0" />
-                  <span className="truncate">{c.name}</span>
+                  <span className="truncate" title={categoryLabel(c, categories)}>
+                    {c.parentId ? `↳ ${c.name}` : c.name}
+                  </span>
                 </button>
               );
             })}
@@ -374,7 +388,22 @@ export function EventForm({
             ))}
           </div>
           {canAdd && addingCategory && (
-            <div className="flex gap-2 p-2">
+            <div className="grid gap-2 p-2 sm:grid-cols-[auto_1fr_auto]">
+              <select
+                aria-label="Under which category (optional)"
+                value={newParent}
+                onChange={(e) => setNewParent(e.target.value)}
+                className="h-9 rounded-md border border-input bg-transparent px-2 text-sm"
+              >
+                <option value="">Main category</option>
+                {categories
+                  .filter((c) => !c.parentId)
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      Under {c.name}
+                    </option>
+                  ))}
+              </select>
               <Input
                 autoFocus
                 placeholder="New category name"
@@ -579,14 +608,14 @@ export function EventForm({
       case "description":
         return (
           <Field key={key} id="description" label={label("description", "Description")} error={errors.description}>
-            <Input
+            <PersonInput
               id="description"
-              autoComplete="off"
               maxLength={80}
               placeholder={type === "income" ? "e.g. Acme Pvt Ltd" : "e.g. Swiggy"}
               value={values.description}
-              onChange={(e) => set("description", e.target.value)}
-              aria-invalid={!!errors.description}
+              onChange={(v) => set("description", v)}
+              people={knownDescriptions}
+              invalid={!!errors.description}
             />
           </Field>
         );
@@ -606,7 +635,7 @@ export function EventForm({
               {chosen ? (
                 <>
                   <CategoryIcon category={chosen} />
-                  <span className="truncate">{chosen.name}</span>
+                  <span className="truncate">{categoryLabel(chosen, categories)}</span>
                 </>
               ) : (
                 <span className="text-muted-foreground">Select</span>
@@ -1014,6 +1043,7 @@ function PersonInput({
   placeholder = "Name",
   autoFocus,
   invalid,
+  maxLength = 40,
 }: {
   id?: string;
   value: string;
@@ -1023,6 +1053,7 @@ function PersonInput({
   placeholder?: string;
   autoFocus?: boolean;
   invalid?: boolean;
+  maxLength?: number;
 }) {
   const [open, setOpen] = useState(false);
   const typed = value.trim().toLowerCase();
@@ -1041,7 +1072,7 @@ function PersonInput({
         id={id}
         autoComplete="off"
         autoFocus={autoFocus}
-        maxLength={40}
+        maxLength={maxLength}
         placeholder={placeholder}
         value={value}
         onChange={(e) => {

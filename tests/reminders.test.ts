@@ -98,6 +98,14 @@ describe("billDatesBetween", () => {
   });
 });
 
+describe("subscriptions you also added as a bill", () => {
+  it("are listed once, as your bill", () => {
+    const data = { bills: [{ id: "n", name: "Netflix", dueDate: "2026-10-27", repeat: "monthly" as const }], overrides: {} };
+    const r = upcomingBills(book, [], [sub("Netflix", "2026-10-27"), sub("Spotify", "2026-10-27")], "2026-10-25", { data, all: true });
+    expect(r.map((x) => [x.kind, x.title]).sort()).toEqual([["custom", "Netflix"], ["subscription", "Spotify"]]);
+  });
+});
+
 describe("subscriptions marked not active", () => {
   const subs = [sub("Netflix", "2026-10-27"), sub("OneOff", "2026-10-26")]; // both last charged 2026-09-27
   const titles = (stopped: Record<string, { name: string; lastDate: string }>, list = subs) =>

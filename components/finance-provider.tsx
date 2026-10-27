@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { DEFAULT_INCOME_CATEGORIES, FALLBACK_CATEGORY } from "@/lib/domain/categories";
+import { DEFAULT_INCOME_CATEGORIES, FALLBACK_CATEGORY, orderWithChildren } from "@/lib/domain/categories";
 import { formatDisplayDate, todayISO } from "@/lib/domain/dates";
 import type { Category, ExpenseRepository } from "@/lib/domain/types";
 import * as ops from "@/lib/finance/book-ops";
@@ -62,7 +62,7 @@ interface FinanceContextValue {
   addAccount: (input: AccountInput) => Result<Account>;
   updateAccount: (id: string, changes: Partial<Pick<Account, "name" | "openingBalanceMinor" | "openedOn" | "style" | "creditLimitMinor">>) => Result<null>;
   deleteAccount: (id: string, choice?: ops.DeleteAccountChoice) => Result<null>;
-  addCategory: (name: string) => Promise<Category>;
+  addCategory: (name: string, parentId?: string) => Promise<Category>;
   saveError: string | null;
   /** The latest book, read synchronously (state can lag a render behind). */
   getBook: () => Book;
@@ -94,7 +94,8 @@ export function FinanceProvider({
 }) {
   const [status, setStatus] = useState<Status>("loading");
   const [book, setBook] = useState<Book>(EMPTY_BOOK);
-  const [expenseCategories, setExpenseCategories] = useState<Category[]>([]);
+  const [loadedCategories, setExpenseCategories] = useState<Category[]>([]);
+  const expenseCategories = useMemo(() => orderWithChildren(loadedCategories), [loadedCategories]);
   const [saveError, setSaveError] = useState<string | null>(null);
   // Mutations read the latest book synchronously (e.g. add a person, then an event using them).
   const bookRef = useRef<Book>(EMPTY_BOOK);
@@ -271,8 +272,8 @@ export function FinanceProvider({
       updateAccount: (id, changes) => apply(ops.updateAccount(bookRef.current, id, changes), () => null),
       deleteAccount: (id, choice) => apply(ops.deleteAccount(bookRef.current, id, choice), () => null),
 
-      addCategory: async (name) => {
-        const created = await categoryRepository.addCategory(name);
+      addCategory: async (name, parentId) => {
+        const created = await categoryRepository.addCategory(name, parentId);
         setExpenseCategories((prev) => (prev.some((c) => c.id === created.id) ? prev : [...prev, created]));
         return created;
       },

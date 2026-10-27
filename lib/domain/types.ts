@@ -7,6 +7,8 @@ export interface Category {
   isDefault: boolean;
   /** Missing means `expense`. Income categories are used when recording money received. */
   kind?: "expense" | "income";
+  /** Set on a subcategory (e.g. Hair care under Health). Only one level deep; the parent is a top-level expense category. */
+  parentId?: string;
 }
 
 export interface Expense {
@@ -37,7 +39,8 @@ export interface ExpenseRepository {
   deleteExpense(id: string): Promise<void>;
 
   listCategories(): Promise<Category[]>;
-  addCategory(name: string): Promise<Category>;
+  /** With `parentId` the new category is a subcategory of that top-level expense category. */
+  addCategory(name: string, parentId?: string): Promise<Category>;
   /** Only custom categories can be renamed or removed; the built-in ones are fixed. */
   renameCategory(id: string, name: string): Promise<Category>;
   deleteCategory(id: string): Promise<void>;
