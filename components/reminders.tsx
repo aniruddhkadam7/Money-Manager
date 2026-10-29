@@ -46,7 +46,7 @@ const bodyOf = (r: Reminder) =>
   r.kind === "custom"
     ? `${dueWording(r.days)}${r.amountMinor > 0 ? ` · ${formatExactINR(r.amountMinor)}` : ""}`
     : r.kind === "card"
-    ? `${dueWording(r.days)} · ${formatExactINR(r.amountMinor)} left to pay${r.minimumMinor ? ` (minimum ${formatExactINR(r.minimumMinor)})` : ""}`
+    ? `${dueWording(r.days)} · ${formatExactINR(r.amountMinor)}${r.days < 0 ? " unpaid" : ""}${r.minimumMinor ? ` (minimum ${formatExactINR(r.minimumMinor)})` : ""}`
     : `Renews ${r.days === 0 ? "today" : r.days === 1 ? "tomorrow" : `in ${r.days} days`} · about ${formatExactINR(r.amountMinor)}`;
 
 /** The "Coming up" card on Home: what's due soon, with a way to mark your own bills paid, move any date, or add a bill. */

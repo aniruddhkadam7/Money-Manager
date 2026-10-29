@@ -19,6 +19,7 @@ import { EventRow } from "../events/event-row";
 import { useFinance } from "../finance-provider";
 import { PageTitle } from "../page-title";
 import { PictureIcon } from "../picture-icon";
+import { AccountLogo, useBankHints } from "../account-logo";
 import { ReminderLogo } from "../reminder-logo";
 import { useReminders } from "../reminders";
 import { useStatements } from "../statements/statements-provider";
@@ -253,6 +254,7 @@ export function CalendarBoard({ initialMonth }: { initialMonth?: string }) {
                     bills={billsByDay.get(d.date) ?? []}
                     heat={heat.get(d.date) ?? 0}
                     today={d.date === today}
+                    past={d.date < today}
                     selected={d.date === selected}
                     onPick={() => pick(d)}
                   />
@@ -347,12 +349,20 @@ function BillDueRow({ bill, today, date }: { bill: Reminder; today: string; date
 
 /** A card bill's printed due date and how much of it is paid. */
 function CardDueRow({ due, today }: { due: CalendarCardDue; today: string }) {
+  const { book } = useFinance();
+  const bankOf = useBankHints();
+  const account = book.accounts.find((a) => a.id === due.accountId);
   const days = daysBetween(today, due.dueDate);
   const unpaid = due.remainingMinor > 0;
+  const overdue = unpaid && due.latest && days < 0;
+  // Before its due date a bill is just coming up: say when, and only mention the amount once part of it is paid.
+  const partPaid = due.remainingMinor < due.billMinor ? ` · ${formatExactINR(due.remainingMinor)} still to pay` : "";
   const note = !unpaid
     ? "Paid in full"
     : due.latest
-      ? `${formatExactINR(due.remainingMinor)} left to pay${days < 0 ? ` · ${-days} ${days === -1 ? "day" : "days"} overdue` : days === 0 ? " · due today" : ""}`
+      ? overdue
+        ? `${formatExactINR(due.remainingMinor)} unpaid · ${dueWording(days)}`
+        : `${dueWording(days)}${partPaid}`
       : `${formatExactINR(due.remainingMinor)} unpaid, carried into the next bill`;
   return (
     <li>
@@ -361,10 +371,10 @@ function CardDueRow({ due, today }: { due: CalendarCardDue; today: string }) {
         aria-label={`${due.cardName} bill due: ${note}`}
         className="flex items-center gap-3 px-3 py-3 outline-none transition-colors hover:bg-muted/50 focus-visible:bg-muted/60 sm:px-5"
       >
-        <PictureIcon name="credit-card" className="size-9" />
+        {account ? <AccountLogo account={account} bankHint={bankOf(account.id)} tile /> : <PictureIcon name="credit-card" className="size-9" />}
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium">{due.cardName} bill due</span>
-          <span className={cn("block text-xs font-medium", !unpaid ? "text-emerald-700" : due.latest ? "text-red-600" : "text-amber-700")}>{note}</span>
+          <span className={cn("block text-xs font-medium", !unpaid ? "text-emerald-700" : overdue ? "text-red-600" : due.latest ? "text-muted-foreground" : "text-amber-700")}>{note}</span>
         </span>
         <span className="text-right">
           <span className="block text-sm font-semibold tabular-nums">{formatExactINR(due.billMinor)}</span>
@@ -381,6 +391,7 @@ function DayCell({
   bills,
   heat,
   today,
+  past,
   selected,
   onPick,
 }: {
@@ -389,6 +400,7 @@ function DayCell({
   bills: Reminder[];
   heat: SpendLevel;
   today: boolean;
+  past: boolean;
   selected: boolean;
   onPick: () => void;
 }) {
@@ -402,7 +414,7 @@ function DayCell({
     day.expensesMinor < 0 && `${formatExactINR(-day.expensesMinor)} came back`,
     day.entryCount > 0 && `${day.entryCount} ${day.entryCount === 1 ? "entry" : "entries"}`,
     bills.length > 0 && `due: ${bills.map((b) => b.title).join(", ")}`,
-    dues.length > 0 && (owedOnCards > 0 ? `card bill due, ${formatExactINR(owedOnCards)} left to pay` : "card bill due"),
+    dues.length > 0 && (owedOnCards > 0 && past ? `card bill overdue, ${formatExactINR(owedOnCards)} unpaid` : owedOnCards > 0 ? "card bill due" : "card bill paid"),
   ]
     .filter(Boolean)
     .join(", ");
@@ -435,7 +447,8 @@ function DayCell({
         <span className={cn("flex items-center gap-0.5 pt-0.5", !day.inMonth && "opacity-60")} aria-hidden>
           {bills.length > 0 && <span className="size-2 rounded-full bg-teal-500 ring-2 ring-card sm:hidden" />}
           {dues.length > 0 &&
-            (owedOnCards > 0 ? <span className="size-2 rounded-full bg-red-600 ring-2 ring-card" /> : <CreditCard className="size-3 text-muted-foreground" />)}
+            // Red only once the date has passed unpaid; a bill still to come is a plain marker.
+            (owedOnCards > 0 && past ? <span className="size-2 rounded-full bg-red-600 ring-2 ring-card" /> : <CreditCard className={cn("size-3", owedOnCards > 0 ? "text-indigo-600" : "text-muted-foreground")} />)}
         </span>
       </span>
       {/* Bigger screens have room to name what's due. */}
