@@ -126,7 +126,7 @@ export function SpendingSection({ model }: { model: DashboardModel }) {
                 {change !== null && (
                   <TooltipRow label={b.compareLabel} value={signed(change)} tone={change > 0 ? "negative" : change < 0 ? "positive" : undefined} />
                 )}
-                <TooltipHint>Click to see transactions</TooltipHint>
+                <TooltipHint>{phone ? "Tap to see transactions" : "Click to see transactions"}</TooltipHint>
               </TooltipCard>
             );
           }}

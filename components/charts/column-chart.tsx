@@ -163,12 +163,19 @@ export function ColumnChart({ columns, tooltip, onSelect, selectLabel = "See det
                 pointerEvents: touch && onSelect ? "auto" : "none",
               }}
             >
-              <div className="fade-up" style={{ animationDuration: "160ms" }}>
+              <div
+                className={`fade-up ${touch && onSelect ? "cursor-pointer" : ""}`}
+                style={{ animationDuration: "160ms" }}
+                onClick={touch && onSelect ? () => onSelect(active) : undefined}
+              >
                 {tooltip(active)}
                 {touch && onSelect && (
                   <button
                     type="button"
-                    onClick={() => onSelect(active)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelect(active);
+                    }}
                     className="mt-1.5 w-full rounded-xl palette-fixed bg-slate-900/95 px-3 py-2 text-left text-[12px] font-medium text-white shadow-xl"
                   >
                     {selectLabel} →
