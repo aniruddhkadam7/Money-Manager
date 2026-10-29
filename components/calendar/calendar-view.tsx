@@ -10,7 +10,7 @@ import { formatCompactINR, formatExactINR } from "@/lib/charts/format";
 import { activityHref } from "@/lib/charts/links";
 import { daysBetween, formatMonthLong, formatMonthShort, formatWeekdayDate, monthEnd, monthKey, monthStart, shiftMonth } from "@/lib/domain/dates";
 import { calendarMonth, monthPace, spendLevels, type CalendarCardDue, type CalendarDay, type SpendLevel } from "@/lib/finance/calendar";
-import { cardDueDates } from "@/lib/finance/card-bill-status";
+import { cardDueDates, cardStatementBills } from "@/lib/finance/card-bill-status";
 import { chronological } from "@/lib/finance/order";
 import { cn } from "@/lib/utils";
 import { billDatesBetween, dueWording, type Reminder } from "@/lib/finance/reminders";
@@ -111,11 +111,7 @@ export function CalendarBoard({ initialMonth }: { initialMonth?: string }) {
       book.accounts
         .filter((a) => a.type === "credit_card")
         .flatMap((a) =>
-          cardDueDates(
-            book,
-            a.id,
-            statements.imports.filter((i) => i.accountId === a.id && i.status !== "FAILED").map((i) => i.cardBill ?? {}),
-          ).map((d) => ({ ...d, accountId: a.id, cardName: a.name })),
+          cardDueDates(book, a.id, cardStatementBills(statements.imports, a.id)).map((d) => ({ ...d, accountId: a.id, cardName: a.name })),
         ),
     [book, statements.imports],
   );

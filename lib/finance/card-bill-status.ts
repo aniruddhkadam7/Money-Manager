@@ -25,6 +25,42 @@ const paidBetween = (book: Book, cardId: string, after: string, until?: string) 
 
 type StatementBill = { statementDate?: string; dueDate?: string; totalDueMinor?: number; minimumDueMinor?: number };
 
+/** An uploaded card statement: the period it covers and the bill read from it. */
+export interface CardStatementSource {
+  accountId?: string;
+  status?: string;
+  periodStart?: string;
+  periodEnd?: string;
+  cardBill?: StatementBill;
+}
+
+/** A statement is dated on its last day or a day or two after; a printed date further off was misread. */
+const STATEMENT_DATE_GRACE_DAYS = 3;
+
+const addDays = (iso: string, days: number) => new Date(Date.parse(`${iso}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+
+/**
+ * A card's bills from its uploaded statements. The printed statement date is checked against the period the
+ * statement covers: when it's missing, outside that period, or the same as on a statement for another period
+ * (another date on the page was read), the period's last day is used, so each statement keeps its own place.
+ */
+export function cardStatementBills(imports: CardStatementSource[], cardId: string): StatementBill[] {
+  const statements = imports.filter((i) => i.accountId === cardId && i.status !== "FAILED");
+  const periodsOn = new Map<string, Set<string>>();
+  for (const i of statements) {
+    const d = i.cardBill?.statementDate;
+    if (d && i.periodEnd) periodsOn.set(d, (periodsOn.get(d) ?? new Set()).add(i.periodEnd));
+  }
+  return statements.map((i) => {
+    const bill = i.cardBill ?? {};
+    if (!i.periodEnd) return bill;
+    const d = bill.statementDate;
+    const fits =
+      !!d && d >= (i.periodStart ?? i.periodEnd) && d <= addDays(i.periodEnd, STATEMENT_DATE_GRACE_DAYS) && periodsOn.get(d)!.size === 1;
+    return fits ? bill : { ...bill, statementDate: i.periodEnd };
+  });
+}
+
 /** The bills the statements printed, oldest first; the same statement uploaded twice counts once. */
 function printedBills(statements: StatementBill[]): CardStatementInfo[] {
   const byDate = new Map<string, CardStatementInfo>();

@@ -1,6 +1,6 @@
 import { daysBetween } from "@/lib/domain/dates";
 import { isStopped, nextDue, type BillsData, type Repeat } from "./bills";
-import { cardDueDates, type CardDue } from "./card-bill-status";
+import { cardDueDates, cardStatementBills, type CardDue, type CardStatementSource } from "./card-bill-status";
 import type { RecurringCharge } from "./recurring";
 import type { Book } from "./types";
 
@@ -44,12 +44,6 @@ export const CUSTOM_WINDOW_DAYS = 7;
 /** A card bill overdue longer than this is old news, not a reminder. */
 const OVERDUE_LIMIT_DAYS = 30;
 
-interface CardStatementSource {
-  accountId?: string;
-  status?: string;
-  cardBill?: Parameters<typeof cardDueDates>[2][number];
-}
-
 export interface BillOptions {
   /** Bills you added, and dates you moved. */
   data?: BillsData;
@@ -76,8 +70,7 @@ export function upcomingBills(
 
   for (const account of book.accounts) {
     if (account.type !== "credit_card") continue;
-    const statements = imports.filter((i) => i.accountId === account.id && i.status !== "FAILED").map((i) => i.cardBill ?? {});
-    const due: CardDue | undefined = cardDueDates(book, account.id, statements).find((d) => d.latest);
+    const due: CardDue | undefined = cardDueDates(book, account.id, cardStatementBills(imports, account.id)).find((d) => d.latest);
     if (!due || due.remainingMinor <= 0) continue;
     const baseKey = `card:${account.id}`;
     const { date, moved } = dateOf(baseKey, due.dueDate);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { cardUsage, DEFAULT_CARD_LIMIT_MINOR, type CardUsage } from "@/lib/finance/card-bill-status";
+import { cardStatementBills, cardUsage, DEFAULT_CARD_LIMIT_MINOR, type CardUsage } from "@/lib/finance/card-bill-status";
 import type { FinancialState } from "@/lib/finance/state";
 import type { Account } from "@/lib/finance/types";
 import { anchorGaps, applyAnchorGaps, statementBalanceAt, type AnchorGap } from "@/lib/finance/statement-anchor";
@@ -75,7 +75,7 @@ export function useCardUsage(): (account: Account, balanceMinor: number) => Card
   const { imports } = useStatements();
   return useMemo(
     () => (account: Account, balanceMinor: number) => {
-      const usage = cardUsage(book, account.id, imports.filter((i) => i.accountId === account.id && i.status !== "FAILED").map((i) => i.cardBill ?? {}), balanceMinor);
+      const usage = cardUsage(book, account.id, cardStatementBills(imports, account.id), balanceMinor);
       const limitMinor = account.creditLimitMinor ?? DEFAULT_CARD_LIMIT_MINOR;
       return { ...usage, limitMinor, availableMinor: limitMinor - usage.usedMinor };
     },
