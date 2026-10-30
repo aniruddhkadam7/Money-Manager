@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { buildLedger } from "@/lib/finance/engine";
 import { balanceSeries } from "@/lib/finance/series";
 import { deriveState } from "@/lib/finance/state";
-import { anchorGaps, applyAnchorGaps, applyAnchorGapsToSeries } from "@/lib/finance/statement-anchor";
+import { anchorGaps, applyAnchorGaps, applyAnchorGapsToSeries, statementClosing } from "@/lib/finance/statement-anchor";
+import type { ImportRecord } from "@/lib/statements/types";
 import type { Book, FinancialEvent } from "@/lib/finance/types";
 
 const t = "2026-10-01T00:00:00Z";
@@ -68,5 +69,21 @@ describe("balances from the latest bank statement", () => {
 
   it("changes nothing when the entries already match the statement", () => {
     expect(anchorGaps(book, ledger, [{ accountId: "Kotak", date: "2026-10-16", closingMinor: -81826 }])).toEqual([]);
+  });
+});
+
+describe("a statement's closing balance", () => {
+  const record = (over: Partial<ImportRecord>) => ({ reconciliation: { actualClosingMinor: 4989773 }, ...over }) as ImportRecord;
+
+  it("uses the printed closing balance", () => {
+    expect(statementClosing(record({ closingBalanceMinor: 100 }), "bank")).toBe(100);
+  });
+
+  it("takes the last line's balance when a bank statement prints no closing balance (ICICI)", () => {
+    expect(statementClosing(record({}), "bank")).toBe(4989773);
+  });
+
+  it("doesn't read a card statement's amount due as a closing balance", () => {
+    expect(statementClosing(record({}), "credit_card")).toBeUndefined();
   });
 });

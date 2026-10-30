@@ -1,7 +1,17 @@
 import { ledgerIds } from "./engine";
 import type { FinancialState } from "./state";
 import type { BalancePoint } from "./series";
-import type { Book, Ledger } from "./types";
+import type { ImportRecord } from "@/lib/statements/types";
+import type { AccountType, Book, Ledger } from "./types";
+
+/**
+ * What a bank or cash statement says the account held at its end: the printed closing balance, or, when the
+ * statement prints none (ICICI), the running balance after its last line.
+ */
+export function statementClosing(record: ImportRecord, type: AccountType | undefined): number | undefined {
+  if (record.closingBalanceMinor != null) return record.closingBalanceMinor;
+  return type === "bank" || type === "cash" ? record.reconciliation?.actualClosingMinor : undefined;
+}
 
 /** A bank statement's word on what an account held at the end of a day. */
 export interface BalanceAnchor {

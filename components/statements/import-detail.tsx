@@ -12,7 +12,7 @@ import { formatRupees } from "@/lib/finance/describe";
 import { statementDirection } from "@/lib/finance/order";
 import { entryGone, looksLikeCardStatement, needsDecision } from "@/lib/statements/pipeline";
 import { deriveState } from "@/lib/finance/state";
-import { statementBalanceAt } from "@/lib/finance/statement-anchor";
+import { statementBalanceAt, statementClosing } from "@/lib/finance/statement-anchor";
 import type { StatementRow } from "@/lib/statements/types";
 import { cn, scrollPage } from "@/lib/utils";
 import { useEventDialog } from "../events/event-dialog";
@@ -297,7 +297,7 @@ export function ImportDetail({ importId, onBack }: { importId: string; onBack: (
   const toLink = rows.filter((r) => r.status === "matched_existing" && !r.decision?.note && !imported).length;
 
   const accountNow = finance.state.accounts.find((a) => a.account.id === record.accountId);
-  const closing = record.closingBalanceMinor;
+  const closing = statementClosing(record, account?.type);
   // Gap must be computed against the balance as of the statement's end date, not today's balance.
   // Using today's balance would include post-statement transactions and produce a wrong gap.
   const accountAtClose = useMemo(() => {

@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { cardStatementBills, cardUsage, DEFAULT_CARD_LIMIT_MINOR, type CardUsage } from "@/lib/finance/card-bill-status";
 import type { FinancialState } from "@/lib/finance/state";
 import type { Account } from "@/lib/finance/types";
-import { anchorGaps, applyAnchorGaps, statementBalanceAt, type AnchorGap } from "@/lib/finance/statement-anchor";
+import { anchorGaps, applyAnchorGaps, statementBalanceAt, statementClosing, type AnchorGap } from "@/lib/finance/statement-anchor";
 import { useFinance } from "../finance-provider";
 import { useStatements } from "./statements-provider";
 
@@ -33,10 +33,11 @@ export function useStatementChecks(): Map<string, StatementCheck> {
   return useMemo(() => {
     const out = new Map<string, StatementCheck>();
     for (const i of imports) {
-      if (i.status === "FAILED" || i.closingBalanceMinor == null || !i.periodEnd) continue;
+      const closing = statementClosing(i, book.accounts.find((a) => a.id === i.accountId)?.type);
+      if (i.status === "FAILED" || closing == null || !i.periodEnd) continue;
       const prev = out.get(i.accountId);
       if (!prev || i.periodEnd > prev.date) {
-        out.set(i.accountId, { date: i.periodEnd, closingMinor: i.closingBalanceMinor, appMinor: 0, bankHint: i.bankHint, accountMask: i.accountMask });
+        out.set(i.accountId, { date: i.periodEnd, closingMinor: closing, appMinor: 0, bankHint: i.bankHint, accountMask: i.accountMask });
       }
     }
     for (const [accountId, check] of out) {
