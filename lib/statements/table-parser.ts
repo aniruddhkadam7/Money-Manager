@@ -101,7 +101,51 @@ function headerCells(items: TextItem[]): { text: string; left: number; right: nu
 
 interface Header {
   lineIndex: number;
+  /** The header's last line: it can be printed over several lines. */
+  lastLine: number;
   columns: Column[];
+}
+
+function columnsOf(cells: { text: string; left: number; right: number }[]): Column[] | null {
+  const columns: Column[] = [];
+  for (const cell of cells) {
+    const role = roleOfHeader(cell.text);
+    if (role && !columns.some((c) => c.role === role)) columns.push({ role, left: cell.left, right: cell.right, text: cell.text });
+  }
+  const roles = new Set(columns.map((c) => c.role));
+  const hasMoney = roles.has("debit") || roles.has("credit") || roles.has("amount");
+  if (!roles.has("date") || !hasMoney || columns.length < 3) return null;
+  return columns.sort((a, b) => a.left - b.left);
+}
+
+/**
+ * A header whose cells are stacked over two or three lines, each line holding a different part of
+ * different columns (ICICI: "Transaction" / "S No. Cheque Number Remarks" / "Date Amount (INR)").
+ * Pieces that sit over each other are one cell.
+ */
+function stackedHeader(lines: Line[], i: number): Header | null {
+  const band: Line[] = [];
+  for (let k = i; k < Math.min(lines.length, i + 3); k++) {
+    const line = lines[k];
+    if (band.length && (line.page !== band[0].page || Math.abs(band[band.length - 1].y - line.y) >= 16)) break;
+    if (startsWithDate(line.text) || line.items.some((it) => parseAmount(it.str.trim()) || parseStatementDate(it.str.trim()))) break;
+    band.push(line);
+    if (band.length < 2) continue;
+    const cells: { text: string; left: number; right: number }[] = [];
+    for (const l of band) {
+      for (const c of headerCells(l.items)) {
+        const over = cells.find((x) => c.left < x.right + 4 && c.right > x.left - 4);
+        if (over) {
+          over.text += " " + c.text;
+          over.left = Math.min(over.left, c.left);
+          over.right = Math.max(over.right, c.right);
+        } else cells.push({ ...c });
+      }
+    }
+    const columns = columnsOf(cells);
+    if (columns) return { lineIndex: i, lastLine: k, columns };
+  }
+  return null;
 }
 
 function detectHeader(lines: Line[], from: number): Header | null {
@@ -109,27 +153,22 @@ function detectHeader(lines: Line[], from: number): Header | null {
     let cells = headerCells(lines[i].items);
     // A header cell can wrap onto the next line ("Withdrawal" / "Amt.").
     const next = lines[i + 1];
+    let merged = false;
     if (next && next.page === lines[i].page && Math.abs(lines[i].y - next.y) < 16 && !startsWithDate(next.text)) {
       const nextCells = headerCells(next.items);
       const mergeable = nextCells.every((nc) => cells.some((c) => nc.left < c.right + 4 && nc.right > c.left - 4));
       if (mergeable && nextCells.length > 0 && nextCells.every((nc) => nc.text.length <= 14 && !parseAmount(nc.text))) {
+        merged = true;
         cells = cells.map((c) => {
           const extra = nextCells.filter((nc) => nc.left < c.right + 4 && nc.right > c.left - 4).map((nc) => nc.text);
           return extra.length ? { ...c, text: `${c.text} ${extra.join(" ")}` } : c;
         });
       }
     }
-    const columns: Column[] = [];
-    for (const cell of cells) {
-      const role = roleOfHeader(cell.text);
-      if (role && !columns.some((c) => c.role === role)) columns.push({ role, left: cell.left, right: cell.right, text: cell.text });
-    }
-    const roles = new Set(columns.map((c) => c.role));
-    const hasMoney = roles.has("debit") || roles.has("credit") || roles.has("amount");
-    if (roles.has("date") && hasMoney && columns.length >= 3) {
-      columns.sort((a, b) => a.left - b.left);
-      return { lineIndex: i, columns };
-    }
+    const columns = columnsOf(cells);
+    if (columns) return { lineIndex: i, lastLine: merged ? i + 1 : i, columns };
+    const stacked = stackedHeader(lines, i);
+    if (stacked) return stacked;
   }
   return null;
 }
@@ -252,6 +291,11 @@ function assignItems(line: Line, columns: Column[]): Partial<Record<Role, string
     // Text columns are left-aligned: the last column that starts at or before the item.
     let target = textCols[0];
     for (const c of textCols) if (item.x >= c.left - 6) target = c;
+    // Unless the item starts past that header and runs under a later one (a centred header over left-aligned text).
+    if (target && item.x > target.right) {
+      const under = textCols.find((c) => c.left > target.right && item.x < c.left && c.left - right(item) < item.x - target.right);
+      if (under) target = under;
+    }
     if (target) put(target.role, text);
   }
   return out;
@@ -279,21 +323,30 @@ export const genericTableParser: StatementParser = {
     let columns = first.columns;
     const drafts: Draft[] = [];
     let current: Draft | null = null;
+    // Description lines printed above their row's date (the date centred in a tall cell).
+    let carried: { line: Line; cells: Partial<Record<Role, string[]>> }[] = [];
+    const startsRow = (line: Line | undefined) => {
+      const text = line ? (assignItems(line, columns).date ?? []).join(" ").trim() : "";
+      return text !== "" && parseStatementDate(text) !== null;
+    };
 
-    for (let i = first.lineIndex + 1; i < lines.length; i++) {
+    for (let i = first.lastLine + 1; i < lines.length; i++) {
       const line = lines[i];
 
       // The header repeats on every page; use it to refresh column positions and skip it.
-      const again = detectHeader([line, ...(lines[i + 1] ? [lines[i + 1]] : [])], 0);
+      const again = detectHeader(lines.slice(i, i + 3), 0);
       if (again && again.lineIndex === 0) {
         columns = again.columns;
-        if (lines[i + 1] && Math.abs(line.y - lines[i + 1].y) < 16 && !startsWithDate(lines[i + 1].text)) i++;
+        if (again.lastLine > 0) i += again.lastLine;
+        else if (lines[i + 1] && Math.abs(line.y - lines[i + 1].y) < 16 && !startsWithDate(lines[i + 1].text)) i++;
         current = null;
+        carried = [];
         continue;
       }
 
       if (FOOTER.test(line.text)) {
         current = null;
+        carried = [];
         continue;
       }
 
@@ -301,12 +354,39 @@ export const genericTableParser: StatementParser = {
       const dateText = (cells.date ?? []).join(" ").trim();
       const isNewRow = dateText !== "" && parseStatementDate(dateText) !== null;
 
+      // A text-only line much closer to the next row's date line than to the line above it opens that row.
+      const prev = lines[i - 1];
+      const next = lines[i + 1];
+      if (
+        !isNewRow &&
+        !NUMERIC_ROLES.some((r) => cells[r]) &&
+        next?.page === line.page &&
+        prev?.page === line.page &&
+        line.y - next.y < (prev.y - line.y) * 0.7 &&
+        startsRow(next)
+      ) {
+        carried.push({ line, cells });
+        continue;
+      }
+
       if (isNewRow) {
-        current = newDraft(line.page, line.y);
+        current = newDraft(line.page, carried[0]?.line.y ?? line.y);
         drafts.push(current);
         current.dateText = dateText;
+        for (const c of carried) {
+          current.lines.push(c.line.text);
+          if (c.cells.desc) current.desc.push(c.cells.desc.join(" "));
+          if (c.cells.ref) current.ref.push(c.cells.ref.join(" "));
+        }
+        carried = [];
       }
       if (!current) continue;
+
+      // Past a wide gap the table has ended (a sign-off or page footer follows), not the row.
+      if (!isNewRow && prev?.page === line.page && prev.y - line.y > 3 * median(line.items.map((it) => it.height)) + 4) {
+        current = null;
+        continue;
+      }
 
       current.lines.push(line.text);
       if (isNewRow || !(cells.date && cells.date.length)) {

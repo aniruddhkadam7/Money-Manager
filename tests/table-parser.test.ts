@@ -150,3 +150,41 @@ describe("naming the statement's bank", () => {
     expect(parsed.bankHint).toBeUndefined();
   });
 });
+
+describe("an ICICI-style statement", () => {
+  // Positions as ICICI prints them: the header over three lines, the remarks header centred over
+  // left-aligned text, and each row's date and amounts a half-line below its first remarks line.
+  const at = (str: string, x: number, right: number, y: number) => ({ str, x, y, width: right - x, height: 8, page: 1 });
+  const header = [
+    at("Transaction", 60, 108, 619), at("Withdrawal", 399, 447, 619), at("Deposit", 474, 504, 619), at("Balance", 532, 564, 619),
+    at("S No.", 24, 44, 614), at("Cheque Number", 122, 186, 614), at("Transaction Remarks", 247, 332, 614),
+    at("Date", 74, 94, 609), at("Amount (INR)", 396, 450, 609), at("Amount (INR)", 462, 516, 609), at("(INR)", 538, 558, 609),
+  ];
+  function row(y: number, n: string, date: string, remarks: string[], amount: string, deposit: boolean, balance: string) {
+    return [
+      at(remarks[0], 192, 192 + remarks[0].length * 5, y + 5),
+      at(n, 30, 35, y), at(date, 61, 104, y),
+      deposit ? at(amount, 493, 519, y) : at(amount, 422, 453, y),
+      at(balance, 545, 571, y),
+      ...remarks.slice(1).map((r, i) => at(r, 192, 192 + r.length * 5, y - 5 - i * 10)),
+    ];
+  }
+  const items = [
+    ...header,
+    ...row(589, "1", "08.10.2026", ["RAZORPAY PAYMENTS PVT LTD", "NEFT-AXISCN1492362972-RAZORPAY"], "199.00", true, "999.73"),
+    ...row(549, "2", "12.10.2026", ["ANIRUDDH S", "UPI/ANIRUDDH S/XX6939@ptaxis/Self"], "999.00", false, "0.73"),
+    at("Sincerly,", 19, 57, 490),
+    at("This is a system generated statement. Hence, it does not require any signature.", 144, 456, 450),
+  ];
+
+  it("reads the stacked header, keeps each row's first remarks line with it, and stops at the sign-off", async () => {
+    const { parseStatementItems } = await import("@/lib/statements/table-parser");
+    const parsed = parseStatementItems([items], { ocr: false });
+    expect(parsed.parser).toBe("GenericTableParser");
+    expect(parsed.rows.map((r) => [r.date, r.debitMinor, r.creditMinor, r.balanceMinor, r.rawDescription])).toEqual([
+      ["2026-10-08", 0, 19900, 99973, "RAZORPAY PAYMENTS PVT LTD NEFT-AXISCN1492362972-RAZORPAY"],
+      ["2026-10-12", 99900, 0, 73, "ANIRUDDH S UPI/ANIRUDDH S/XX6939@ptaxis/Self"],
+    ]);
+    expect(parsed.openingBalanceMinor).toBe(80073);
+  });
+});
