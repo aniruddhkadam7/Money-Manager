@@ -27,7 +27,7 @@ import { LOGIN_DOMAIN, usernameFor } from "./cloud-gate";
 import { SYNC_LABEL, useSyncStatus } from "./cloud-status";
 import { PhotoCropper } from "./photo-cropper";
 
-function useSignedInUser(): User | null {
+export function useSignedInUser(): User | null {
   const [user, setUser] = useState<User | null>(null);
   useEffect(() => {
     const sb = supabase();

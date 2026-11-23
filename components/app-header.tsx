@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { CalendarDays, LayoutDashboard, PiggyBank, Plus, Wallet } from "lucide-react";
+import { FridayOrb } from "./advisor/friday-orb";
 import { LiquidButton, LiquidGlass } from "@/components/ui/liquid-glass-button";
 import { cn } from "@/lib/utils";
 import { BackButton } from "./back-button";
@@ -69,6 +70,16 @@ export function AppHeader() {
             <LiquidButton size="default" className="hidden rounded-full font-semibold sm:inline-flex" onClick={() => openAdd()}>
               <Plus /> Add
             </LiquidButton>
+            {/* Friday, your AI CA: ask about your money. */}
+            <Link
+              href="/advisor"
+              aria-label="Friday: ask about your money"
+              title="Friday"
+              className="grid size-9 place-items-center rounded-full transition-transform hover:scale-110"
+              data-testid="advisor-link"
+            >
+              <FridayOrb size={26} />
+            </Link>
             <GlobalSearch />
             <NotificationsBell />
             <ProfileMenu />

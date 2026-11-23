@@ -7,7 +7,7 @@ const json = (body: unknown, status = 200) => Response.json(body, { status, head
 const MAX_BODY_BYTES = 200_000;
 
 /** Browsers always send Origin on cross-site POSTs; if it's there it must be this site, so another page can't spend the API key. */
-function sameOrigin(req: Request): boolean {
+export function sameOrigin(req: Request): boolean {
   const origin = req.headers.get("origin");
   if (!origin) return true;
   const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
@@ -22,7 +22,7 @@ function sameOrigin(req: Request): boolean {
  * With Supabase set up, only a signed-in user whose email is in ALLOWED_EMAIL may spend the API key.
  * Without it the app is running locally with no login; a Vercel deployment always needs one.
  */
-async function signedInAllowed(req: Request, env: Record<string, string | undefined>): Promise<boolean> {
+export async function signedInAllowed(req: Request, env: Record<string, string | undefined>): Promise<boolean> {
   const url = env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const anonKey = env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
   if (!url || !anonKey) return !env.VERCEL;
