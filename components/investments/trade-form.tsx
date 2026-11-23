@@ -15,6 +15,7 @@ import { zerodhaCharges, type ChargeBreakdown } from "@/lib/trading/charges";
 import { buildJournal } from "@/lib/trading/journal";
 import { cn } from "@/lib/utils";
 import { AccountField } from "../events/event-form";
+import { NoteField, noteOf } from "../events/note-field";
 import { useFinance } from "../finance-provider";
 import { StockSearch } from "./stock-search";
 import { StylePicker } from "./style-picker";
@@ -82,6 +83,7 @@ export function TradeForm({
   const [priceTouched, setPriceTouched] = useState(!!from);
   const [date, setDate] = useState(editing?.date ?? todayISO());
   const [time, setTime] = useState(editing?.time ?? nowTime());
+  const [note, setNote] = useState(editing?.note ?? "");
   const [accountId, setAccountId] = useState(
     from?.accountId ?? (moneyAccounts.some((a) => a.id === lastTrade?.accountId) ? lastTrade!.accountId : (moneyAccounts[0]?.id ?? "")),
   );
@@ -153,7 +155,7 @@ export function TradeForm({
       chargesMinor,
       accountId,
       exchange,
-      ...(editing?.note ? { note: editing.note } : {}),
+      ...noteOf(note),
     };
     const result = editing ? f.updateEvent(editing.id, draft) : f.addEvent(draft);
     setSaving(false);
@@ -312,6 +314,8 @@ export function TradeForm({
         onChange={setAccountId}
         accounts={moneyAccounts}
       />
+
+      <NoteField id="trade-note" value={note} onChange={setNote} />
 
       {/* The order in money: value, charges, what leaves or reaches the account, and the profit it books. */}
       <div className="grid gap-2 rounded-xl border bg-muted/30 p-3 text-sm tabular-nums">

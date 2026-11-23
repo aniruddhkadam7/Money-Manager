@@ -2,12 +2,13 @@
 
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { Copy, FileText, Pencil, Trash2 } from "lucide-react";
+import { CalendarClock, Copy, FileText, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatDisplayDate } from "@/lib/domain/dates";
 import { formatRupees } from "@/lib/finance/describe";
 import { findSimilar } from "@/lib/finance/similar";
+import { billFor, useBills } from "@/lib/finance/bills";
 import type { EventType, FinancialEvent } from "@/lib/finance/types";
 import { useFinance } from "../finance-provider";
 import { PictureIcon } from "../picture-icon";
@@ -277,6 +278,9 @@ function Detail({
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const event = book.events.find((e) => e.id === eventId);
+  const bills = useBills();
+  // The bill this payment renews, with its date as it is now in Bills.
+  const bill = event?.billId ? billFor(bills, { billId: event.billId }) : undefined;
 
   if (!event) {
     return (
@@ -318,6 +322,23 @@ function Detail({
       </DialogHeader>
 
       <p className="text-sm text-muted-foreground">{describer.subtitle(event)}</p>
+
+      {event.note && (
+        <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm" data-testid="event-note">
+          <p className="text-xs font-medium text-muted-foreground">Reason</p>
+          <p className="mt-0.5 whitespace-pre-wrap break-words">{event.note}</p>
+        </div>
+      )}
+
+      {bill && (
+        <p className="flex items-start gap-2 rounded-lg bg-muted px-3 py-2 text-sm" data-testid="event-bill">
+          <CalendarClock className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          <span>
+            {bill.name} {bill.dueDate < event.date ? "was due" : "is due again / expires"} <strong className="font-medium">{formatDisplayDate(bill.dueDate)}</strong>
+            <span className="block text-xs text-muted-foreground">Tracked in Bills. Change it there or by editing this entry.</span>
+          </span>
+        </p>
+      )}
 
       {event.sources?.map((s) => (
         <p key={s.rowId} className="flex items-start gap-2 rounded-lg bg-muted px-3 py-2 text-sm" data-testid="event-source">

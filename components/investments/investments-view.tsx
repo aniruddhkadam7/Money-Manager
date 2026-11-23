@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { RangeTabs } from "../charts/primitives";
 import { useEventDialog } from "../events/event-dialog";
 import { useFinance } from "../finance-provider";
+import { useUrlTab } from "../use-url-tab";
 import { AccountDialog } from "../money/account-dialog";
 import { PageTitle } from "../page-title";
 import { PictureIcon } from "../picture-icon";
@@ -73,7 +74,7 @@ function SideTag({ side }: { side: TradeEvent["side"] }) {
 export function InvestmentsView() {
   const { status, book, ledger, state, today } = useFinance();
   const { openAdd } = useEventDialog();
-  const [tab, setTab] = useState<Tab>("positions");
+  const [tab, setTab] = useUrlTab(TABS);
   const journal = useMemo(() => buildJournal(book, ledger), [book, ledger]);
   const todays = useMemo(() => dayPositions(journal, today), [journal, today]);
   const open = journal.positions.filter((p) => p.quantity !== 0);

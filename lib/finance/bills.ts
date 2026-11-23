@@ -80,6 +80,34 @@ export function markPaid(bill: Bill, today: string): Bill | null {
 
 export const newBill = (draft: Omit<Bill, "id">): Bill => ({ id: newId(), ...draft });
 
+const squash = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/**
+ * The bill an entry renews: the one it's linked to, else one you added with the same name ("Airtel" for an entry
+ * described "Airtel"), so a payment updates the bill you already track instead of adding a second one.
+ */
+export function billFor(data: BillsData, link: { billId?: string; name?: string }): Bill | undefined {
+  const linked = link.billId ? data.bills.find((b) => b.id === link.billId) : undefined;
+  if (linked) return linked;
+  const n = squash(link.name ?? "");
+  return n.length >= 3 ? data.bills.find((b) => squash(b.name) === n) : undefined;
+}
+
+/**
+ * Sets the next due (or expiry) date of the bill an entry renews, adding the bill if there's none yet. A new one is
+ * once-only (a prepaid plan's expiry); a bill you set to repeat keeps repeating from the new date.
+ */
+export function setBillDue(data: BillsData, link: { billId?: string; name: string; dueDate: string; amountMinor?: number }): { data: BillsData; billId: string } {
+  const existing = billFor(data, link);
+  const amount = link.amountMinor ? { amountMinor: link.amountMinor } : {};
+  if (existing) {
+    const updated: Bill = { ...existing, ...amount, dueDate: link.dueDate, day: Number(link.dueDate.slice(8)) };
+    return { data: { ...data, bills: data.bills.map((b) => (b.id === existing.id ? updated : b)) }, billId: existing.id };
+  }
+  const bill: Bill = { id: link.billId ?? newId(), name: link.name, dueDate: link.dueDate, repeat: "none", ...amount };
+  return { data: { ...data, bills: [...data.bills, bill] }, billId: bill.id };
+}
+
 const KEY = "money-manager:v1:bills";
 const listeners = new Set<() => void>();
 let cached: { raw: string | null; data: BillsData } | null = null;

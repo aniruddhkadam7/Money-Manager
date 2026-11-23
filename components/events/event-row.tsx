@@ -72,6 +72,11 @@ export function EventRow({ event, onOpen }: { event: FinancialEvent; /** Tapping
           <p className="truncate text-sm text-muted-foreground">
             {event.date.slice(0, 4) === today.slice(0, 4) ? formatDayMonth(event.date) : formatDisplayDate(event.date)} · {describer.subtitle(event)}
           </p>
+          {event.note && (
+            <p className="mt-0.5 line-clamp-2 break-words text-xs italic text-slate-600" title={event.note}>
+              “{event.note}”
+            </p>
+          )}
           {refunded > 0 && (
             <p className="mt-0.5 text-xs font-medium text-emerald-700">
               {refunded >= headline(event).amountMinor ? "Fully refunded" : `Refunded ${formatRupees(refunded)}`} · not counted as spending

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
+import { useUrlTab } from "../use-url-tab";
 import { CheckCircle2, Pencil, Plus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -68,7 +69,7 @@ export function MoneyView() {
   const { openAdd } = useEventDialog();
   const theyPaidMe = useQuickRepaymentReceived();
   const [dialog, setDialog] = useState<{ open: boolean; editing: Account | null; adding?: AddableAccountType }>({ open: false, editing: null });
-  const [tab, setTab] = useState<Tab>("accounts");
+  const [tab, setTab] = useUrlTab(TABS);
   const hide = (t: Tab) => (tab !== t ? "max-sm:hidden" : undefined);
 
   // Links like /money#investments jump straight to that section once the page has loaded.
@@ -76,7 +77,8 @@ export function MoneyView() {
     if (status !== "ready") return;
     const id = window.location.hash.slice(1);
     if (!id) return;
-    setTab(TAB_OF[id] ?? "accounts");
+    // Replaced, not a new step: the link itself was the step here.
+    setTab(TAB_OF[id] ?? "accounts", { replace: true });
     // After the tab has switched, so the section is on screen to scroll to.
     requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }, [status]);

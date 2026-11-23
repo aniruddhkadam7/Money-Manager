@@ -22,6 +22,8 @@ import { useFinance } from "../finance-provider";
 import type { TradePreset } from "../investments/trade-form";
 import { PictureIcon } from "../picture-icon";
 import { EVENT_OPTIONS, eventOption, FORM_SPEC, type FieldKey } from "./event-meta";
+import { NoteField, noteOf } from "./note-field";
+import { billFor, currentBills, setBillDue, updateBills, useBills } from "@/lib/finance/bills";
 
 export interface FormPreset {
   person?: string;
@@ -56,7 +58,15 @@ interface Values {
   beforeTracking: boolean;
   /** The money moved, but no bank statement will show it: counted on top of the bank's balance. */
   offStatement: boolean;
+  /** Your reason for the entry, if you want to say (saved as its `note`). */
+  note: string;
+  /** A bill payment: when the bill is due again, or the plan expires (kept on the bill in Bills, see EventBase.billId). */
+  billDue: string;
 }
+
+/** Kinds of entry that can pay a bill, and the categories where the bill date is offered without asking. */
+const BILL_TYPES = new Set<EventType>(["expense", "split_expense", "reimbursable_expense"]);
+const BILL_CATEGORIES = new Set(["bills", "subscriptions"]);
 
 type Errors = Partial<Record<FieldKey | "form", string>>;
 
@@ -99,6 +109,8 @@ export function EventForm({
   onSaved: (eventId: string, wasEdit: boolean) => void;
 }) {
   const f = useFinance();
+  // Bills (in the profile menu), live: a date changed there shows here straight away.
+  const billsData = useBills();
   const spec = FORM_SPEC[type];
   const option = eventOption(type);
   const personName = (id: string) => f.book.people.find((p) => p.id === id)?.name ?? "";
@@ -170,11 +182,16 @@ export function EventForm({
       splitEqually: true,
       beforeTracking: false,
       offStatement: false,
+      note: "",
+      billDue: "",
     };
     if (!e) return base;
     base.date = editing ? e.date : todayISO();
     base.description = e.description ?? "";
     base.offStatement = !!e.offStatement;
+    base.note = e.note ?? "";
+    // Editing a bill payment: the bill's date as it is now (moved in Bills, or by a later payment, it shows that).
+    if (editing && e.billId) base.billDue = billFor(currentBills(), { billId: e.billId })?.dueDate ?? "";
     switch (e.type) {
       case "expense":
       case "income":
@@ -481,7 +498,19 @@ export function EventForm({
       if (f.getBook() !== before) void f.commitBook(before);
     };
     const built = buildDraft(amountMinor ?? 0);
-    const draft = built && offStatementApplies && values.offStatement ? ({ ...built, offStatement: true } as EventDraft) : built;
+    // A bill date: the bill it renews gets it (found by link or name, or added), and the entry is linked to that bill.
+    const bill =
+      built && billApplies && values.billDue && values.description.trim()
+        ? setBillDue(currentBills(), { billId: editing?.billId, name: values.description.trim(), dueDate: values.billDue, amountMinor: amountMinor ?? undefined })
+        : null;
+    const draft = built
+      ? ({
+          ...built,
+          ...(offStatementApplies && values.offStatement ? { offStatement: true } : {}),
+          ...noteOf(values.note),
+          ...(bill ? { billId: bill.billId } : {}),
+        } as EventDraft)
+      : built;
     if (!draft) {
       undoNewNames();
       setErrors({ form: "Something is missing. Please check the form." });
@@ -496,6 +525,7 @@ export function EventForm({
       setSaving(false);
       return;
     }
+    if (bill) updateBills(() => bill.data);
     onSaved(result.value, !!editing);
   }
 
@@ -940,6 +970,13 @@ export function EventForm({
   const hasOffStatement = spec.fields.includes("account") && !values.beforeTracking;
   const offStatementApplies = hasOffStatement && usesBank;
 
+  // The bill date: on a bill or subscription payment, or any expense already linked to a bill.
+  const chosenCategory = f.expenseCategories.find((c) => c.id === values.categoryId);
+  const billApplies =
+    BILL_TYPES.has(type) &&
+    (!!values.billDue || !!editing?.billId || (!!chosenCategory && (BILL_CATEGORIES.has(chosenCategory.id) || BILL_CATEGORIES.has(chosenCategory.parentId ?? ""))));
+  const knownBill = billApplies ? billFor(billsData, { billId: editing?.billId, name: values.description }) : undefined;
+
   // Put short fields (account/date, etc.) side by side where it reads naturally.
   const noAccountsForType = spec.fields.includes("account") && mainAccounts.length === 0;
   // Pay EMI needs a loan to pay; the loan field explains how to add one.
@@ -989,6 +1026,23 @@ export function EventForm({
       ) : (
         spec.fields.map((k) => field(k))
       )}
+
+      {billApplies && !noAccountsForType && (
+        <Field id="bill-due" label="Bill expires / due again (optional)">
+          <Input id="bill-due" type="date" min={values.date || undefined} value={values.billDue} onChange={(e) => set("billDue", e.target.value)} />
+          <p className="text-xs text-muted-foreground">
+            {values.billDue
+              ? knownBill
+                ? `Updates “${knownBill.name}” in Bills, so you're reminded before it runs out.`
+                : `Adds “${values.description.trim() || "this bill"}” to Bills, so you're reminded before it runs out.`
+              : knownBill
+                ? `“${knownBill.name}” is in Bills, due ${knownBill.dueDate.split("-").reverse().join("-")}. Set the new date if this payment renews it.`
+                : "When the plan runs out or the next bill is due. It's added to Bills and the calendar, and reminds you."}
+          </p>
+        </Field>
+      )}
+
+      {!noAccountsForType && <NoteField value={values.note} onChange={(v) => set("note", v)} />}
 
       {hasOffStatement && !noAccountsForType && (
         <label className="flex cursor-pointer items-center gap-3 rounded-lg border bg-muted/40 px-3 py-2.5" data-testid="off-statement">

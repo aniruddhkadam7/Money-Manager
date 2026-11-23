@@ -78,6 +78,11 @@ interface EventBase {
   date: string;
   description?: string;
   note?: string;
+  /**
+   * The bill this payment renews (one of the bills in Bills, kept in their own synced store): its due or expiry date
+   * lives there only, so changing it here, in Bills, or by marking it paid shows the same date everywhere.
+   */
+  billId?: string;
   createdAt: string;
   updatedAt: string;
 }

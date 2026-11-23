@@ -48,7 +48,9 @@ export function AccountsSection({ book, state }: { book: Book; state: FinancialS
     return (
       <div
         key={copy ? `copy${set}-${account.id}` : account.id}
-        className={cn("group relative flex w-[42%] min-w-0 shrink-0 flex-col gap-1 glass rounded-xl border p-2.5 sm:w-auto sm:gap-1.5 sm:p-3", copy && "sm:hidden")}
+        // No frosted blur in the phone ticker: Chrome repaints backdrop-filter at the row's clipped edge while it
+        // scrolls, which flickers. The tiles are near-opaque, so the blur showed nothing there anyway.
+        className={cn("group relative flex w-[42%] min-w-0 shrink-0 flex-col gap-1 glass rounded-xl border p-2.5 max-sm:before:hidden sm:w-auto sm:gap-1.5 sm:p-3", copy && "sm:hidden")}
         data-testid={copy ? undefined : "account-tile"}
         data-ticker-copy={copy || undefined}
         aria-hidden={copy || undefined}
@@ -59,7 +61,7 @@ export function AccountsSection({ book, state }: { book: Book; state: FinancialS
           tabIndex={copy ? -1 : undefined}
           className="flex items-center gap-2 after:absolute after:inset-0 after:rounded-xl after:content-[''] group-hover:[&>span:last-child]:underline max-sm:[&>span:first-child]:h-7 max-sm:[&>span:first-child]:max-w-11"
         >
-          <AccountLogo account={account} bankHint={bankOf(account.id)} />
+          <AccountLogo account={account} bankHint={bankOf(account.id)} eager />
           <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-slate-900 sm:text-sm">
             {account.name}
             {check?.accountMask && <span className="font-normal text-slate-500"> ••{check.accountMask}</span>}

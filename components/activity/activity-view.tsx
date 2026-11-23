@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { activityHref } from "@/lib/charts/links";
 import { ArrowLeft, Plus, Search, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,7 +18,7 @@ import { isMoneyBack } from "@/lib/finance/state";
 import { categoryLabel, familyIds } from "@/lib/domain/categories";
 import type { Category } from "@/lib/domain/types";
 import type { EventType, FinancialEvent } from "@/lib/finance/types";
-import { cn, scrollPage } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { ActivityViewSwitch } from "../calendar/calendar-view";
 import { CategoryIcon } from "../category-icon";
 import { PartyLogo } from "../brand-logo";
@@ -128,6 +129,7 @@ function ActivityContent() {
   const { openAdd } = useEventDialog();
 
   const params = useSearchParams();
+  const router = useRouter();
   // A link to one specific entry type (say "Lend") sets the Type filter; everything else sets Show.
   const [initial] = useState(() => {
     const show = initialShow(params.get("group"), params.get("type"));
@@ -144,7 +146,10 @@ function ActivityContent() {
   // "me": only people who still owe me; "you": only people I still owe (from the dashboard cards).
   const [sort, setSort] = useState<SortKey>("newest");
   // Tapping an entry narrows the list to everything with the same shop, company or name.
-  const [party, setParty] = useState<{ key: string; label: string } | null>(null);
+  const [party, setParty] = useState<{ key: string; label: string } | null>(() => {
+    const label = params.get("party");
+    return label ? { key: label.trim().toLowerCase(), label } : null;
+  });
   const [owed, setOwed] = useState<string | null>(params.get("owed"));
   const [origin, setOrigin] = useState<Origin>(ALL);
   // Phones: the detailed filters fold away behind the filter button, whose badge counts the ones set (a dashboard link sets dates).
@@ -237,13 +242,13 @@ function ActivityContent() {
     setOrigin(ALL);
   };
 
-  /** Everything with this entry's person, or else with the same shop / company / name, across all dates. */
+  /**
+   * Everything with this entry's person, or else with the same shop / company / name, across all dates. It opens as
+   * its own step (a new address), so Back returns to the list as it was, scrolled where you left it.
+   */
   const showParty = (e: FinancialEvent) => {
-    clear();
     const people = personIdsUsedBy(e);
-    if (people.length === 1) setPersonId(people[0]);
-    else setParty({ key: partyNameOf(e, describer.title(e)), label: e.description || describer.title(e) });
-    scrollPage({ top: 0, behavior: "smooth" });
+    router.push(people.length === 1 ? activityHref({ person: people[0] }) : activityHref({ party: (e.description || describer.title(e)).trim() }));
   };
 
   const partyTotals = party

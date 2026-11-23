@@ -2,11 +2,11 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowDownLeft, ArrowUpRight, ChevronRight } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { formatExactINR } from "@/lib/charts/format";
 import { activityHref } from "@/lib/charts/links";
 import { rollUpByParent } from "@/lib/domain/categories";
-import { formatDisplayDate, todayISO } from "@/lib/domain/dates";
+import { formatDisplayDate, monthEnd, monthStart, shiftMonth, todayISO } from "@/lib/domain/dates";
 import { DEFAULT_PERIOD, PERIODS, rangeStart, type RangeKey } from "@/lib/finance/series";
 import { HowYouPaid } from "./how-you-paid";
 import { MONEY_BACK_CATEGORY_IDS } from "@/lib/finance/state";
@@ -29,15 +29,21 @@ export function SoFarSection() {
   const { book, report, getCategory, categories } = useFinance();
   // The same periods as every other card on the dashboard.
   const [span, setSpan] = useState<RangeKey>(DEFAULT_PERIOD);
+  // "This month" steps back a month at a time: 0 is this month, 1 last month, and so on.
+  const [monthsBack, setMonthsBack] = useState(0);
   // Phones show one breakdown at a time; wider screens show both side by side.
   const [side, setSide] = useState<"out" | "in">("out");
 
   const { from, to } = useMemo(() => {
     const today = todayISO();
+    if (span === "MTD" && monthsBack > 0) {
+      const ym = shiftMonth(today.slice(0, 7), -monthsBack);
+      return { from: monthStart(ym), to: monthEnd(ym) };
+    }
     if (span !== "ALL") return { from: rangeStart(span, today, null), to: today };
     const first = book.events.reduce((m, e) => (e.date < m ? e.date : m), today);
     return { from: first, to: today };
-  }, [span, book.events]);
+  }, [span, book.events, monthsBack]);
 
   const r = useMemo(() => report(from, to), [report, from, to]);
   // The span of dates the app actually has entries for (opening balances aside).
@@ -68,8 +74,9 @@ export function SoFarSection() {
 
   return (
     <section className="rounded-3xl border glass p-4 sm:p-6" data-testid="so-far">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+      {/* The title, with the month switcher in the top-right corner beside it; the period tabs below. */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
           <h2 className="text-base font-semibold">Earned & spent</h2>
           <p className="text-xs text-muted-foreground max-sm:hidden" data-testid="data-range">
             {coverage ? (
@@ -83,7 +90,28 @@ export function SoFarSection() {
             )}
           </p>
         </div>
-        <RangeTabs label="Period" value={span} options={PERIODS} onChange={setSpan} />
+        {span === "MTD" && (
+          <MonthStepper
+            ym={shiftMonth(todayISO().slice(0, 7), -monthsBack)}
+            monthsBack={monthsBack}
+            // No earlier than the month of the first entry.
+            canGoBack={!!coverage && shiftMonth(todayISO().slice(0, 7), -monthsBack) > coverage.first.slice(0, 7)}
+            onChange={setMonthsBack}
+          />
+        )}
+      </div>
+
+      <div className="mt-3">
+        <RangeTabs
+          label="Period"
+          value={span}
+          // Stepped back to an earlier month, "This month" would be wrong: it's a month picker then.
+          options={PERIODS.map((p) => (p.value === "MTD" && monthsBack > 0 ? { ...p, label: "Month" } : p))}
+          onChange={(v) => {
+            setSpan(v);
+            setMonthsBack(0);
+          }}
+        />
       </div>
 
       <div className="mt-3 grid grid-cols-3 gap-2 sm:mt-4 sm:grid-cols-4 sm:gap-3">
@@ -129,6 +157,27 @@ export function SoFarSection() {
         <Breakdown className={cn(side !== "in" && "max-lg:hidden")} tone="in" title="Where you earned from" rows={earned} getCategory={getCategory} hrefFor={(id) => activityHref({ type: "income", category: id, from, to })} slotOf={(id) => slots.earned.get(id)} />
       </div>
     </section>
+  );
+}
+
+/** ‹ Nov 2026 › in the card's top-right corner: one month at a time, from this month back to the first month with entries. */
+function MonthStepper({ ym, monthsBack, canGoBack, onChange }: { ym: string; monthsBack: number; canGoBack: boolean; onChange: (n: number) => void }) {
+  const name = new Date(`${ym}-01T00:00:00`).toLocaleDateString("en-IN", { month: "short", year: "numeric" });
+  const btn =
+    "flex size-8 shrink-0 items-center justify-center rounded-full border bg-card text-slate-700 outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-30";
+  return (
+    <div className="flex shrink-0 items-center gap-1.5" data-testid="month-stepper">
+      <button type="button" className={btn} onClick={() => onChange(monthsBack + 1)} disabled={!canGoBack} aria-label="Previous month">
+        <ChevronLeft className="size-4" />
+      </button>
+      <div className="min-w-[4.75rem] text-center leading-tight" aria-live="polite">
+        <div className="text-sm font-semibold">{name}</div>
+        <div className="text-[10px] text-muted-foreground">{monthsBack === 0 ? "So far" : monthsBack === 1 ? "Last month" : `${monthsBack} months ago`}</div>
+      </div>
+      <button type="button" className={btn} onClick={() => onChange(monthsBack - 1)} disabled={monthsBack === 0} aria-label="Next month">
+        <ChevronRight className="size-4" />
+      </button>
+    </div>
   );
 }
 

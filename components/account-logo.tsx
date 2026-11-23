@@ -24,9 +24,10 @@ export function accountPicture(account: Pick<Account, "name" | "type">): Picture
 
 /**
  * The bank's official logo when the account or its statement names a known bank, else an icon of what the account is.
- * `tile` is the large list size (as tall as a PictureIcon tile); otherwise a compact badge.
+ * `tile` is the large list size (as tall as a PictureIcon tile); otherwise a compact badge. `eager` loads the logo
+ * straight away rather than when it scrolls into view (the dashboard's gliding row, where a late logo blinks in).
  */
-export function AccountLogo({ account, bankHint, tile = false }: { account: Account; bankHint?: string; tile?: boolean }) {
+export function AccountLogo({ account, bankHint, tile = false, eager = false }: { account: Account; bankHint?: string; tile?: boolean; eager?: boolean }) {
   const brand = bankBrandFor(account.name, bankHint);
   const [broken, setBroken] = useState(false);
   if (!brand || broken) return <PictureIcon name={accountPicture(account)} tile={tile} className={tile ? undefined : "size-8"} />;
@@ -39,7 +40,7 @@ export function AccountLogo({ account, bankHint, tile = false }: { account: Acco
       )}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={bankLogoSrc(brand)} alt={`${brand.name} logo`} className="h-full w-full object-contain" loading="lazy" onError={() => setBroken(true)} />
+      <img src={bankLogoSrc(brand)} alt={`${brand.name} logo`} className="h-full w-full object-contain" loading={eager ? "eager" : "lazy"} onError={() => setBroken(true)} />
     </span>
   );
 }

@@ -213,6 +213,12 @@ export function LockScreen({ user, onUnlock }: { user: User; onUnlock: () => voi
 
   const tryPasscode = async (code: string) => {
     if (!settings.passcode) return false;
+    // Browsers only offer the hashing the check needs on https:// or localhost; a plain http:// address (a phone on
+    // the dev server over Wi-Fi) has none, so say so instead of failing silently, and don't count it as a wrong try.
+    if (!globalThis.crypto?.subtle) {
+      setError(allowPassword ? "Passcode can't be checked on this insecure (http) address. Use your password, or open the app over https or localhost." : "Passcode can't be checked on this insecure (http) address. Open the app over https or localhost.");
+      return false;
+    }
     if (await checkPasscode(settings.passcode, code)) {
       resetFails();
       onUnlock();
