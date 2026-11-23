@@ -107,7 +107,7 @@ export function EventDialogProvider({ children }: { children: ReactNode }) {
       {children}
       <Dialog open={view.kind !== "closed"} onOpenChange={(open) => !open && close()}>
         <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
-          {view.kind === "pick" && <Picker onPick={(type) => setView({ kind: "form", type, preset: view.preset, fromPicker: true })} />}
+          {view.kind === "pick" && <Picker onPick={(type) => setView({ kind: "form", type, preset: view.preset, fromPicker: true })} onLeave={close} />}
 
           {view.kind === "form" && view.type === "trade" && (
             <TradeForm
@@ -163,7 +163,10 @@ export function EventDialogProvider({ children }: { children: ReactNode }) {
   );
 }
 
-function Picker({ onPick }: { onPick: (type: EventType) => void }) {
+/** "What happened?": a statement to upload (many entries at once, as the header's button does), then each kind of entry. */
+function Picker({ onPick, onLeave }: { onPick: (type: EventType) => void; onLeave: () => void }) {
+  const tile =
+    "flex min-h-20 flex-col items-center justify-center gap-1.5 bg-background px-1 py-3 text-center text-xs font-medium transition-colors hover:bg-muted focus-visible:relative focus-visible:ring-2 focus-visible:ring-ring sm:text-sm";
   return (
     <>
       <DialogHeader>
@@ -172,20 +175,24 @@ function Picker({ onPick }: { onPick: (type: EventType) => void }) {
       </DialogHeader>
       {/* A tile grid with hairlines between cells; the hint is the tooltip. */}
       <div className="grid grid-cols-3 gap-px overflow-hidden rounded-lg border bg-border">
+        <Link href="/import" onClick={onLeave} title="Add many entries at once from a bank or card statement" className={tile} data-testid="pick-statement">
+          <PictureIcon name="statement" className="size-7" />
+          <span className="line-clamp-2 break-words">Upload statement</span>
+        </Link>
         {EVENT_OPTIONS.map((o) => (
           <button
             key={o.type}
             type="button"
             title={o.hint}
             onClick={() => onPick(o.type)}
-            className="flex min-h-20 flex-col items-center justify-center gap-1.5 bg-background px-1 py-3 text-center text-xs font-medium transition-colors hover:bg-muted focus-visible:relative focus-visible:ring-2 focus-visible:ring-ring sm:text-sm"
+            className={tile}
           >
             <PictureIcon name={o.picture} className="size-7" />
             <span className="line-clamp-2 break-words">{o.label}</span>
           </button>
         ))}
         {/* Empty tiles to finish the last row, so the hairlines stay square. */}
-        {Array.from({ length: (3 - (EVENT_OPTIONS.length % 3)) % 3 }, (_, i) => (
+        {Array.from({ length: (3 - ((EVENT_OPTIONS.length + 1) % 3)) % 3 }, (_, i) => (
           <div key={`filler-${i}`} className="bg-background" />
         ))}
       </div>

@@ -1,6 +1,6 @@
 import { newId } from "@/lib/domain/id";
 import { buildLedger } from "./engine";
-import type { Account, AccountType, Book, DeletedEntry, EventDraft, EventIssue, EventSource, FinancialEvent, Person, TradeStyle } from "./types";
+import type { Account, AccountType, Book, DeletedEntry, EventDraft, EventIssue, EventSource, FinancialEvent, LoanKind, LoanTerms, Person, TradeStyle } from "./types";
 
 /**
  * Pure, validated changes to a Book. Every change is applied to a copy and the
@@ -93,6 +93,9 @@ export interface AccountInput {
   openingBalanceMinor: number;
   openedOn: string;
   creditLimitMinor?: number;
+  /** Loans: their terms (see LoanTerms). */
+  loanTerms?: LoanTerms;
+  loanKind?: LoanKind;
 }
 
 const cleanName = (name: string) => name.trim().replace(/\s+/g, " ");
@@ -110,6 +113,8 @@ export function addAccount(book: Book, input: AccountInput, clock: Clock = syste
     openingBalanceMinor: input.openingBalanceMinor,
     openedOn: input.openedOn,
     ...(input.type === "credit_card" && input.creditLimitMinor ? { creditLimitMinor: input.creditLimitMinor } : {}),
+    ...(input.type === "loan" && input.loanTerms ? { loanTerms: input.loanTerms } : {}),
+    ...(input.type === "loan" && input.loanKind ? { loanKind: input.loanKind } : {}),
     createdAt: clock.now(),
   };
   const after = { ...book, accounts: [...book.accounts, account] };
@@ -120,13 +125,15 @@ export function addAccount(book: Book, input: AccountInput, clock: Clock = syste
 export function updateAccount(
   book: Book,
   id: string,
-  changes: Partial<Pick<Account, "name" | "openingBalanceMinor" | "openedOn" | "style" | "creditLimitMinor">>,
+  changes: Partial<Pick<Account, "name" | "openingBalanceMinor" | "openedOn" | "style" | "creditLimitMinor" | "loanTerms" | "loanKind">>,
 ): Result<Book> {
   const existing = book.accounts.find((a) => a.id === id);
   if (!existing) return invalid("That account no longer exists.", "not_found");
   const next = { ...existing, ...changes, name: changes.name === undefined ? existing.name : cleanName(changes.name) };
   // No limit (or zero) means it isn't set.
   if (!next.creditLimitMinor || next.type !== "credit_card") delete next.creditLimitMinor;
+  if (!next.loanTerms || next.type !== "loan") delete next.loanTerms;
+  if (!next.loanKind || next.type !== "loan") delete next.loanKind;
   if (!next.name) return invalid("Give the account a name.");
   // Two holdings of one stock can share its name when they're traded differently (intraday, long term...).
   const clash = (a: Account) => !(a.type === "investment" && next.type === "investment" && a.style !== next.style);

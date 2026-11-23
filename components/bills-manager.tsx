@@ -289,7 +289,7 @@ export function BillForm({ bill, onClose }: { bill?: Bill; onClose: () => void }
             Usual amount <span className="text-xs text-muted-foreground">(optional)</span>
             <span className="relative">
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">₹</span>
-              <Input inputMode="decimal" className="pl-7" value={amount} aria-invalid={amountMinor === null} onChange={(e) => setAmount(e.target.value)} />
+              <Input amount className="pl-7" value={amount} aria-invalid={amountMinor === null} onChange={(e) => setAmount(e.target.value)} />
             </span>
           </label>
           <label className="grid gap-1 text-sm">

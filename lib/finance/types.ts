@@ -27,7 +27,28 @@ export interface Account {
   creditLimitMinor?: number;
   /** Stock trades only (an investment with a style is a stock): how it's traded. Each company + style is its own holding. */
   style?: TradeStyle;
+  /** Loans only: the loan's terms, for its EMI, schedule and reminders (lib/finance/loan.ts). */
+  loanTerms?: LoanTerms;
+  /** Loans only: what it's for, to group loans on the Money page. */
+  loanKind?: LoanKind;
   createdAt: string;
+}
+
+export type LoanKind = "home" | "vehicle" | "personal" | "education" | "gold" | "other";
+
+/**
+ * A bank loan's terms, as its sanction letter states them: what was borrowed, the yearly rate (on the reducing
+ * balance, as Indian home, car and personal loans charge it), the tenure and the first EMI's date. Everything else
+ * (the EMI, the schedule, what's left) is worked out from these and the EMIs you record.
+ */
+export interface LoanTerms {
+  principalMinor: number;
+  /** A year's rate in basis points: 8.5% is 850. */
+  annualRateBps: number;
+  tenureMonths: number;
+  firstEmiDate: string;
+  /** The bank's EMI when it differs from the worked-out one (banks round, or add charges). */
+  emiMinor?: number;
 }
 
 /** Zerodha's products: MIS (intraday, squared off the same day) or CNC (delivery, held). */

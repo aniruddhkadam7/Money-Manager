@@ -3,9 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { CalendarDays, FileUp, LayoutDashboard, PiggyBank, Plus, RefreshCw, Wallet } from "lucide-react";
-import { flush } from "@/lib/cloud/sync";
-import { Button } from "@/components/ui/button";
+import { CalendarDays, LayoutDashboard, PiggyBank, Plus, Wallet } from "lucide-react";
 import { LiquidButton, LiquidGlass } from "@/components/ui/liquid-glass-button";
 import { cn } from "@/lib/utils";
 import { BackButton } from "./back-button";
@@ -67,21 +65,10 @@ export function AppHeader() {
           </nav>
 
           <div className="flex items-center gap-2">
-            <LiquidButton asChild size="default" className="hidden rounded-full text-foreground sm:inline-flex" data-testid="import-statement">
-              <Link href="/import" title="Import statement">
-                <FileUp /> <span className="max-md:sr-only">Import</span> <span className="-ml-1 max-lg:hidden">statement</span>
-              </Link>
-            </LiquidButton>
             <LiquidButton size="default" className="hidden rounded-full font-semibold sm:inline-flex" onClick={() => openAdd()}>
               <Plus /> Add
             </LiquidButton>
-            <Button asChild variant="ghost" size="icon" className="sm:hidden">
-              <Link href="/import" aria-label="Import statement" title="Import statement">
-                <FileUp />
-              </Link>
-            </Button>
             <NotificationsBell />
-            <RefreshButton />
             <ProfileMenu />
           </div>
         </LiquidGlass>
@@ -345,30 +332,5 @@ function MobileNav({ pathname, onAdd }: { pathname: string; onAdd: () => void })
         )}
       </LiquidGlass>
     </nav>
-  );
-}
-
-/**
- * Phones have no reload button in a home-screen app, and pull-to-refresh is easy to miss: this saves anything
- * waiting to upload, then reloads so the latest data (from other devices too) is shown.
- */
-function RefreshButton() {
-  const [busy, setBusy] = useState(false);
-  return (
-    <Button
-      variant="ghost"
-      size="icon"
-      className="sm:hidden"
-      aria-label="Refresh"
-      title="Refresh"
-      disabled={busy}
-      onClick={async () => {
-        setBusy(true);
-        await flush().catch(() => undefined);
-        window.location.reload();
-      }}
-    >
-      <RefreshCw className={cn(busy && "animate-spin")} />
-    </Button>
   );
 }

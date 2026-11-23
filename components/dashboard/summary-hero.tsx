@@ -114,7 +114,7 @@ export function SummaryHero({ model, state, book }: { model: DashboardModel; sta
           <Metric onHow={howAssets.open} href="/money#accounts" label="Total assets" value={formatHeadlineINR(state.assets.totalMinor)} title={formatExactINR(state.assets.totalMinor)} sub={<>Bank & cash {formatHeadlineINR(state.cashMinor)}{state.assets.creditBalancesMinor > 0 && <span className="max-sm:hidden"> · Paid ahead {formatHeadlineINR(state.assets.creditBalancesMinor)}</span>}</>} />
           <Metric
             // Go where most of it is: people you owe, or cards and loans.
-            href={state.liabilities.borrowedMinor >= state.liabilities.creditCardsMinor + state.liabilities.loansMinor ? "/money#owe" : "/money#cards-loans"}
+            href={state.liabilities.borrowedMinor >= state.liabilities.creditCardsMinor + state.liabilities.loansMinor ? "/money#owe" : state.liabilities.loansMinor > state.liabilities.creditCardsMinor ? "/money#loans" : "/money#cards-loans"}
             label="Liabilities"
             onHow={howLiabilities.open}
             value={formatHeadlineINR(state.liabilities.totalMinor)}

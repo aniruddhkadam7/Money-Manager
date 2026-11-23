@@ -7,7 +7,7 @@ import type { Book } from "./types";
 export interface Reminder {
   /** Stable for one bill and date, so a notification is sent once per stage, not on every visit. */
   id: string;
-  kind: "card" | "subscription" | "custom";
+  kind: "card" | "subscription" | "custom" | "emi";
   title: string;
   dueDate: string;
   /** Whole days from today to the due date; negative once it has passed. */
@@ -17,7 +17,7 @@ export interface Reminder {
   accountId?: string;
   /** Lowest payment that avoids a late fee, when the statement printed one. */
   minimumMinor?: number;
-  /** Which thing this is, for moving its date: `card:<id>`, `sub:<key>`, or a custom bill's id. */
+  /** Which thing this is, for moving its date: `card:<id>`, `sub:<key>`, `emi:<loan id>`, or a custom bill's id. */
   baseKey: string;
   /** The date as found or added, before any move by the user. */
   originalDate: string;
@@ -44,9 +44,21 @@ export const CUSTOM_WINDOW_DAYS = 7;
 /** A card bill overdue longer than this is old news, not a reminder. */
 const OVERDUE_LIMIT_DAYS = 30;
 
+/** A loan's next EMI (from its schedule, see lib/finance/loan.ts). */
+export interface EmiDue {
+  accountId: string;
+  name: string;
+  /** Which EMI it is, so moving one EMI's date doesn't move the next. */
+  n: number;
+  dueDate: string;
+  amountMinor: number;
+}
+
 export interface BillOptions {
   /** Bills you added, and dates you moved. */
   data?: BillsData;
+  /** Loans' next EMIs. */
+  emis?: EmiDue[];
   /** List everything tracked, however far off, for managing dates; Home only shows what's near. */
   all?: boolean;
 }
@@ -60,7 +72,7 @@ export function upcomingBills(
   imports: CardStatementSource[],
   subscriptions: RecurringCharge[],
   today: string,
-  { data = { bills: [], overrides: {} }, all = false }: BillOptions = {},
+  { data = { bills: [], overrides: {} }, all = false, emis = [] }: BillOptions = {},
 ): Reminder[] {
   const out: Reminder[] = [];
   const dateOf = (baseKey: string, found: string) => {
@@ -88,6 +100,27 @@ export function upcomingBills(
       baseKey,
       originalDate: due.dueDate,
       moved,
+    });
+  }
+
+  // Loans: the next EMI, a week ahead like a card's bill, and on until it's paid (a missed EMI costs a penalty).
+  for (const emi of emis) {
+    const baseKey = `emi:${emi.accountId}`;
+    const { date, moved } = dateOf(baseKey, emi.dueDate);
+    const days = daysBetween(today, date);
+    if (!all && (days > CARD_WINDOW_DAYS || days < -OVERDUE_LIMIT_DAYS)) continue;
+    out.push({
+      id: `${baseKey}:${emi.n}:${date}`,
+      kind: "emi",
+      title: `${emi.name} EMI`,
+      dueDate: date,
+      days,
+      amountMinor: emi.amountMinor,
+      accountId: emi.accountId,
+      baseKey,
+      originalDate: emi.dueDate,
+      moved,
+      repeat: "monthly",
     });
   }
 

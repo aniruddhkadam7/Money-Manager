@@ -60,7 +60,7 @@ interface FinanceContextValue {
   /** Finds a loan by name or creates it (opened on `openedOn`). Null if the name belongs to another kind of account. */
   resolveLoan: (name: string, openedOn: string) => string | null;
   addAccount: (input: AccountInput) => Result<Account>;
-  updateAccount: (id: string, changes: Partial<Pick<Account, "name" | "openingBalanceMinor" | "openedOn" | "style" | "creditLimitMinor">>) => Result<null>;
+  updateAccount: (id: string, changes: Partial<Pick<Account, "name" | "openingBalanceMinor" | "openedOn" | "style" | "creditLimitMinor" | "loanTerms" | "loanKind">>) => Result<null>;
   deleteAccount: (id: string, choice?: ops.DeleteAccountChoice) => Result<null>;
   addCategory: (name: string, parentId?: string) => Promise<Category>;
   saveError: string | null;

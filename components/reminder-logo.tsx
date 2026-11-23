@@ -15,9 +15,9 @@ export function ReminderLogo({ r }: { r: Reminder }) {
   const { book, getCategory } = useFinance();
   const bankOf = useBankHints();
 
-  if (r.kind === "card") {
+  if (r.kind === "card" || r.kind === "emi") {
     const account = book.accounts.find((a) => a.id === r.accountId);
-    return account ? <AccountLogo account={account} bankHint={bankOf(account.id)} tile /> : <PictureIcon name="credit-card" className="size-9 shrink-0" />;
+    return account ? <AccountLogo account={account} bankHint={bankOf(account.id)} tile /> : <PictureIcon name={r.kind === "emi" ? "emi" : "credit-card"} className="size-9 shrink-0" />;
   }
   const fallback = r.categoryId ? <CategoryIcon category={getCategory(r.categoryId)} tile className="!size-9 !rounded-lg" /> : <PictureIcon name="bills" className="size-9 shrink-0" />;
   return r.brand ? <BrandLogo slug={r.brand} name={r.title} fallback={fallback} /> : <PartyLogo name={r.title} fallback={fallback} />;

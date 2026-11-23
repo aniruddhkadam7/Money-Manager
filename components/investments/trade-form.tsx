@@ -270,7 +270,7 @@ export function TradeForm({
             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">₹</span>
             <Input
               id="trade-price"
-              inputMode="decimal"
+              amount
               autoComplete="off"
               placeholder="0.00"
               className="pl-7 tabular-nums"
@@ -334,7 +334,7 @@ export function TradeForm({
               <button type="button" className="text-xs text-muted-foreground underline" onClick={() => setChargesInput(null)}>
                 Auto
               </button>
-              <Input aria-label="Charges" inputMode="decimal" className="h-8 w-24 text-right" value={chargesInput} onChange={(e) => setChargesInput(e.target.value)} />
+              <Input aria-label="Charges" amount className="h-8 w-24 text-right" value={chargesInput} onChange={(e) => setChargesInput(e.target.value)} />
             </div>
           )}
         </div>

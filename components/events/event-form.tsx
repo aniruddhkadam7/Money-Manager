@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ArrowLeft, ChevronDown, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -23,6 +23,7 @@ import type { TradePreset } from "../investments/trade-form";
 import { PictureIcon } from "../picture-icon";
 import { EVENT_OPTIONS, eventOption, FORM_SPEC, type FieldKey } from "./event-meta";
 import { NoteField, noteOf } from "./note-field";
+import { loanProgress } from "@/lib/finance/loan";
 import { billFor, currentBills, setBillDue, updateBills, useBills } from "@/lib/finance/bills";
 
 export interface FormPreset {
@@ -32,6 +33,8 @@ export interface FormPreset {
   trade?: TradePreset;
   /** A new entry's date (say, the day picked on the calendar) instead of today. */
   date?: string;
+  /** Pay EMI: which loan (from the loan's Pay EMI button). */
+  loanId?: string;
 }
 
 interface Values {
@@ -142,6 +145,26 @@ export function EventForm({
   // A repayment larger than what was owed is saved only once confirmed, for exactly these values.
   const [overpayConfirmed, setOverpayConfirmed] = useState<string | null>(null);
 
+  // Pay EMI on a loan with its terms: the next EMI by its schedule, from what's owed now. A new EMI is filled in with
+  // it (and again when you pick another loan), unless you've typed your own figures.
+  const emiLoan = type === "emi_payment" ? loans.find((a) => a.id === values.loanId) : undefined;
+  const scheduledEmi = useMemo(
+    () => (emiLoan?.loanTerms ? loanProgress(emiLoan, emiLoan.loanTerms, f.book, owedOnLoan(emiLoan.id)).next : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [emiLoan, f.book, f.state],
+  );
+  const autoFilled = useRef<{ amount: string; interest: string } | null>(null);
+  useEffect(() => {
+    if (editing || !scheduledEmi) return;
+    const mine = autoFilled.current;
+    const untouched = (!values.amount && !values.interest) || (mine && values.amount === mine.amount && values.interest === mine.interest);
+    if (!untouched) return;
+    const next = { amount: minorToInputString(scheduledEmi.emiMinor), interest: minorToInputString(scheduledEmi.interestMinor) };
+    autoFilled.current = next;
+    setValues((v) => ({ ...v, ...next }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scheduledEmi?.n, values.loanId]);
+
   function initialValues(): Values {
     const v = carriedValues();
     // Carried over from another kind of entry: keep the account only if this kind can use it, and ask for the category again.
@@ -175,7 +198,7 @@ export function EventForm({
       holdingId: preset?.holdingId ?? investments[0]?.id ?? "",
       soldValue: "",
       loanName: "",
-      loanId: loans[0]?.id ?? "",
+      loanId: preset?.loanId ?? loans[0]?.id ?? "",
       interest: "",
       date: preset?.date ?? todayISO(),
       shares: [{ person: "", amount: "" }],
@@ -619,7 +642,7 @@ export function EventForm({
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">₹</span>
               <Input
                 id="amount"
-                inputMode="decimal"
+                amount
                 autoComplete="off"
                 autoFocus={!editing && !preset?.person && !preset?.holdingId}
                 placeholder="0"
@@ -789,7 +812,7 @@ export function EventForm({
           <Field key={key} id="soldValue" label="Part sold (optional)" error={errors.soldValue}>
             <Input
               id="soldValue"
-              inputMode="decimal"
+              amount
               autoComplete="off"
               placeholder="Leave blank to sell everything"
               value={values.soldValue}
@@ -825,7 +848,9 @@ export function EventForm({
               <p className="text-xs text-muted-foreground">
                 {existing
                   ? `You owe ${formatRupees(owedOnLoan(existing.id))} on it now. This adds to it.`
-                  : "A new loan is added under Cards & loans on the Money page."}
+                  : "A new loan is added under Loans on the Money page."}
+                {(!existing || !existing.loanTerms) &&
+                  " Add its interest rate and tenure there (or use “Add a loan” on the Money page) to get its EMI, schedule and reminders."}
               </p>
             )}
           </Field>
@@ -866,7 +891,7 @@ export function EventForm({
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">₹</span>
               <Input
                 id="interest"
-                inputMode="decimal"
+                amount
                 autoComplete="off"
                 placeholder="0"
                 className="pl-7 tabular-nums"
@@ -880,6 +905,22 @@ export function EventForm({
                 ? `${formatRupees(principalMinor)} pays the loan down · ${formatRupees(interestMinor)} counts as spending`
                 : "Your loan's repayment schedule shows how much of each EMI is interest."}
             </p>
+            {scheduledEmi && (
+              <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground" data-testid="emi-schedule-hint">
+                <span>
+                  By the schedule, EMI {scheduledEmi.n} ({scheduledEmi.date.split("-").reverse().join("-")}) is {formatRupees(scheduledEmi.emiMinor)}: {formatRupees(scheduledEmi.interestMinor)} interest.
+                </span>
+                {(values.amount !== minorToInputString(scheduledEmi.emiMinor) || values.interest !== minorToInputString(scheduledEmi.interestMinor)) && (
+                  <button
+                    type="button"
+                    className="font-medium text-primary hover:underline"
+                    onClick={() => setValues((v) => ({ ...v, amount: minorToInputString(scheduledEmi.emiMinor), interest: minorToInputString(scheduledEmi.interestMinor) }))}
+                  >
+                    Use these
+                  </button>
+                )}
+              </p>
+            )}
           </Field>
         );
 
@@ -915,7 +956,7 @@ export function EventForm({
                 <div className="relative w-32 shrink-0">
                   <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">₹</span>
                   <Input
-                    inputMode="decimal"
+                    amount
                     autoComplete="off"
                     placeholder="0"
                     aria-label={`${row.person.trim() || "Their"} share`}

@@ -10,7 +10,9 @@ import { activityHref } from "@/lib/charts/links";
 import { formatDayMonth } from "@/lib/domain/dates";
 import { isStopped, updateBills, useBills } from "@/lib/finance/bills";
 import { detectRecurring, subscriptionsOf } from "@/lib/finance/recurring";
-import { dueWording, stageOf, upcomingBills, type Reminder } from "@/lib/finance/reminders";
+import { dueWording, stageOf, upcomingBills, type EmiDue, type Reminder } from "@/lib/finance/reminders";
+import { loanProgress } from "@/lib/finance/loan";
+import { useEventDialog } from "./events/event-dialog";
 import { readSent, useRemindersOn, writeSent } from "@/lib/reminder-settings";
 import { cn } from "@/lib/utils";
 import { BillsDialog, DateDialog, usePayBill } from "./bills-manager";
@@ -28,9 +30,24 @@ export function useReminders(all = false): Reminder[] {
   const { imports } = useStatements();
   const subscriptions = useDetectedSubscriptions();
   const data = useBills();
+  const emis = useEmisDue();
   return useMemo(
-    () => (status === "ready" ? upcomingBills(book, imports, subscriptions, today, { data, all }) : []),
-    [status, book, today, imports, subscriptions, data, all],
+    () => (status === "ready" ? upcomingBills(book, imports, subscriptions, today, { data, all, emis }) : []),
+    [status, book, today, imports, subscriptions, data, all, emis],
+  );
+}
+
+/** Each loan's next EMI, by its schedule from what's owed now (loans with their terms, not yet repaid). */
+function useEmisDue(): EmiDue[] {
+  const { book, state } = useFinance();
+  return useMemo(
+    () =>
+      state.accounts.flatMap(({ account, balanceMinor }) => {
+        if (account.type !== "loan" || !account.loanTerms) return [];
+        const next = loanProgress(account, account.loanTerms, book, balanceMinor).next;
+        return next ? [{ accountId: account.id, name: account.name, n: next.n, dueDate: next.date, amountMinor: next.emiMinor }] : [];
+      }),
+    [book, state],
   );
 }
 
@@ -40,11 +57,14 @@ function useDetectedSubscriptions() {
   return useMemo(() => subscriptionsOf(detectRecurring(book, ledger, today)), [book, ledger, today]);
 }
 
-const hrefOf = (r: Reminder) => (r.kind === "card" && r.accountId ? activityHref({ account: r.accountId }) : r.kind === "custom" ? "/" : activityHref({ q: r.title }));
+const hrefOf = (r: Reminder) =>
+  (r.kind === "card" || r.kind === "emi") && r.accountId ? (r.kind === "emi" ? "/money#loans" : activityHref({ account: r.accountId })) : r.kind === "custom" ? "/" : activityHref({ q: r.title });
 
 const bodyOf = (r: Reminder) =>
   r.kind === "custom"
     ? `${dueWording(r.days)}${r.amountMinor > 0 ? ` · ${formatExactINR(r.amountMinor)}` : ""}`
+    : r.kind === "emi"
+    ? `${dueWording(r.days)}${r.days < 0 ? " · not recorded yet" : ""}`
     : r.kind === "card"
     ? `${dueWording(r.days)} · ${formatExactINR(r.amountMinor)}${r.days < 0 ? " unpaid" : ""}${r.minimumMinor ? ` (minimum ${formatExactINR(r.minimumMinor)})` : ""}`
     : `Renews ${r.days === 0 ? "today" : r.days === 1 ? "tomorrow" : `in ${r.days} days`} · about ${formatExactINR(r.amountMinor)}`;
@@ -53,6 +73,7 @@ const bodyOf = (r: Reminder) =>
 export function DueSoon({ className }: { className?: string }) {
   const reminders = useReminders();
   const pay = usePayBill();
+  const { openAdd } = useEventDialog();
   const [managing, setManaging] = useState(false);
   const [dateFor, setDateFor] = useState<Reminder | null>(null);
   // Nothing near: no card at all. Dates are managed from the profile menu (Bills & due dates).
@@ -77,6 +98,11 @@ export function DueSoon({ className }: { className?: string }) {
             )}
             {r.kind === "custom" && r.billId && (
               <Button size="icon" variant="ghost" aria-label={`Mark ${r.title} paid`} title="Mark paid" onClick={() => pay(r.billId!)}>
+                <Check />
+              </Button>
+            )}
+            {r.kind === "emi" && r.accountId && (
+              <Button size="icon" variant="ghost" aria-label={`Pay ${r.title}`} title="Pay EMI" onClick={() => openAdd("emi_payment", { loanId: r.accountId })}>
                 <Check />
               </Button>
             )}

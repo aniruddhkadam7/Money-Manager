@@ -144,6 +144,10 @@ function useTicker(count: number) {
     const pause = () => (pausedUntil = performance.now() + 2500);
     const events = ["pointerdown", "touchstart", "touchmove", "wheel", "focusin"] as const;
     for (const e of events) el.addEventListener(e, pause, { passive: true });
+    // Hold still while the page itself scrolls too: iOS Safari stops painting a scroller whose scrollLeft is set
+    // during the page's momentum scroll, and the whole row goes blank until the page settles.
+    const pageEvents = ["scroll", "touchmove"] as const;
+    for (const e of pageEvents) window.addEventListener(e, pause, { passive: true });
     // A swipe that runs past the middle sets is moved back too, so swiping never meets an end either.
     const onScroll = () => {
       const loop = loopWidth();
@@ -172,6 +176,7 @@ function useTicker(count: number) {
     return () => {
       cancelAnimationFrame(frame);
       for (const e of events) el.removeEventListener(e, pause);
+      for (const e of pageEvents) window.removeEventListener(e, pause);
       el.removeEventListener("scroll", onScroll);
     };
   }, [count]);
