@@ -144,6 +144,14 @@ function useTicker(count: number) {
     const pause = () => (pausedUntil = performance.now() + 2500);
     const events = ["pointerdown", "touchstart", "touchmove", "wheel", "focusin"] as const;
     for (const e of events) el.addEventListener(e, pause, { passive: true });
+    // While the page itself scrolls, hold still: iOS Safari doesn't redraw a scroller that's moved during a page
+    // scroll, so the row would show as an empty gap. It carries on shortly after the page stops.
+    let pageQuietAt = 0;
+    const onPageScroll = (e: Event) => {
+      if (e.target === el) return;
+      pageQuietAt = performance.now() + 400;
+    };
+    document.addEventListener("scroll", onPageScroll, { capture: true, passive: true });
     // Hold still while the page itself scrolls too: iOS Safari stops painting a scroller whose scrollLeft is set
     // during the page's momentum scroll, and the whole row goes blank until the page settles.
     const pageEvents = ["scroll", "touchmove"] as const;
@@ -164,7 +172,7 @@ function useTicker(count: number) {
       const dt = Math.min(now - last, 100);
       last = now;
       const loop = loopWidth();
-      if (still || now < pausedUntil || document.hidden || loop <= 0) {
+      if (still || now < pausedUntil || now < pageQuietAt || document.hidden || loop <= 0) {
         pos = el.scrollLeft; // pick up wherever a swipe left it
       } else {
         pos = wrap(pos + (SPEED * dt) / 1000, loop);
@@ -176,6 +184,7 @@ function useTicker(count: number) {
     return () => {
       cancelAnimationFrame(frame);
       for (const e of events) el.removeEventListener(e, pause);
+      document.removeEventListener("scroll", onPageScroll, { capture: true });
       for (const e of pageEvents) window.removeEventListener(e, pause);
       el.removeEventListener("scroll", onScroll);
     };
