@@ -503,12 +503,14 @@ function Ring({ interestShare, principalMinor, interestMinor }: { interestShare:
   const interestLen = Math.max(0, c * interestShare - gap);
   const principalLen = Math.max(0, c * (1 - interestShare) - gap);
   const [hover, setHover] = useState<"principal" | "interest" | null>(null);
+  // At rest: the interest in rupees, and what part of everything you repay it is ("19% of what you repay"), so the
+  // percentage can't be mistaken for the interest rate. Hovering a part names it instead.
   const label =
     hover === "interest"
-      ? { title: "Interest", value: wholeRupees(interestMinor) }
+      ? { title: "Interest", value: wholeRupees(interestMinor), note: `${Math.round(interestShare * 100)}% of what you repay` }
       : hover === "principal"
-        ? { title: "Principal", value: wholeRupees(principalMinor) }
-        : { title: "Interest", value: `${Math.round(interestShare * 100)}%` };
+        ? { title: "Principal", value: wholeRupees(principalMinor), note: `${Math.round((1 - interestShare) * 100)}% of what you repay` }
+        : { title: "Interest", value: wholeRupees(interestMinor), note: `${Math.round(interestShare * 100)}% of what you repay` };
 
   return (
     <div className="grid justify-items-center gap-2">
@@ -548,6 +550,7 @@ function Ring({ interestShare, principalMinor, interestMinor }: { interestShare:
         <div className="pointer-events-none absolute inset-0 grid place-content-center text-center">
           <span className="text-xs text-muted-foreground">{label.title}</span>
           <span className="text-lg font-semibold tabular-nums text-foreground">{label.value}</span>
+          <span className="mx-auto max-w-24 text-[10px] leading-tight text-muted-foreground">{label.note}</span>
         </div>
       </div>
       <div className="flex gap-4 text-xs text-muted-foreground">
