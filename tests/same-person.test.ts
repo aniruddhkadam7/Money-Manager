@@ -62,3 +62,39 @@ describe("a card paid beyond its recorded spending", () => {
     expect(st.netWorthMinor).toBe(rs(400_000) - rs(13_776)); // the bank money went to clear a debt from before
   });
 });
+
+describe("other names", () => {
+  it("finds a person by any of their names, and refuses someone else's name", async () => {
+    const { setPersonAliases, ensurePerson: ensure } = await import("@/lib/finance/book-ops");
+    const { s } = startingScenario();
+    const a = ensure(s.book, "Bit Hub Technologies")!;
+    const b = ensure(a.book, "Ravi Kumar")!;
+    const r = setPersonAliases(b.book, a.person.id, ["BIT HUB TE", "bit hub te", "  "]);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.people.find((p) => p.id === a.person.id)?.aliases).toEqual(["BIT HUB TE"]);
+    expect(ensure(r.value, "bit hub te")!.person.id).toBe(a.person.id);
+    expect(setPersonAliases(r.value, a.person.id, ["Ravi Kumar"]).ok).toBe(false);
+  });
+
+  it("payments naming another name count as theirs, and statements find them by it", async () => {
+    const { involvesPerson } = await import("@/lib/finance/person-summary");
+    const { findPerson } = await import("@/lib/statements/rules");
+    const person = { id: "P", name: "Bit Hub Technologies", aliases: ["BIT HUB TE"] };
+    const payment = { id: "e", type: "expense", date: "2026-11-03", description: "UPI/BIT HUB TE/1234", accountId: "B", amountMinor: 100, categoryId: "other", createdAt: "", updatedAt: "" } as const;
+    expect(involvesPerson(payment, person)).toBe(true);
+    expect(findPerson("BIT HUB TE", [person])).toBe("Bit Hub Technologies");
+  });
+
+  it("merging keeps the other person's name as another name", async () => {
+    const { mergePeople, ensurePerson: ensure } = await import("@/lib/finance/book-ops");
+    const { s } = startingScenario();
+    const a = ensure(s.book, "Govindraj Ingle")!;
+    const b = ensure(a.book, "GOVIND I")!;
+    const r = mergePeople(b.book, a.person.id, b.person.id);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.people).toHaveLength(1);
+    expect(r.value.people[0].aliases).toEqual(["GOVIND I"]);
+  });
+});

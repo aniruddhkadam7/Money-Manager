@@ -44,7 +44,7 @@ export function eventText(book: Book, e: FinancialEvent, categoryName: (id: stri
   const parts: string[] = [e.description ?? "", e.note ?? ""];
   const person = (id: string) => book.people.find((p) => p.id === id)?.name ?? "";
   const account = (id: string) => book.accounts.find((a) => a.id === id)?.name ?? "";
-  if ("categoryId" in e) parts.push(categoryName(e.categoryId));
+  if ("categoryId" in e && e.categoryId) parts.push(categoryName(e.categoryId));
   if ("personId" in e) parts.push(person(e.personId));
   if (e.type === "split_expense") e.shares.forEach((s) => parts.push(person(s.personId)));
   if (e.type === "transfer" || e.type === "loan_taken" || e.type === "emi_payment") parts.push(account(e.fromAccountId), account(e.toAccountId));

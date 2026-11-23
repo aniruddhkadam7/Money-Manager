@@ -119,8 +119,12 @@ export function buildLedger(book: Book): Ledger {
     if (a.kind === "event" && b.kind === "event") {
       // Within a day, by time where there is one (stock orders), then in the order they were entered.
       const at = (e: FinancialEvent) => (e.type === "trade" ? (e.time ?? "") : "");
+      // On one day, a debt comes before paying it back: borrowing (or lending) and repaying the same day can only mean
+      // that order, whichever was entered first.
+      const debtFirst = (e: FinancialEvent) => (e.type === "repayment_made" || e.type === "repayment_received" ? 1 : 0);
       return (
         at(a.event).localeCompare(at(b.event)) ||
+        debtFirst(a.event) - debtFirst(b.event) ||
         a.event.createdAt.localeCompare(b.event.createdAt) ||
         a.event.id.localeCompare(b.event.id)
       );
@@ -263,6 +267,17 @@ export function buildLedger(book: Book): Ledger {
       case "borrow": {
         const a = amount(e.amountMinor);
         person(e.personId);
+        // A service or goods on credit: spending now, owed to them; no money arrives anywhere.
+        if (e.for === "service") {
+          if (!e.categoryId) fail("missing_category", "Choose a category.");
+          return {
+            flow: "borrowing",
+            postings: [
+              { ledger: ledgerIds.expense(e.categoryId!), amountMinor: a },
+              { ledger: ledgerIds.payable(e.personId), amountMinor: -a },
+            ],
+          };
+        }
         // Borrowed before records began: you owe it, but no money arrives in an account now.
         if (e.predatesRecords) {
           return {
@@ -310,9 +325,15 @@ export function buildLedger(book: Book): Ledger {
       }
 
       case "repayment_made": {
-        const a = amount(e.amountMinor);
+        const paid = amount(e.amountMinor);
         const acct = account(e.accountId, moneyAccounts, "Paid from");
         person(e.personId);
+        // Interest inside the payment is a cost; only the rest pays the debt down.
+        const interest = e.interestMinor ?? 0;
+        if (!isWholeMoney(interest) || interest < 0) fail("invalid_amount", "Interest can't be less than zero.");
+        if (interest > paid) fail("interest_exceeds_emi", "Interest can't be more than the whole payment.");
+        if (interest > 0 && !e.categoryId) fail("missing_category", "Choose a category.");
+        const a = paid - interest;
         const owing = -bal(ledgerIds.payable(e.personId));
         const matched = Math.min(a, Math.max(owing, 0));
         const unmatched = a - matched;
@@ -329,7 +350,8 @@ export function buildLedger(book: Book): Ledger {
           postings: [
             ...(matched > 0 ? [{ ledger: ledgerIds.payable(e.personId), amountMinor: matched }] : []),
             ...(unmatched > 0 ? [{ ledger: ledgerIds.OPENING, amountMinor: unmatched }] : []),
-            { ledger: ledgerIds.account(acct.id), amountMinor: -a },
+            ...(interest > 0 ? [{ ledger: ledgerIds.expense(e.categoryId!), amountMinor: interest }] : []),
+            { ledger: ledgerIds.account(acct.id), amountMinor: -paid },
           ],
         };
       }

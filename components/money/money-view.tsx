@@ -22,20 +22,24 @@ import { statementMatches, useBalances, useCardUsage, useStatementChecks, type S
 import { ACCOUNT_TYPE_INFO, AccountDialog, InlineAccountForm, type AddableAccountType } from "./account-dialog";
 import { PeopleList } from "./manage-lists";
 import { LoanPanel } from "./loan-panel";
+import { personDebts } from "@/lib/finance/debts";
 import { EmiCalculator } from "./emi-calculator";
 import { emiOf, LOAN_KINDS, loanKindOf } from "@/lib/finance/loan";
 
 /** Phones show the page a part at a time, like a phone app's tabs; wider screens show it all. (Categories and
  * Start over are in the profile's settings.) */
-type Tab = "accounts" | "cards" | "loans" | "people";
+type Tab = "accounts" | "cards" | "loans" | "lent" | "people";
 const TABS: { value: Tab; label: string }[] = [
   { value: "accounts", label: "Accounts" },
   { value: "cards", label: "Cards" },
   { value: "loans", label: "Loans" },
+  // What you've lent and are owed, beside what you owe (Loans).
+  { value: "lent", label: "Lent" },
   { value: "people", label: "People" },
 ];
 /** Which tab a /money#section link lands on. */
-const TAB_OF: Record<string, Tab> = { owed: "people", owe: "people", "cards-loans": "cards", loans: "loans" };
+// "owe" (money you owe people) is part of Loans now.
+const TAB_OF: Record<string, Tab> = { owed: "lent", owe: "loans", "cards-loans": "cards", loans: "loans" };
 
 const SECTIONS: { id: string; tab: Tab; title: string; types: AccountType[]; add: { type: AddableAccountType; label: string }[]; empty?: string }[] = [
   { id: "accounts", tab: "accounts", title: "Bank & cash", types: ["bank", "cash"], add: [{ type: "bank", label: "Add bank" }] },
@@ -47,7 +51,7 @@ const SECTIONS: { id: string; tab: Tab; title: string; types: AccountType[]; add
     title: "Loans",
     types: ["loan"],
     add: [{ type: "loan", label: "Loan" }],
-    empty: "Nothing to pay. Add a bank loan (home, car, personal) with its rate and tenure for its EMI, schedule and reminders, or money you borrowed from someone.",
+    empty: "Nothing to pay. Tap Add for a bank loan with EMIs, money you borrowed from someone, a service you'll pay for later, or a short-term loan to repay by a date.",
   },
 ];
 
@@ -114,7 +118,7 @@ function SectionHead({ title, total, action }: { title: string; total?: string; 
 }
 
 export function MoneyView() {
-  const { status } = useFinance();
+  const { status, book, today } = useFinance();
   // Bank balances as the latest statements say, so these match Home.
   const { state } = useBalances();
   const statements = useStatementChecks();
@@ -123,6 +127,8 @@ export function MoneyView() {
   const { openAdd } = useEventDialog();
   const theyPaidMe = useQuickRepaymentReceived();
   const [calcOpen, setCalcOpen] = useState(false);
+  // Loans tab: the kinds of debt to add, shown under "Whom you pay" when Add is tapped.
+  const [choosingDebt, setChoosingDebt] = useState(false);
   const owedPeople = state.people.filter((p) => p.iOwe.outstandingMinor > 0).sort((a, b) => b.iOwe.outstandingMinor - a.iOwe.outstandingMinor);
   const toPayMinor =
     state.accounts.filter((a) => a.account.type === "loan").reduce((t, a) => t + Math.max(a.balanceMinor, 0), 0) +
@@ -149,7 +155,6 @@ export function MoneyView() {
 
 
   const owedToMe = state.people.filter((p) => p.owedToMe.originalMinor > 0 || p.owedToMe.outstandingMinor > 0);
-  const iOwe = state.people.filter((p) => p.iOwe.originalMinor > 0 || p.iOwe.outstandingMinor > 0);
 
   return (
     <div className="mx-auto grid w-full max-w-[1400px] grid-cols-1 gap-4 sm:gap-6">
@@ -246,11 +251,11 @@ export function MoneyView() {
               action={
                 <div className="ml-auto flex shrink-0 gap-2 whitespace-nowrap max-sm:gap-0">
                   {section.id === "loans" && (
-                    <Button size="sm" variant="outline" className={ACTION} aria-label="Add money you borrowed from someone" title="Money you borrowed from someone" onClick={() => openAdd("borrow")} data-testid="add-borrowed">
-                      <Plus /> Person
+                    <Button size="sm" variant="outline" className={ACTION} aria-expanded={choosingDebt} onClick={() => setChoosingDebt((v) => !v)} data-testid="add-debt">
+                      <Plus /> Add
                     </Button>
                   )}
-                  {section.add.map((a) => (
+                  {section.id !== "loans" && section.add.map((a) => (
                     <Button key={a.type} size="sm" variant="outline" className={ACTION} onClick={() => {
                       // A loan is added on the page, under the tiles; other accounts in a dialog.
                       if (a.type === "loan") {
@@ -266,6 +271,35 @@ export function MoneyView() {
                 </div>
               }
             />
+            {/* What you can add on the Loans tab: each kind of debt, explained, one tap away. */}
+            {section.id === "loans" && choosingDebt && (
+              <div className="grid grid-cols-2 gap-2 px-4 pb-2 sm:grid-cols-4 sm:px-5" data-testid="debt-kinds">
+                {(
+                  [
+                    ["Bank loan", "Home, car, personal: with EMI", () => {
+                      setAddingLoan({});
+                      requestAnimationFrame(() => document.getElementById("add-loan")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+                    }],
+                    ["Borrowed money", "From a person, into your account", () => openAdd("borrow", { borrowFor: "money" })],
+                    ["Service on credit", "A job or goods, to pay later", () => openAdd("borrow", { borrowFor: "service" })],
+                    ["Short-term loan", "Repay by a date, with or without interest", () => openAdd("borrow", { borrowFor: "money", withTerms: true })],
+                  ] as const
+                ).map(([title, hint, go]) => (
+                  <button
+                    key={title}
+                    type="button"
+                    onClick={() => {
+                      setChoosingDebt(false);
+                      go();
+                    }}
+                    className="touch-manipulation rounded-xl border bg-muted/30 p-2.5 text-left transition-colors hover:bg-muted"
+                  >
+                    <span className="block text-sm font-medium">{title}</span>
+                    <span className="block text-xs text-muted-foreground">{hint}</span>
+                  </button>
+                ))}
+              </div>
+            )}
             {rows.length === 0 && !(section.id === "loans" && owedPeople.length > 0) ? (
               <CardContent className="grid justify-items-start gap-3 py-6 text-sm text-muted-foreground">
                 <p>{section.empty ?? "None yet."}</p>
@@ -326,7 +360,17 @@ export function MoneyView() {
                       <span>People</span>
                       <span className="tabular-nums">{formatRupees(owedPeople.reduce((t, p) => t + p.iOwe.outstandingMinor, 0))}</span>
                     </li>
-                    {owedPeople.map((p) => (
+                    {owedPeople.map((p) => {
+                      // Their debts' terms: what each was, the next date, and interest so far.
+                      const d = personDebts(book.events, p.person.id, today);
+                      const late = d.dueDate && d.dueDate < today;
+                      const next = d.nextInstalment
+                        ? `Next ${formatRupees(d.nextInstalment.amountMinor)} on ${formatDisplayDate(d.nextInstalment.date)}`
+                        : d.dueDate
+                          ? `${late ? "Was due" : "Pay back by"} ${formatDisplayDate(d.dueDate)}`
+                          : null;
+                      const what = d.debts.map((x) => (x.for === "service" ? x.description || "Service" : "Borrowed")).filter((v, i, a) => a.indexOf(v) === i).join(", ");
+                      return (
                       <li key={p.person.id} className="flex items-center gap-3 px-4 py-2.5 sm:px-5 sm:py-3" data-testid="owed-person">
                         <Link href={activityHref({ person: p.person.id })} className="flex min-w-0 flex-1 items-center gap-3 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring">
                           <span className="grid size-11 shrink-0 place-items-center rounded-[14px] bg-indigo-500/15 text-base font-semibold text-indigo-600 dark:text-indigo-300">
@@ -335,9 +379,16 @@ export function MoneyView() {
                           <span className="min-w-0 flex-1">
                             <span className="block truncate font-medium">{p.person.name}</span>
                             <span className="block truncate text-sm text-muted-foreground">
-                              Borrowed {formatRupees(p.iOwe.originalMinor)}
+                              {what || "Borrowed"}
                               {p.iOwe.originalMinor > p.iOwe.outstandingMinor && ` · paid back ${formatRupees(p.iOwe.originalMinor - p.iOwe.outstandingMinor)}`}
                             </span>
+                            {(next || d.interestSoFarMinor > 0) && (
+                              <span className={cn("block truncate text-xs", late ? "text-rose-600" : "text-muted-foreground")}>
+                                {next}
+                                {next && d.interestSoFarMinor > 0 && " · "}
+                                {d.interestSoFarMinor > 0 && `+${formatRupees(d.interestSoFarMinor)} interest so far`}
+                              </span>
+                            )}
                           </span>
                         </Link>
                         <p className="shrink-0 text-right font-semibold tabular-nums">
@@ -348,7 +399,8 @@ export function MoneyView() {
                           Pay back
                         </Button>
                       </li>
-                    ))}
+                      );
+                    })}
                   </>
                 )}
               </ul>
@@ -360,7 +412,7 @@ export function MoneyView() {
       })}
 
       <div className="grid gap-4 max-sm:contents sm:gap-6 lg:grid-cols-2">
-        <Card id="owed" className={cn("scroll-mt-24", hide("people"))}>
+        <Card id="owed" className={cn("scroll-mt-24", hide("lent"))}>
           <SectionHead
             title="Money others owe you"
             total={owedToMe.length > 0 ? formatRupees(owedToMe.reduce((t, p) => t + p.owedToMe.outstandingMinor, 0)) : undefined}
@@ -392,46 +444,6 @@ export function MoneyView() {
                         title="Records the full amount as paid back today"
                       >
                         They paid me
-                      </button>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-
-        <Card id="owe" className={cn("scroll-mt-24", hide("people"))}>
-          <SectionHead
-            title="Money you owe people"
-            total={iOwe.length > 0 ? formatRupees(iOwe.reduce((t, p) => t + p.iOwe.outstandingMinor, 0)) : undefined}
-            action={
-              <Button size="sm" variant="outline" className={ACTION} onClick={() => openAdd("borrow")}>
-                <Plus /> Borrow
-              </Button>
-            }
-          />
-          {iOwe.length === 0 ? (
-            <CardContent className="py-6 text-sm text-muted-foreground">You don&apos;t owe anyone.</CardContent>
-          ) : (
-            <ul className="divide-y py-2">
-              {iOwe.map((p) => (
-                <li key={p.person.id} className="grid gap-1 px-4 py-3 sm:px-5">
-                  <div className="flex items-center justify-between gap-3">
-                    <Link href={activityHref({ person: p.person.id })} className="font-medium hover:text-emerald-700 hover:underline">{p.person.name}</Link>
-                    <p className="font-semibold tabular-nums">{formatRupees(p.iOwe.outstandingMinor)}</p>
-                  </div>
-                  <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
-                    <span>
-                      Borrowed {formatRupees(p.iOwe.originalMinor)} · repaid {formatRupees(p.iOwe.repaidMinor)}
-                      {p.offsetMinor > 0 && <> · less {formatRupees(p.offsetMinor)} they owe you</>}
-                    </span>
-                    {p.iOwe.outstandingMinor > 0 && (
-                      <button
-                        className="font-medium text-primary hover:underline"
-                        onClick={() => openAdd("repayment_made", { person: p.person.name })}
-                      >
-                        I paid back
                       </button>
                     )}
                   </div>

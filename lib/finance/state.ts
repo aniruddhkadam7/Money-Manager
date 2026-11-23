@@ -142,7 +142,8 @@ export function deriveState(book: Book, ledger: Ledger, asOf: string): Financial
         add(byPerson.get(e.personId), "iOwe", "originalMinor", e.amountMinor);
         break;
       case "repayment_made":
-        add(byPerson.get(e.personId), "iOwe", "repaidMinor", e.amountMinor);
+        // Only what paid the debt down: interest on top is a cost, not repayment.
+        add(byPerson.get(e.personId), "iOwe", "repaidMinor", e.amountMinor - (e.interestMinor ?? 0));
         break;
     }
   }

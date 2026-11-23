@@ -57,6 +57,8 @@ export type TradeStyle = "intraday" | "delivery";
 export interface Person {
   id: string;
   name: string;
+  /** Other names they go by: as a bank or UPI line writes them ("BIT HUB TE"), a nickname, a business name. */
+  aliases?: string[];
   createdAt: string;
 }
 
@@ -142,14 +144,34 @@ export interface LendEvent extends EventBase {
   predatesRecords?: boolean;
 }
 
-/** I borrowed money from someone. */
+/**
+ * I owe someone: they gave me money (it arrived in `accountId`), or a service or goods I'll pay for later (`for:
+ * "service"`: it's spending under `categoryId` now, and no money arrives anywhere).
+ */
 export interface BorrowEvent extends EventBase {
   type: "borrow";
   personId: string;
+  /** Where the money arrived. Unused (empty) for a service. */
   accountId: string;
   amountMinor: number;
   /** Borrowed before records began: you owe it, but no money arrives in `accountId` now. */
   predatesRecords?: boolean;
+  /** What it was: money (the default) or a service or goods on credit. */
+  for?: "money" | "service";
+  /** A service or goods: what it counts as spending under. */
+  categoryId?: string;
+  /** How it's to be paid back, if agreed: by a date, with interest, in instalments. */
+  terms?: DebtTerms;
+}
+
+/** How money owed to a person is to be paid back. Every part is optional. */
+export interface DebtTerms {
+  /** Pay it all back by this day. */
+  dueDate?: string;
+  /** Simple interest on what's still owed: so much a month (common between people) or a year. */
+  interest?: { rateBps: number; per: "month" | "year" };
+  /** Paid back so much every month, from `firstDate`. */
+  instalments?: { amountMinor: number; firstDate: string };
 }
 
 /** Someone paid me back (a loan, their share of a bill, a reimbursement). */
@@ -162,14 +184,18 @@ export interface RepaymentReceivedEvent extends EventBase {
   predatesRecords?: boolean;
 }
 
-/** I paid back money I borrowed. */
+/** I paid back money I borrowed (or owed for a service). */
 export interface RepaymentMadeEvent extends EventBase {
   type: "repayment_made";
   personId: string;
   accountId: string;
+  /** All that was paid, interest included. */
   amountMinor: number;
   /** The loan this settles was before records began (or in cash), so it may exceed what is recorded. */
   predatesRecords?: boolean;
+  /** The interest inside `amountMinor`: spending under `categoryId`, not paying the debt down. */
+  interestMinor?: number;
+  categoryId?: string;
 }
 
 /** I paid a bill; other people owe me their shares. Only my own share is spending. */

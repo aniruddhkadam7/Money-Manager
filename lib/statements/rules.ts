@@ -41,6 +41,8 @@ const make = (
 export interface Relationship {
   personId: string;
   name: string;
+  /** Other names they go by, matched like their name. */
+  aliases?: string[];
   /** They owe me. */
   owedToMeMinor: number;
   /** I owe them. */
@@ -53,25 +55,32 @@ export function relationships(book: Book, ledger: Ledger): Relationship[] {
   return book.people.map((p) => ({
     personId: p.id,
     name: p.name,
+    ...(p.aliases?.length ? { aliases: p.aliases } : {}),
     owedToMeMinor: Math.max(0, bal.get(`recv:${p.id}`) ?? 0),
     iOweMinor: Math.max(0, -(bal.get(`pay:${p.id}`) ?? 0)),
   }));
 }
 
-/** Finds a known person for a counterparty name: exact (ignoring case), or all words of the known name appear. */
-export function findPerson(name: string, people: { name: string }[]): string | null {
+/**
+ * Finds a known person for a counterparty name, by their name or any other name they go by: exact (ignoring case),
+ * or all words of one of their names appear, or the bank cut a name short. Returns their (main) name.
+ */
+export function findPerson(name: string, people: { name: string; aliases?: string[] }[]): string | null {
   const key = name.toLowerCase().replace(/\s+/g, " ").trim();
   if (!key) return null;
-  const exact = people.find((p) => p.name.toLowerCase() === key);
+  const names = (p: { name: string; aliases?: string[] }) => [p.name, ...(p.aliases ?? [])];
+  const exact = people.find((p) => names(p).some((n) => n.toLowerCase() === key));
   if (exact) return exact.name;
   const words = new Set(key.split(" "));
-  const partial = people.filter((p) => {
-    const parts = p.name.toLowerCase().split(/\s+/);
-    return parts.length >= 2 && parts.every((w) => words.has(w));
-  });
+  const partial = people.filter((p) =>
+    names(p).some((n) => {
+      const parts = n.toLowerCase().split(/\s+/);
+      return parts.length >= 2 && parts.every((w) => words.has(w));
+    }),
+  );
   if (partial.length === 1) return partial[0].name;
   // The bank cut the name short (or printed it in full this time).
-  const alike = people.filter((p) => sameishName(p.name, name));
+  const alike = people.filter((p) => names(p).some((n) => sameishName(n, name)));
   return alike.length === 1 ? alike[0].name : null;
 }
 

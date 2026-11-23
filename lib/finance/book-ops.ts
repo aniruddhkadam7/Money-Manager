@@ -250,13 +250,48 @@ export function mergePeople(book: Book, keepId: string, dropId: string): Result<
     }
     return "personId" in e && e.personId === dropId ? ({ ...e, personId: keepId } as FinancialEvent) : e;
   });
-  return accept(book, { ...book, events, people: book.people.filter((p) => p.id !== dropId) });
+  // The kept person also goes by the other's names from now on, so payments under them still find them.
+  const keep = book.people.find((p) => p.id === keepId)!;
+  const drop = book.people.find((p) => p.id === dropId)!;
+  const aliases = uniqueNames([...(keep.aliases ?? []), drop.name, ...(drop.aliases ?? [])], keep.name);
+  const people = book.people.filter((p) => p.id !== dropId).map((p) => (p.id === keepId ? { ...p, ...(aliases.length ? { aliases } : {}) } : p));
+  return accept(book, { ...book, events, people });
+}
+
+/** Names, cleaned, each once (ignoring case), leaving out `except` (the person's own name). */
+function uniqueNames(names: string[], except: string): string[] {
+  const seen = new Set([except.toLowerCase()]);
+  const out: string[] = [];
+  for (const n of names.map(cleanName)) {
+    if (!n || seen.has(n.toLowerCase())) continue;
+    seen.add(n.toLowerCase());
+    out.push(n);
+  }
+  return out;
+}
+
+/**
+ * Sets the other names a person goes by. A name that's someone else's (their name or one of theirs) is refused:
+ * that's one person under two entries, which merging fixes.
+ */
+export function setPersonAliases(book: Book, id: string, aliases: string[]): Result<Book> {
+  const person = book.people.find((p) => p.id === id);
+  if (!person) return invalid("That person no longer exists.", "not_found");
+  const clean = uniqueNames(aliases, person.name);
+  for (const n of clean) {
+    const other = book.people.find((p) => p.id !== id && [p.name, ...(p.aliases ?? [])].some((x) => x.toLowerCase() === n.toLowerCase()));
+    if (other) return invalid(`“${n}” is ${other.name}. If they're the same person, merge them instead.`, "duplicate_name");
+  }
+  const { aliases: _old, ...rest } = person;
+  void _old;
+  const next: Person = clean.length ? { ...rest, aliases: clean } : rest;
+  return { ok: true, value: { ...book, people: book.people.map((p) => (p.id === id ? next : p)) } };
 }
 
 export function ensurePerson(book: Book, name: string, clock: Clock = systemClock): { book: Book; person: Person } | null {
   const clean = cleanName(name);
   if (!clean) return null;
-  const existing = book.people.find((p) => p.name.toLowerCase() === clean.toLowerCase());
+  const existing = book.people.find((p) => [p.name, ...(p.aliases ?? [])].some((n) => n.toLowerCase() === clean.toLowerCase()));
   if (existing) return { book, person: existing };
   // The same person with the name cut short (or now printed in full): reuse them, keeping the fuller name.
   const alike = book.people.filter((p) => sameishName(p.name, clean));
@@ -290,10 +325,23 @@ export function renamePerson(book: Book, id: string, name: string): Result<Book>
   const clean = cleanName(name);
   if (!clean) return invalid("Enter a name.");
   if (!book.people.some((p) => p.id === id)) return invalid("That person no longer exists.", "not_found");
-  if (book.people.some((p) => p.id !== id && p.name.toLowerCase() === clean.toLowerCase())) {
+  if (book.people.some((p) => p.id !== id && [p.name, ...(p.aliases ?? [])].some((n) => n.toLowerCase() === clean.toLowerCase()))) {
     return invalid(`You already have someone called “${clean}”.`, "duplicate_name");
   }
-  return { ok: true, value: { ...book, people: book.people.map((p) => (p.id === id ? { ...p, name: clean } : p)) } };
+  // Renamed to one of their other names: it's their name now, so it isn't kept as another name too.
+  return {
+    ok: true,
+    value: {
+      ...book,
+      people: book.people.map((p) => {
+        if (p.id !== id) return p;
+        const aliases = uniqueNames([...(p.aliases ?? []), p.name], clean);
+        const { aliases: _a, ...rest } = p;
+        void _a;
+        return aliases.length ? { ...rest, name: clean, aliases } : { ...rest, name: clean };
+      }),
+    },
+  };
 }
 
 /**

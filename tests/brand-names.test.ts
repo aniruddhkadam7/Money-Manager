@@ -38,3 +38,12 @@ describe("recognising companies in names", () => {
     expect(brandFor("Vitamin 21mg")).toBeNull();
   });
 });
+
+describe("Razorpay", () => {
+  it("shows Razorpay's logo for a payment naming only it, and the shop's when the line names one", async () => {
+    const { brandFor } = await import("@/lib/finance/brands");
+    expect(brandFor("UPI/RAZORPAY PAYMENTS/123456")?.slug).toBe("razorpay");
+    expect(brandFor("rzp*merchant 4421")?.slug).toBe("razorpay");
+    expect(brandFor("RAZORPAY*SWIGGY")?.slug).toBe("swiggyapp");
+  });
+});

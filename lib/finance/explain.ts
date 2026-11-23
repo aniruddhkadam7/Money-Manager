@@ -106,7 +106,7 @@ export function explainSpent(book: Book, ledger: Ledger, from: string, to: strin
     const back = entry.postings.filter((p) => p.ledger.startsWith("inc:")).reduce((t, p) => t - p.amountMinor, 0);
     if (back === 0) continue;
     const event = book.events.find((e) => e.id === entry.sourceId);
-    const categoryId = event && "categoryId" in event ? event.categoryId : "refund";
+    const categoryId = (event && "categoryId" in event ? event.categoryId : undefined) ?? "refund";
     lines.push({
       // Named as what it is (a refund, cashback…) and who from: it isn't a category of spending of its own.
       label: `${categoryName(categoryId)}${event && "description" in event && event.description ? ` from ${event.description}` : ""}`,

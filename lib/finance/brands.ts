@@ -80,6 +80,9 @@ export const BRANDS: Brand[] = [
   b("zerodha", "Zerodha", "zerodha.com", /zerodha/, false),
   b("groww", "Groww", "groww.in", /groww/, false),
   b("1mg", "Tata 1mg", "1mg.com", /\b1mg\b|tata 1\s?mg/, false),
+  // A payment gateway: a line like "RAZORPAY*SWIGGY" names the shop too, and any shop above wins; Razorpay's own logo
+  // is for lines that name only it.
+  b("razorpay", "Razorpay", "razorpay.com", /razorpay|\brzp\b/, false),
   // Employers and companies that pay you or reimburse you.
   // "EY" only on its own (or EY LLP / GDS / India): a bank line like "PAN EY TEA STALL" is not EY.
   b("ey", "EY", "ey.com", /^\s*ey(\s+(llp|gds|india|global|services))?\s*$|ernst\s*(&|and)?\s*young/, false),

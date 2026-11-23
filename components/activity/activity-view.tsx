@@ -32,6 +32,7 @@ import { useFinance } from "../finance-provider";
 import { DuplicatesBanner } from "./duplicates-banner";
 import { DeletedEntries } from "./deleted-entries";
 import { WaitingLines } from "./waiting-lines";
+import { CountAsRepayment } from "./count-as-repayment";
 
 const ALL = "all";
 
@@ -112,7 +113,7 @@ function typesFor(show: string): EventType[] {
   return [];
 }
 
-const categoryOf = (e: FinancialEvent): string | null => ("categoryId" in e ? e.categoryId : null);
+const categoryOf = (e: FinancialEvent): string | null => ("categoryId" in e ? (e.categoryId ?? null) : null);
 
 /**
  * Cards and charts link here with their filters in the URL, so tapping something
@@ -332,6 +333,8 @@ function ActivityContent() {
               </div>
             </div>
             {together && <TogetherSummary summary={together} categories={categories} />}
+            {/* Payments to or from them recorded as spending or income, while there's a debt: count them against it. */}
+            <CountAsRepayment person={person.person} />
           </CardContent>
         </Card>
       )}

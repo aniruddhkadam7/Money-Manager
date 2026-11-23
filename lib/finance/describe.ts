@@ -71,7 +71,7 @@ export function makeDescriber(book: Book, categoryName: (id: string) => string):
       case "lend":
         return `Lent to ${who(e.personId)}`;
       case "borrow":
-        return `Borrowed from ${who(e.personId)}`;
+        return e.for === "service" ? e.description || `Owe ${who(e.personId)}` : `Borrowed from ${who(e.personId)}`;
       case "repayment_received":
         return `${who(e.personId)} paid you back`;
       case "repayment_made":
@@ -108,9 +108,11 @@ export function makeDescriber(book: Book, categoryName: (id: string) => string):
       case "lend":
       case "repayment_made":
         if (e.type === "lend" && e.predatesRecords) return "From before you started tracking";
+        if (e.type === "repayment_made" && e.interestMinor) return `Interest ${formatRupees(e.interestMinor)} · ${via(e, e.accountId, "from")}`;
         return cap(via(e, e.accountId, "from"));
       case "borrow":
       case "repayment_received":
+        if (e.type === "borrow" && e.for === "service") return `${categoryName(e.categoryId ?? "other")} · to pay ${who(e.personId)} later`;
         if (e.type === "borrow" && e.predatesRecords) return "From before you started tracking";
         return cap(via(e, e.accountId, "into"));
       case "loan_taken":

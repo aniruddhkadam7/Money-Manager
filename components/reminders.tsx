@@ -10,7 +10,8 @@ import { activityHref } from "@/lib/charts/links";
 import { formatDayMonth } from "@/lib/domain/dates";
 import { isStopped, updateBills, useBills } from "@/lib/finance/bills";
 import { detectRecurring, subscriptionsOf } from "@/lib/finance/recurring";
-import { dueWording, stageOf, upcomingBills, type EmiDue, type Reminder } from "@/lib/finance/reminders";
+import { dueWording, stageOf, upcomingBills, type DebtDue, type EmiDue, type Reminder } from "@/lib/finance/reminders";
+import { personDebts } from "@/lib/finance/debts";
 import { loanProgress } from "@/lib/finance/loan";
 import { useEventDialog } from "./events/event-dialog";
 import { readSent, useRemindersOn, writeSent } from "@/lib/reminder-settings";
@@ -31,9 +32,26 @@ export function useReminders(all = false): Reminder[] {
   const subscriptions = useDetectedSubscriptions();
   const data = useBills();
   const emis = useEmisDue();
+  const debts = useDebtsDue();
   return useMemo(
-    () => (status === "ready" ? upcomingBills(book, imports, subscriptions, today, { data, all, emis }) : []),
-    [status, book, today, imports, subscriptions, data, all, emis],
+    () => (status === "ready" ? upcomingBills(book, imports, subscriptions, today, { data, all, emis, debts }) : []),
+    [status, book, today, imports, subscriptions, data, all, emis, debts],
+  );
+}
+
+/** For each person you owe: the next instalment, or else the "pay back by" date, from the debts' terms. */
+function useDebtsDue(): DebtDue[] {
+  const { book, state, today } = useFinance();
+  return useMemo(
+    () =>
+      state.people.flatMap(({ person, iOwe }): DebtDue[] => {
+        if (iOwe.outstandingMinor <= 0) return [];
+        const d = personDebts(book.events, person.id, today);
+        if (d.nextInstalment) return [{ personId: person.id, name: person.name, dueDate: d.nextInstalment.date, amountMinor: d.nextInstalment.amountMinor + d.interestSoFarMinor, what: "instalment" as const }];
+        if (d.dueDate) return [{ personId: person.id, name: person.name, dueDate: d.dueDate, amountMinor: d.owedMinor + d.interestSoFarMinor, what: "all" as const }];
+        return [];
+      }),
+    [book, state, today],
   );
 }
 
@@ -58,13 +76,17 @@ function useDetectedSubscriptions() {
 }
 
 const hrefOf = (r: Reminder) =>
-  (r.kind === "card" || r.kind === "emi") && r.accountId ? (r.kind === "emi" ? "/money#loans" : activityHref({ account: r.accountId })) : r.kind === "custom" ? "/" : activityHref({ q: r.title });
+  r.kind === "debt" && r.personId
+    ? activityHref({ person: r.personId })
+    : (r.kind === "card" || r.kind === "emi") && r.accountId ? (r.kind === "emi" ? "/money#loans" : activityHref({ account: r.accountId })) : r.kind === "custom" ? "/" : activityHref({ q: r.title });
 
 const bodyOf = (r: Reminder) =>
   r.kind === "custom"
     ? `${dueWording(r.days)}${r.amountMinor > 0 ? ` · ${formatExactINR(r.amountMinor)}` : ""}`
     : r.kind === "emi"
     ? `${dueWording(r.days)}${r.days < 0 ? " · not recorded yet" : ""}`
+    : r.kind === "debt"
+    ? `${r.debtDue === "instalment" ? "Instalment" : "Pay back"} · ${dueWording(r.days).replace(/^Due /, "due ")}`
     : r.kind === "card"
     ? `${dueWording(r.days)} · ${formatExactINR(r.amountMinor)}${r.days < 0 ? " unpaid" : ""}${r.minimumMinor ? ` (minimum ${formatExactINR(r.minimumMinor)})` : ""}`
     : `Renews ${r.days === 0 ? "today" : r.days === 1 ? "tomorrow" : `in ${r.days} days`} · about ${formatExactINR(r.amountMinor)}`;
@@ -103,6 +125,11 @@ export function DueSoon({ className }: { className?: string }) {
             )}
             {r.kind === "emi" && r.accountId && (
               <Button size="icon" variant="ghost" aria-label={`Pay ${r.title}`} title="Pay EMI" onClick={() => openAdd("emi_payment", { loanId: r.accountId })}>
+                <Check />
+              </Button>
+            )}
+            {r.kind === "debt" && (
+              <Button size="icon" variant="ghost" aria-label={`Pay ${r.title} back`} title="Pay back" onClick={() => openAdd("repayment_made", { person: r.title })}>
                 <Check />
               </Button>
             )}

@@ -8,7 +8,7 @@ export const EVENT_OPTIONS: { type: EventType; label: string; hint: string; pict
   { type: "income", label: "Income", hint: "I got paid or earned money", picture: "income" },
   { type: "transfer", label: "Transfer", hint: "Move money between my accounts, or pay a card or loan", picture: "transfer" },
   { type: "lend", label: "Lend money", hint: "I gave someone money", picture: "lend" },
-  { type: "borrow", label: "Borrow money", hint: "Someone gave me money", picture: "borrow" },
+  { type: "borrow", label: "Borrow / owe someone", hint: "Someone gave me money, or a service I'll pay for later", picture: "borrow" },
   { type: "repayment_received", label: "Got paid back", hint: "Someone repaid me", picture: "repay" },
   { type: "repayment_made", label: "Paid someone back", hint: "I repaid what I owe", picture: "repay" },
   { type: "loan_taken", label: "Take a loan", hint: "A bank loan was paid into my account", picture: "loan" },

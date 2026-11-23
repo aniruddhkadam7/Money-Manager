@@ -23,6 +23,11 @@ import type { TradePreset } from "../investments/trade-form";
 import { PictureIcon } from "../picture-icon";
 import { EVENT_OPTIONS, eventOption, FORM_SPEC, type FieldKey } from "./event-meta";
 import { NoteField, noteOf } from "./note-field";
+import { cn } from "@/lib/utils";
+import { DebtTermsFields, debtTermsValues, parseDebtTerms, type DebtTermsValues } from "./debt-terms";
+import { personDebts, termsWords } from "@/lib/finance/debts";
+import { namesOf } from "@/lib/finance/person-summary";
+import { formatDisplayDate } from "@/lib/domain/dates";
 import { loanProgress } from "@/lib/finance/loan";
 import { billFor, currentBills, setBillDue, updateBills, useBills } from "@/lib/finance/bills";
 
@@ -35,6 +40,10 @@ export interface FormPreset {
   date?: string;
   /** Pay EMI: which loan (from the loan's Pay EMI button). */
   loanId?: string;
+  /** Borrow / owe: start as money borrowed or as a service on credit, and with the terms box open. */
+  borrowFor?: "money" | "service";
+  /** Borrow / owe: open the repayment terms (a short-term loan with a date, instalments, interest). */
+  withTerms?: boolean;
 }
 
 interface Values {
@@ -65,6 +74,12 @@ interface Values {
   note: string;
   /** A bill payment: when the bill is due again, or the plan expires (kept on the bill in Bills, see EventBase.billId). */
   billDue: string;
+  /** Borrow: money that came in, or a service or goods to pay for later. */
+  borrowFor: "money" | "service";
+  /** Borrow: how it's to be paid back (all optional). */
+  debtTerms: DebtTermsValues;
+  /** Paid someone back: the interest part, if any. */
+  repayInterest: string;
 }
 
 /** Kinds of entry that can pay a bill, and the categories where the bill date is offered without asking. */
@@ -136,6 +151,9 @@ export function EventForm({
   const owedOnLoan = (id: string) => f.state.accounts.find((a) => a.account.id === id)?.balanceMinor ?? 0;
 
   const [values, setValues] = useState<Values>(() => initialValues());
+  // Borrowing a service or goods: what it was and its category, and no account (no money came in).
+  const serviceDebt = type === "borrow" && values.borrowFor === "service";
+  const fields: FieldKey[] = serviceDebt ? ["person", "amount", "description", "category", "date"] : spec.fields;
   const [errors, setErrors] = useState<Errors>({});
   const [saving, setSaving] = useState(false);
   const [pickingCategory, setPickingCategory] = useState(false);
@@ -207,6 +225,9 @@ export function EventForm({
       offStatement: false,
       note: "",
       billDue: "",
+      borrowFor: preset?.borrowFor ?? "money",
+      debtTerms: debtTermsValues(),
+      repayInterest: "",
     };
     if (!e) return base;
     base.date = editing ? e.date : todayISO();
@@ -222,11 +243,28 @@ export function EventForm({
       case "transfer":
         return { ...base, amount: minorToInputString(e.amountMinor), accountId: e.fromAccountId, toAccountId: e.toAccountId };
       case "lend":
-      case "borrow":
         return { ...base, amount: minorToInputString(e.amountMinor), accountId: e.accountId, person: personName(e.personId), beforeTracking: !!e.predatesRecords };
+      case "borrow":
+        return {
+          ...base,
+          amount: minorToInputString(e.amountMinor),
+          accountId: e.for === "service" ? base.accountId : e.accountId,
+          person: personName(e.personId),
+          beforeTracking: !!e.predatesRecords,
+          borrowFor: e.for ?? "money",
+          categoryId: e.categoryId ?? "",
+          debtTerms: debtTermsValues(e.terms),
+        };
       case "repayment_received":
-      case "repayment_made":
         return { ...base, amount: minorToInputString(e.amountMinor), accountId: e.accountId, person: personName(e.personId) };
+      case "repayment_made":
+        return {
+          ...base,
+          amount: minorToInputString(e.amountMinor),
+          accountId: e.accountId,
+          person: personName(e.personId),
+          repayInterest: e.interestMinor ? minorToInputString(e.interestMinor) : "",
+        };
       case "split_expense":
         return {
           ...base,
@@ -284,7 +322,7 @@ export function EventForm({
   /** For repayments: how much does this person owe / am I owed? */
   const personHint = useMemo(() => {
     if (type !== "repayment_received" && type !== "repayment_made") return null;
-    const match = f.state.people.find((p) => p.person.name.toLowerCase() === values.person.trim().toLowerCase());
+    const match = f.state.people.find((p) => namesOf(p.person).some((n) => n.toLowerCase() === values.person.trim().toLowerCase()));
     if (!match) return null;
     return type === "repayment_received"
       ? `${match.person.name} owes you ${formatRupees(match.owedToMe.outstandingMinor)}`
@@ -316,7 +354,7 @@ export function EventForm({
     const name = person.name;
     if (received) {
       return owed > 0
-        ? `${name} only owed you ${formatRupees(owed)} on that date. If the extra ${extra} is for a loan from before you started tracking, press Save again. If they paid you too much, save ${formatRupees(owed)} here and the extra as Borrow money.`
+        ? `${name} only owed you ${formatRupees(owed)} on that date. If the extra ${extra} is for a loan from before you started tracking, press Save again. If they paid you too much, save ${formatRupees(owed)} here and the extra as “Borrow / owe someone”.`
         : `${name} didn't owe you anything on that date. If this is for a loan from before you started tracking, press Save again.`;
     }
     return owed > 0
@@ -370,7 +408,7 @@ export function EventForm({
    * view on a phone and covers the lower fields instead of pushing them off screen.
    */
   function categorySheet() {
-    if (!pickingCategory || !spec.fields.includes("category")) return null;
+    if (!pickingCategory || !fields.includes("category")) return null;
     const canAdd = spec.categoryKind === "expense";
     // Empty cells to fill out the last row, so the grid lines stay square.
     const filler = (3 - ((categories.length + (canAdd ? 1 : 0)) % 3)) % 3;
@@ -467,12 +505,76 @@ export function EventForm({
     );
   }
 
+  /**
+   * Paying someone back: what you owe them, the next instalment or due date, interest so far, and a box for the
+   * interest part (when there is interest), with what to pay filled in on a tap.
+   */
+  function repayHelp() {
+    const who = f.book.people.find((p) => namesOf(p).some((n) => n.toLowerCase() === values.person.trim().toLowerCase()));
+    if (!who) return null;
+    const d = personDebts(f.book.events.filter((e) => e.id !== editing?.id), who.id, values.date || f.today);
+    const withInterest = d.debts.some((x) => x.terms?.interest) || !!values.repayInterest;
+    if (d.owedMinor <= 0 && !withInterest) return null;
+    const fill = () =>
+      setValues((v) => ({ ...v, amount: minorToInputString(d.suggestedMinor), repayInterest: d.interestSoFarMinor > 0 ? minorToInputString(d.interestSoFarMinor) : "" }));
+    return (
+      <div className="grid gap-2 rounded-xl border bg-muted/40 p-3 text-sm" data-testid="repay-help">
+        {d.owedMinor > 0 && (
+          <>
+            <p>
+              You owe {who.name} <strong>{formatRupees(d.owedMinor)}</strong>
+              {d.dueDate && <span className={cn(d.dueDate < f.today && "text-rose-600")}> · {d.dueDate < f.today ? "was due" : "due"} {formatDisplayDate(d.dueDate)}</span>}
+            </p>
+            {d.debts.map((x) => {
+              const words = termsWords(x.terms, formatRupees, formatDisplayDate);
+              return (
+                <p key={x.eventId} className="text-xs text-muted-foreground">
+                  {x.for === "service" ? x.description || "Service" : "Borrowed"} {formatDisplayDate(x.date)}: {formatRupees(x.owedMinor)} left{words && ` · ${words}`}
+                </p>
+              );
+            })}
+            {(d.nextInstalment || d.interestSoFarMinor > 0) && (
+              <p className="text-xs">
+                {d.nextInstalment && `Next instalment ${formatRupees(d.nextInstalment.amountMinor)} on ${formatDisplayDate(d.nextInstalment.date)}`}
+                {d.nextInstalment && d.interestSoFarMinor > 0 && " · "}
+                {d.interestSoFarMinor > 0 && `interest so far about ${formatRupees(d.interestSoFarMinor)}`}
+              </p>
+            )}
+            <button type="button" onClick={fill} className="justify-self-start text-xs font-medium text-primary hover:underline">
+              Pay {formatRupees(d.suggestedMinor)}
+              {d.interestSoFarMinor > 0 ? ` (with ${formatRupees(d.interestSoFarMinor)} interest)` : d.nextInstalment ? " (this instalment)" : " (all of it)"}
+            </button>
+          </>
+        )}
+        {withInterest && (
+          <div className="grid gap-1.5 border-t pt-2">
+            <Label htmlFor="repay-interest">Interest part</Label>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">₹</span>
+              <Input id="repay-interest" amount autoComplete="off" placeholder="0" className="pl-7 tabular-nums" value={values.repayInterest} onChange={(e) => set("repayInterest", e.target.value)} />
+            </div>
+            <p className="text-xs text-muted-foreground">Counts as spending; the rest of the payment brings what you owe down.</p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   function submit(ev: FormEvent) {
     ev.preventDefault();
     const next: Errors = {};
-    const has = (k: FieldKey) => spec.fields.includes(k);
+    const has = (k: FieldKey) => fields.includes(k);
 
     if (has("amount") && amountMinor === null) next.amount = "Enter an amount, e.g. 850 or 99.50";
+    if (type === "borrow") {
+      const t = parseDebtTerms(values.debtTerms);
+      if ("error" in t) next.form = t.error;
+    }
+    if (type === "repayment_made" && values.repayInterest.trim()) {
+      const i = parseAmountToMinor(values.repayInterest, true);
+      if (i === null) next.form = "Enter the interest part as an amount, or leave it blank.";
+      else if (amountMinor !== null && i > amountMinor) next.form = "The interest can't be more than what you paid.";
+    }
     if (has("description") && spec.descriptionRequired && !values.description.trim()) next.description = "Add a short description";
     if (has("category") && !values.categoryId) next.category = "Pick a category";
     if (has("account") && !values.accountId && !values.beforeTracking) next.account = "Choose an account";
@@ -506,7 +608,8 @@ export function EventForm({
     if (next.category) setPickingCategory(true);
     if (Object.keys(next).length > 0 || (has("amount") && amountMinor === null)) return;
 
-    const warning = overpayWarning(amountMinor ?? 0);
+    const interestPart = type === "repayment_made" && values.repayInterest.trim() ? (parseAmountToMinor(values.repayInterest, true) ?? 0) : 0;
+    const warning = overpayWarning((amountMinor ?? 0) - interestPart);
     const overpayKey = `${values.person.trim().toLowerCase()}|${amountMinor}|${values.date}`;
     if (warning && overpayConfirmed !== overpayKey) {
       setOverpayConfirmed(overpayKey);
@@ -568,13 +671,29 @@ export function EventForm({
       case "borrow": {
         const id = personId();
         if (!id) return null;
-        return { type, date, personId: id, accountId: values.accountId, amountMinor: amount, ...(values.beforeTracking ? { predatesRecords: true } : {}) };
+        const parsed = type === "borrow" ? parseDebtTerms(values.debtTerms) : {};
+        const terms = "terms" in parsed && parsed.terms ? { terms: parsed.terms } : {};
+        if (type === "borrow" && serviceDebt) {
+          return { type, date, personId: id, accountId: "", amountMinor: amount, for: "service", categoryId: values.categoryId, ...(description ? { description } : {}), ...terms };
+        }
+        return { type, date, personId: id, accountId: values.accountId, amountMinor: amount, ...(values.beforeTracking ? { predatesRecords: true } : {}), ...terms };
       }
       case "repayment_received":
       case "repayment_made": {
         // The original loan may be from before these records began, or in cash: don't insist it was entered.
         const id = personId();
-        return id ? { type, date, personId: id, accountId: values.accountId, amountMinor: amount, predatesRecords: true } : null;
+        if (!id) return null;
+        // Interest paid on top counts as spending (under EMI, like a loan's interest); the rest pays the debt down.
+        const interest = type === "repayment_made" && values.repayInterest.trim() ? parseAmountToMinor(values.repayInterest, true) : null;
+        return {
+          type,
+          date,
+          personId: id,
+          accountId: values.accountId,
+          amountMinor: amount,
+          predatesRecords: true,
+          ...(type === "repayment_made" && interest ? { interestMinor: interest, categoryId: emiCategoryId } : {}),
+        };
       }
       case "split_expense": {
         const owed: { personId: string; amountMinor: number }[] = [];
@@ -631,7 +750,8 @@ export function EventForm({
 
   /* ---------------- field renderers ---------------- */
 
-  const label = (key: FieldKey, fallback: string) => spec.labels[key] ?? fallback;
+  const label = (key: FieldKey, fallback: string) =>
+    serviceDebt && key === "person" ? "Who do you owe?" : serviceDebt && key === "description" ? "What was it for?" : serviceDebt && key === "amount" ? "Amount you owe" : (spec.labels[key] ?? fallback);
 
   const field = (key: FieldKey): ReactNode => {
     switch (key) {
@@ -1006,9 +1126,9 @@ export function EventForm({
   };
 
   // Not in bank statement: only a bank account's balance follows its statement, so the switch matters only when one is used.
-  const involved = [values.accountId, spec.fields.includes("toAccount") ? values.toAccountId : ""];
+  const involved = [values.accountId, fields.includes("toAccount") ? values.toAccountId : ""];
   const usesBank = involved.some((id) => f.book.accounts.find((a) => a.id === id)?.type === "bank");
-  const hasOffStatement = spec.fields.includes("account") && !values.beforeTracking;
+  const hasOffStatement = fields.includes("account") && !values.beforeTracking;
   const offStatementApplies = hasOffStatement && usesBank;
 
   // The bill date: on a bill or subscription payment, or any expense already linked to a bill.
@@ -1019,9 +1139,9 @@ export function EventForm({
   const knownBill = billApplies ? billFor(billsData, { billId: editing?.billId, name: values.description }) : undefined;
 
   // Put short fields (account/date, etc.) side by side where it reads naturally.
-  const noAccountsForType = spec.fields.includes("account") && mainAccounts.length === 0;
+  const noAccountsForType = fields.includes("account") && mainAccounts.length === 0;
   // Pay EMI needs a loan to pay; the loan field explains how to add one.
-  const noLoanToPay = spec.fields.includes("loanSelect") && loans.length === 0;
+  const noLoanToPay = fields.includes("loanSelect") && loans.length === 0;
 
   return (
     <form onSubmit={submit} noValidate className="grid gap-4">
@@ -1065,7 +1185,38 @@ export function EventForm({
           None of your accounts can be used for this. Restore the standard accounts (Cash, UPI, cards…) on the Money page.
         </p>
       ) : (
-        spec.fields.map((k) => field(k))
+        <>
+          {type === "borrow" && (
+            <div className="grid gap-1.5">
+              <Label>What was it?</Label>
+              <div role="radiogroup" aria-label="What was it?" className="grid grid-cols-2 gap-1 rounded-lg border bg-muted p-0.5 text-sm" data-testid="borrow-for">
+                {(
+                  [
+                    ["money", "Money", "It came into my account"],
+                    ["service", "Service or goods", "I'll pay for it later"],
+                  ] as const
+                ).map(([v, title, hint]) => (
+                  <button
+                    key={v}
+                    type="button"
+                    role="radio"
+                    aria-checked={values.borrowFor === v}
+                    onClick={() => set("borrowFor", v)}
+                    className={cn("rounded-md px-2 py-1.5 text-left", values.borrowFor === v ? "bg-card shadow-sm" : "text-muted-foreground")}
+                  >
+                    <span className="block font-medium">{title}</span>
+                    <span className="block text-xs text-muted-foreground">{hint}</span>
+                  </button>
+                ))}
+              </div>
+              {serviceDebt && <p className="text-xs text-muted-foreground">It counts as spending now, under its category, and as owed to them until you pay.</p>}
+            </div>
+          )}
+          {fields.map((k) => field(k))}
+          {type === "borrow" && <DebtTermsFields value={values.debtTerms} onChange={(v) => set("debtTerms", v)} startOpen={!!preset?.withTerms} />}
+          {/* Called, not mounted: a component defined in here would remount each render and drop the cursor. */}
+          {type === "repayment_made" && repayHelp()}
+        </>
       )}
 
       {billApplies && !noAccountsForType && (

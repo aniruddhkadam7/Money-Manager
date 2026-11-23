@@ -7,7 +7,7 @@ import type { Book } from "./types";
 export interface Reminder {
   /** Stable for one bill and date, so a notification is sent once per stage, not on every visit. */
   id: string;
-  kind: "card" | "subscription" | "custom" | "emi";
+  kind: "card" | "subscription" | "custom" | "emi" | "debt";
   title: string;
   dueDate: string;
   /** Whole days from today to the due date; negative once it has passed. */
@@ -32,6 +32,10 @@ export interface Reminder {
   autopay?: boolean;
   /** For a bill you added. */
   billId?: string;
+  /** Money owed to a person: who. */
+  personId?: string;
+  /** What's due: an instalment, or everything (a "pay back by" date). */
+  debtDue?: "instalment" | "all";
   repeat?: Repeat;
   /** The day of the month a repeating bill is meant for (see Bill.day). */
   day?: number;
@@ -54,11 +58,22 @@ export interface EmiDue {
   amountMinor: number;
 }
 
+/** Money owed to a person that falls due: the next instalment, or the "pay back by" date. */
+export interface DebtDue {
+  personId: string;
+  name: string;
+  dueDate: string;
+  amountMinor: number;
+  what: "instalment" | "all";
+}
+
 export interface BillOptions {
   /** Bills you added, and dates you moved. */
   data?: BillsData;
   /** Loans' next EMIs. */
   emis?: EmiDue[];
+  /** Money owed to people, falling due. */
+  debts?: DebtDue[];
   /** List everything tracked, however far off, for managing dates; Home only shows what's near. */
   all?: boolean;
 }
@@ -72,7 +87,7 @@ export function upcomingBills(
   imports: CardStatementSource[],
   subscriptions: RecurringCharge[],
   today: string,
-  { data = { bills: [], overrides: {} }, all = false, emis = [] }: BillOptions = {},
+  { data = { bills: [], overrides: {} }, all = false, emis = [], debts = [] }: BillOptions = {},
 ): Reminder[] {
   const out: Reminder[] = [];
   const dateOf = (baseKey: string, found: string) => {
@@ -121,6 +136,27 @@ export function upcomingBills(
       originalDate: emi.dueDate,
       moved,
       repeat: "monthly",
+    });
+  }
+
+  // Money owed to people: a week ahead, and on until paid, like a bill you added.
+  for (const d of debts) {
+    const baseKey = `debt:${d.personId}`;
+    const { date, moved } = dateOf(baseKey, d.dueDate);
+    const days = daysBetween(today, date);
+    if (!all && days > CUSTOM_WINDOW_DAYS) continue;
+    out.push({
+      id: `${baseKey}:${d.what}:${date}`,
+      kind: "debt",
+      title: d.name,
+      dueDate: date,
+      days,
+      amountMinor: d.amountMinor,
+      baseKey,
+      originalDate: d.dueDate,
+      moved,
+      personId: d.personId,
+      debtDue: d.what,
     });
   }
 

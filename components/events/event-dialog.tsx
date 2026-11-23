@@ -405,7 +405,7 @@ function SimilarPrompt({ eventId, onDone }: { eventId: string; onDone: () => voi
 
   if (!edited || matches.length === 0) return null; // nothing left to offer (the entries changed meanwhile)
 
-  const label = (e: FinancialEvent) => `${eventOption(e.type).label}${"personId" in e ? ` · ${f.book.people.find((p) => p.id === e.personId)?.name ?? ""}` : ""}${"categoryId" in e ? ` · ${f.getCategory(e.categoryId).name}` : ""}`;
+  const label = (e: FinancialEvent) => `${eventOption(e.type).label}${"personId" in e ? ` · ${f.book.people.find((p) => p.id === e.personId)?.name ?? ""}` : ""}${"categoryId" in e && e.categoryId ? ` · ${f.getCategory(e.categoryId).name}` : ""}`;
   const amount = (e: FinancialEvent) => ("amountMinor" in e ? e.amountMinor : 0);
 
   function apply() {

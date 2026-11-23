@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { Check, Lock, Pencil, Trash2, X } from "lucide-react";
+import { Check, Lock, Pencil, Trash2, UsersRound, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,8 @@ import { CategoryIcon } from "../category-icon";
 import { useFinance } from "../finance-provider";
 import { PartyLogo } from "../brand-logo";
 import { SamePeopleBanner } from "./same-people-banner";
+import { PersonNamesDialog } from "./person-names";
+import type { Person } from "@/lib/finance/types";
 
 /** One line with inline rename and delete. Shows why when something can't be removed. */
 function ManagedRow({
@@ -22,6 +24,7 @@ function ManagedRow({
   onRename,
   onDelete,
   locked,
+  extra,
 }: {
   lead: ReactNode;
   name: string;
@@ -31,6 +34,8 @@ function ManagedRow({
   onRename?: (name: string) => Promise<string | null> | string | null;
   onDelete?: () => Promise<string | null> | string | null;
   locked?: boolean;
+  /** More actions, before rename and delete (a person's names & merge). */
+  extra?: ReactNode;
 }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(name);
@@ -108,6 +113,7 @@ function ManagedRow({
               </div>
             ) : (
               <div className="flex items-center">
+                {extra}
                 {onRename && (
                   <Button variant="ghost" size="icon" aria-label={`Rename ${name}`} title="Rename" onClick={() => setEditing(true)}>
                     <Pencil />
@@ -142,6 +148,8 @@ function ManagedRow({
 export function PeopleList({ className }: { className?: string }) {
   const f = useFinance();
   const people = f.state.people;
+  // Whose names (other names, merging) are open.
+  const [namesFor, setNamesFor] = useState<Person | null>(null);
 
   return (
     <Card className={className}>
@@ -158,7 +166,9 @@ export function PeopleList({ className }: { className?: string }) {
           {people.map((p) => {
             const owed = p.owedToMe.outstandingMinor;
             const owe = p.iOwe.outstandingMinor;
-            const detail = owed > 0 ? `Owes you ${formatRupees(owed)}` : owe > 0 ? `You owe ${formatRupees(owe)}` : "All settled";
+            const money = owed > 0 ? `Owes you ${formatRupees(owed)}` : owe > 0 ? `You owe ${formatRupees(owe)}` : "All settled";
+            const aka = p.person.aliases?.length ? ` · also ${p.person.aliases.join(", ")}` : "";
+            const detail = money + aka;
             return (
               <ManagedRow
                 key={p.person.id}
@@ -180,11 +190,17 @@ export function PeopleList({ className }: { className?: string }) {
                   const r = f.deletePerson(p.person.id);
                   return r.ok ? null : r.issues[0]?.message ?? "Couldn't delete.";
                 }}
+                extra={
+                  <Button variant="ghost" size="icon" aria-label={`Other names of ${p.person.name}, or merge`} title="Other names & merge" onClick={() => setNamesFor(p.person)}>
+                    <UsersRound />
+                  </Button>
+                }
               />
             );
           })}
         </ul>
       )}
+      {namesFor && <PersonNamesDialog person={namesFor} onClose={() => setNamesFor(null)} />}
     </Card>
   );
 }

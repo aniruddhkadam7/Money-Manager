@@ -20,10 +20,13 @@ export function mentionsPerson(e: FinancialEvent, name: string): boolean {
   return words.every((w) => said.has(w));
 }
 
-/** Everything with this person: entries made with them, and payments that name them. */
-export function involvesPerson(e: FinancialEvent, person: Pick<Person, "id" | "name">): boolean {
-  return personIdsUsedBy(e).includes(person.id) || mentionsPerson(e, person.name);
+/** Everything with this person: entries made with them, and payments that name them (by any of their names). */
+export function involvesPerson(e: FinancialEvent, person: Pick<Person, "id" | "name" | "aliases">): boolean {
+  return personIdsUsedBy(e).includes(person.id) || namesOf(person).some((n) => mentionsPerson(e, n));
 }
+
+/** A person's name and the other names they go by. */
+export const namesOf = (person: Pick<Person, "name" | "aliases">): string[] => [person.name, ...(person.aliases ?? [])];
 
 export interface PersonSummary {
   entries: number;
@@ -73,7 +76,7 @@ export function personSummary(events: FinancialEvent[], person: Pick<Person, "id
         s.theyRepaidMinor += e.amountMinor;
         break;
       case "repayment_made":
-        s.youRepaidMinor += e.amountMinor;
+        s.youRepaidMinor += e.amountMinor - (e.interestMinor ?? 0);
         break;
       case "split_expense": {
         const share = e.shares.filter((x) => x.personId === person.id).reduce((t, x) => t + x.amountMinor, 0);
