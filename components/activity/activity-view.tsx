@@ -80,13 +80,20 @@ const SHOW: { label: string; value: string }[] = [
   { label: "Lent & borrowed", value: "group:people" },
   { label: "Loans & EMIs", value: "group:loans" },
   { label: "Investments", value: "group:investments" },
+  { label: "Card bills paid", value: "group:cardbills" },
   { label: "Transfers", value: "type:transfer" },
 ];
 
 /** Income and money back are told apart: a refund or reimbursement is never shown as income. */
 const MONEY_BACK_GROUP = "group:moneyback";
-function matchesShow(show: string, e: FinancialEvent, types: EventType[]): boolean {
+/**
+ * Paying a credit card's bill: a payment into the card from a bank or cash. Not spending (the card's purchases
+ * already are, each in its own category), so it isn't a category: this view gathers them.
+ */
+const CARD_BILLS_GROUP = "group:cardbills";
+function matchesShow(show: string, e: FinancialEvent, types: EventType[], cardIds: Set<string>): boolean {
   if (show === MONEY_BACK_GROUP) return isMoneyBack(e);
+  if (show === CARD_BILLS_GROUP) return e.type === "transfer" && cardIds.has(e.toAccountId);
   if (types.length > 0 && !types.includes(e.type)) return false;
   if ((show === "type:income" || show === "group:income") && isMoneyBack(e)) return false;
   return true;
@@ -101,6 +108,7 @@ const ALL_TYPES = new Set<string>(EVENT_OPTIONS.map((o) => o.type));
 function initialShow(group: string | null, type: string | null): string {
   if (type && ALL_TYPES.has(type)) return `type:${type}`;
   if (group === "moneyback") return MONEY_BACK_GROUP;
+  if (group === "cardbills") return CARD_BILLS_GROUP;
   const g = GROUPS.find((x) => x.id === group);
   if (!g) return ALL;
   // A shortcut that is really just one category maps to that category.
@@ -165,6 +173,7 @@ function ActivityContent() {
   const chosenPerson = personId === ALL ? undefined : book.people.find((p) => p.id === personId);
 
   const categoryFamily = useMemo(() => new Set(familyIds(categoryId, categories)), [categoryId, categories]);
+  const cardIds = useMemo(() => new Set(book.accounts.filter((a) => a.type === "credit_card").map((a) => a.id)), [book.accounts]);
   const filtered = useMemo(() => {
     const types = typesFor(group);
     const q = query.trim().toLowerCase();
@@ -176,7 +185,7 @@ function ActivityContent() {
           (accountId === ALL || accountIdsUsedBy(e).includes(accountId)) &&
           (personId === ALL || (chosenPerson ? involvesPerson(e, chosenPerson) : personIdsUsedBy(e).includes(personId))) &&
           (!owedPeople || personIdsUsedBy(e).some((id) => owedPeople.has(id))) &&
-          matchesShow(group, e, types) &&
+          matchesShow(group, e, types, cardIds) &&
           (entryType === ALL || (e.type === entryType && !(entryType === "income" && isMoneyBack(e)))) &&
           (!party || partyNameOf(e, describer.title(e)) === party.key) &&
           (categoryId === ALL || categoryFamily.has(categoryOf(e) ?? "")) &&
@@ -191,7 +200,7 @@ function ActivityContent() {
         const byAmount = amountOf(b) - amountOf(a);
         return (sort === "highest" ? byAmount : -byAmount) || byDate;
       });
-  }, [book.events, group, entryType, categoryId, categoryFamily, accountId, personId, chosenPerson, from, to, origin, query, describer, owedPeople, sort, party]);
+  }, [book.events, cardIds, group, entryType, categoryId, categoryFamily, accountId, personId, chosenPerson, from, to, origin, query, describer, owedPeople, sort, party]);
 
   const hasFilters =
     party !== null || group !== ALL || entryType !== ALL || categoryId !== ALL || accountId !== ALL || personId !== ALL || from !== "" || to !== "" || origin !== ALL || query !== "" || owed !== null;

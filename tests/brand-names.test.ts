@@ -47,3 +47,17 @@ describe("Razorpay", () => {
     expect(brandFor("RAZORPAY*SWIGGY")?.slug).toBe("swiggyapp");
   });
 });
+
+describe("CRED", () => {
+  it("is found however the bank prints it, but a shop paid via CRED stays the shop", async () => {
+    const { paymentAppFor } = await import("@/lib/finance/brands");
+    for (const t of ["CRED", "UPI/CRED/YESB/123456789012/payment on CRED", "UPI/Dreamplug Serv/UTIB/663322393495/payment on C", "cred.club"]) {
+      expect(brandFor(t)?.slug).toBe("cred");
+      expect(paymentAppFor(t)?.slug).toBe("cred");
+    }
+    expect(brandFor("UPI/SWIGGY/YESB/123456789012/Paid via CRED")?.slug).toBe("swiggyapp");
+    expect(brandFor("UPI/RAJESH KUMAR/YESB/123456789012/Paid via CRED")).toBeNull();
+    expect(brandFor("NEFT/HDFC CREDIT CARD/BILL PAYMENT")).toBeNull();
+    expect(paymentAppFor("Credit card bill")).toBeNull();
+  });
+});

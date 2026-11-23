@@ -45,7 +45,6 @@ export const BRANDS: Brand[] = [
   b("cultfit", "cult.fit", "cult.fit", /cult\.?fit|curefit/),
   b("swiggy", "Swiggy One", "swiggy.com", /swiggy one/),
   b("zomato", "Zomato Gold", "zomato.com", /zomato gold|zomato pro/),
-  b("cred", "CRED", "cred.club", /dreamplug|cred club|cred\.club/, false), // pays card bills: not a subscription
   b("tinder", "Tinder", "tinder.com", /tinder/),
   b("bumble", "Bumble", "bumble.com", /bumble/),
   b("jio", "Jio", "jio.com", /reliance jio|\bjio\b|jiofiber|jio fiber/),
@@ -83,6 +82,9 @@ export const BRANDS: Brand[] = [
   // A payment gateway: a line like "RAZORPAY*SWIGGY" names the shop too, and any shop above wins; Razorpay's own logo
   // is for lines that name only it.
   b("razorpay", "Razorpay", "razorpay.com", /razorpay|\brzp\b/, false),
+  // Pays card bills (not a subscription). Run by Dreamplug. After the shops, so "UPI/SWIGGY/…/Paid via CRED" is Swiggy;
+  // "paid via CRED" alone never makes a line CRED's (it's how CRED tags payments to anyone).
+  b("cred", "CRED", "cred.club", /dreamplug|cred club|cred\.club|(?<!via )\bcred\b/, false),
   // Employers and companies that pay you or reimburse you.
   // "EY" only on its own (or EY LLP / GDS / India): a bank line like "PAN EY TEA STALL" is not EY.
   b("ey", "EY", "ey.com", /^\s*ey(\s+(llp|gds|india|global|services))?\s*$|ernst\s*(&|and)?\s*young/, false),
@@ -108,4 +110,12 @@ export const subscriptionBrandFor = (text: string): Brand | null => {
 /** Insurance and similar with no specific brand: still a subscription, no logo. */
 export const GENERIC_SUBSCRIPTION = /insurance|premium|mutual fund sip/;
 
-export const brandBySlug = (slug?: string) => BRANDS.find((x) => x.slug === slug);
+/** Apps you pay a card bill or move money through: their logo shows on transfers too, not only on spending. */
+const PAYMENT_APPS = new Set(["cred"]);
+
+export function paymentAppFor(text: string): Brand | null {
+  const t = text.toLowerCase();
+  return BRANDS.find((x) => PAYMENT_APPS.has(x.slug) && x.re.test(t)) ?? null;
+}
+
+export const brandBySlug =(slug?: string) => BRANDS.find((x) => x.slug === slug);

@@ -55,14 +55,18 @@ export function EventRow({ event, onOpen }: { event: FinancialEvent; /** Tapping
   const { openDetail, openEdit, openDuplicate, requestDelete } = useEventDialog();
   const { amountMinor, tone } = headline(event);
   const issue = issuesByEvent.get(event.id)?.[0];
-  const title = describer.title(event);
+  // The reason leads when there is one ("Royal Enfield Accessories"); who you paid moves to the line under it.
+  // Without a reason, the payee (or what the entry is) is the title, as before.
+  const payee = describer.title(event);
+  const reason = event.note?.trim();
+  const title = reason || payee;
 
   return (
     <li className="flex items-center gap-0.5 pr-1 transition-colors hover:bg-muted/50 sm:gap-1 sm:pr-3">
       <button
         type="button"
         onClick={() => (onOpen ? onOpen() : openDetail(event.id))}
-        aria-label={onOpen ? `${title}. See every entry with ${title}.` : `${title}. See what changed.`}
+        aria-label={onOpen ? `${title}. See every entry with ${payee}.` : `${title}. See what changed.`}
         className="flex min-w-0 flex-1 items-center gap-2.5 py-3 pl-3 pr-1 text-left outline-none focus-visible:bg-muted/60 sm:gap-3 sm:px-5"
       >
         <EventLogo event={event} tile />
@@ -70,13 +74,9 @@ export function EventRow({ event, onOpen }: { event: FinancialEvent; /** Tapping
         <div className="min-w-0 flex-1">
           <p className="break-words font-medium leading-snug">{title}</p>
           <p className="truncate text-sm text-muted-foreground">
+            {reason && <>{payee} · </>}
             {event.date.slice(0, 4) === today.slice(0, 4) ? formatDayMonth(event.date) : formatDisplayDate(event.date)} · {describer.subtitle(event)}
           </p>
-          {event.note && (
-            <p className="mt-0.5 line-clamp-2 break-words text-xs italic text-slate-600" title={event.note}>
-              “{event.note}”
-            </p>
-          )}
           {refunded > 0 && (
             <p className="mt-0.5 text-xs font-medium text-emerald-700">
               {refunded >= headline(event).amountMinor ? "Fully refunded" : `Refunded ${formatRupees(refunded)}`} · not counted as spending

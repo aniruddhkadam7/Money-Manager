@@ -12,13 +12,13 @@ export function NoteField({ id = "note", value, onChange }: { id?: string; value
   return (
     <div className="grid gap-1.5">
       <Label htmlFor={id}>
-        Reason <span className="font-normal text-muted-foreground">(optional)</span>
+        What for / reason <span className="font-normal text-muted-foreground">(optional)</span>
       </Label>
       <textarea
         id={id}
         rows={2}
         maxLength={NOTE_MAX}
-        placeholder="Why this? e.g. Mom's birthday gift"
+        placeholder="e.g. Royal Enfield accessories, Mom's birthday gift"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         // Matches Input: 16px text on phones so iOS Safari doesn't zoom in on focus.

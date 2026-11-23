@@ -1,6 +1,6 @@
 "use client";
 
-import { brandFor } from "@/lib/finance/brands";
+import { brandFor, paymentAppFor } from "@/lib/finance/brands";
 import type { FinancialEvent } from "@/lib/finance/types";
 import { BrandLogo } from "../brand-logo";
 import { CategoryIcon } from "../category-icon";
@@ -18,7 +18,11 @@ export function EventLogo({ event, tile = false, className }: { event: Financial
   const picture = eventPicture(event, getCategory);
   const withMerchant = event.type === "expense" || event.type === "income" || event.type === "reimbursable_expense" || event.type === "split_expense";
   const narration = (event.sources ?? []).map((s) => s.narration ?? "").join(" ");
-  const brand = withMerchant ? (event.description ? brandFor(event.description) : null) ?? (narration ? brandFor(narration) : null) : null;
+  const text = [event.description ?? "", event.note ?? "", narration].join(" ");
+  // A card bill paid through CRED (a transfer, not spending) still shows CRED's logo.
+  const brand = withMerchant
+    ? ((event.description ? brandFor(event.description) : null) ?? (narration ? brandFor(narration) : null))
+    : paymentAppFor(text);
   return (
     <BrandLogo
       slug={brand?.slug}

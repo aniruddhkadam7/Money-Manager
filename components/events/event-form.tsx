@@ -575,7 +575,7 @@ export function EventForm({
       if (i === null) next.form = "Enter the interest part as an amount, or leave it blank.";
       else if (amountMinor !== null && i > amountMinor) next.form = "The interest can't be more than what you paid.";
     }
-    if (has("description") && spec.descriptionRequired && !values.description.trim()) next.description = "Add a short description";
+    if (has("description") && spec.descriptionRequired && !values.description.trim()) next.description = serviceDebt ? "Add what it was for" : "Who did you pay? A shop or a person";
     if (has("category") && !values.categoryId) next.category = "Pick a category";
     if (has("account") && !values.accountId && !values.beforeTracking) next.account = "Choose an account";
     if (has("toAccount") && !values.toAccountId) next.toAccount = "Choose an account";
@@ -784,7 +784,8 @@ export function EventForm({
             <PersonInput
               id="description"
               maxLength={80}
-              placeholder={type === "income" ? "e.g. Acme Pvt Ltd" : "e.g. Swiggy"}
+              // Who: the shop or person paid (or who paid you). What it was for goes in Reason.
+              placeholder={type === "income" ? "e.g. Acme Pvt Ltd" : serviceDebt ? "e.g. Bike repair" : "e.g. Swiggy, or a person's name"}
               value={values.description}
               onChange={(v) => set("description", v)}
               people={knownDescriptions}

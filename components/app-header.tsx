@@ -8,6 +8,7 @@ import { LiquidButton, LiquidGlass } from "@/components/ui/liquid-glass-button";
 import { cn } from "@/lib/utils";
 import { BackButton } from "./back-button";
 import { ProfileMenu } from "./profile-menu";
+import { GlobalSearch } from "./global-search";
 import { NotificationsBell } from "./reminders";
 import { useEventDialog } from "./events/event-dialog";
 
@@ -68,6 +69,7 @@ export function AppHeader() {
             <LiquidButton size="default" className="hidden rounded-full font-semibold sm:inline-flex" onClick={() => openAdd()}>
               <Plus /> Add
             </LiquidButton>
+            <GlobalSearch />
             <NotificationsBell />
             <ProfileMenu />
           </div>

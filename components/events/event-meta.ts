@@ -74,7 +74,7 @@ const SPEND: AccountType[] = ["bank", "cash", "credit_card"];
 export const FORM_SPEC: Record<EventType, FormSpec> = {
   expense: {
     fields: ["amount", "description", "category", "account", "date"],
-    labels: { account: "Paid from", description: "What was it for?" },
+    labels: { account: "Paid from", description: "Paid to" },
     accountTypes: SPEND,
     descriptionRequired: true,
     categoryKind: "expense",
@@ -122,14 +122,14 @@ export const FORM_SPEC: Record<EventType, FormSpec> = {
   },
   split_expense: {
     fields: ["amount", "description", "category", "account", "shares", "date"],
-    labels: { amount: "Total you paid", account: "Paid from", description: "What was it for?" },
+    labels: { amount: "Total you paid", account: "Paid from", description: "Paid to" },
     accountTypes: SPEND,
     descriptionRequired: true,
     categoryKind: "expense",
   },
   reimbursable_expense: {
     fields: ["amount", "description", "category", "person", "account", "date"],
-    labels: { person: "Who will pay you back?", account: "Paid from", description: "What was it for?" },
+    labels: { person: "Who will pay you back?", account: "Paid from", description: "Paid to" },
     accountTypes: SPEND,
     descriptionRequired: true,
     categoryKind: "expense",
