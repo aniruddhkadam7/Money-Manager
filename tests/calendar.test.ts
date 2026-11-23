@@ -107,7 +107,7 @@ describe("monthPace", () => {
 });
 
 describe("spendLevels", () => {
-  const d = (date: string, expensesMinor: number, inMonth = true) => ({ date, inMonth, incomeMinor: 0, expensesMinor, entryCount: 1 });
+  const d = (date: string, expensesMinor: number, inMonth = true) => ({ date, inMonth, incomeMinor: 0, expensesMinor, entryCount: 1, debtOutMinor: 0, debtInMinor: 0 });
 
   it("grades days against the month, with the top set by the 90th-percentile day so one big payment doesn't wash out the rest", () => {
     const days = [...Array.from({ length: 9 }, (_, i) => d(`2026-10-0${i + 1}`, (i + 1) * 1000)), d("2026-10-10", 500000)];
@@ -121,5 +121,15 @@ describe("spendLevels", () => {
   it("leaves out days with no spending, money back, or outside the month", () => {
     const levels = spendLevels([d("2026-10-01", 0), d("2026-10-02", -500), d("2026-09-30", 9000, false), d("2026-10-03", 100)]);
     expect([...levels]).toEqual([["2026-10-03", 4]]);
+  });
+});
+
+describe("debts on the calendar", () => {
+  it("counts paying back and lending as out, borrowing and getting back as in, without the interest", async () => {
+    const { debtMoney } = await import("@/lib/finance/calendar");
+    const base = { id: "x", date: "2026-11-03", createdAt: "", updatedAt: "", personId: "P", accountId: "B" };
+    expect(debtMoney({ ...base, type: "repayment_made", amountMinor: 15_300_00, interestMinor: 300_00, categoryId: "emi" })).toEqual({ out: 15_000_00, in: 0 });
+    expect(debtMoney({ ...base, type: "borrow", amountMinor: 5_000_00, for: "service", categoryId: "other" })).toEqual({ out: 0, in: 0 });
+    expect(debtMoney({ ...base, type: "repayment_received", amountMinor: 200_00 })).toEqual({ out: 0, in: 200_00 });
   });
 });

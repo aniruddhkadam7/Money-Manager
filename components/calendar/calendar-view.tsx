@@ -280,6 +280,8 @@ export function CalendarBoard({ initialMonth }: { initialMonth?: string }) {
                       {selectedDay && selectedDay.incomeMinor > 0 && <span className="text-emerald-700"> · in {formatExactINR(selectedDay.incomeMinor)}</span>}
                       {selectedDay && selectedDay.expensesMinor > 0 && <span className="text-red-600"> · spent {formatExactINR(selectedDay.expensesMinor)}</span>}
                       {selectedDay && selectedDay.expensesMinor < 0 && <span className="text-emerald-700"> · {formatExactINR(-selectedDay.expensesMinor)} came back</span>}
+                      {selectedDay && selectedDay.debtOutMinor > 0 && <span className="text-indigo-600 dark:text-indigo-300"> · paid back / lent {formatExactINR(selectedDay.debtOutMinor)}</span>}
+                      {selectedDay && selectedDay.debtInMinor > 0 && <span className="text-indigo-600 dark:text-indigo-300"> · borrowed / got back {formatExactINR(selectedDay.debtInMinor)}</span>}
                     </>
                   )}
                 </p>
@@ -412,6 +414,8 @@ function DayCell({
     day.incomeMinor > 0 && `income ${formatExactINR(day.incomeMinor)}`,
     day.expensesMinor > 0 && `spent ${formatExactINR(day.expensesMinor)}`,
     day.expensesMinor < 0 && `${formatExactINR(-day.expensesMinor)} came back`,
+    day.debtOutMinor > 0 && `paid back or lent ${formatExactINR(day.debtOutMinor)}`,
+    day.debtInMinor > 0 && `borrowed or got back ${formatExactINR(day.debtInMinor)}`,
     day.entryCount > 0 && `${day.entryCount} ${day.entryCount === 1 ? "entry" : "entries"}`,
     bills.length > 0 && `due: ${bills.map((b) => b.title).join(", ")}`,
     dues.length > 0 && (owedOnCards > 0 && past ? `card bill overdue, ${formatExactINR(owedOnCards)} unpaid` : owedOnCards > 0 ? "card bill due" : "card bill paid"),
@@ -466,7 +470,10 @@ function DayCell({
         {day.incomeMinor > 0 && <span className="truncate text-emerald-700">+{formatCompactINR(day.incomeMinor)}</span>}
         {day.expensesMinor > 0 && <span className="truncate text-red-600">−{formatCompactINR(day.expensesMinor)}</span>}
         {day.expensesMinor < 0 && <span className="truncate text-emerald-700">↩{formatCompactINR(-day.expensesMinor)}</span>}
-        {day.entryCount > 0 && day.incomeMinor <= 0 && day.expensesMinor === 0 && (
+        {/* Debts: paid back or lent (out), borrowed or got back (in). Not spending or income, so in their own colour. */}
+        {day.debtOutMinor > 0 && <span className="truncate text-indigo-600 dark:text-indigo-300">⇄−{formatCompactINR(day.debtOutMinor)}</span>}
+        {day.debtInMinor > 0 && <span className="truncate text-indigo-600 dark:text-indigo-300">⇄+{formatCompactINR(day.debtInMinor)}</span>}
+        {day.entryCount > 0 && day.incomeMinor <= 0 && day.expensesMinor === 0 && day.debtOutMinor === 0 && day.debtInMinor === 0 && (
           // Only transfers, loans or investments that day: counted as neither, but still worth a look.
           <span className="ml-auto size-1.5 rounded-full bg-muted-foreground/50" aria-hidden />
         )}

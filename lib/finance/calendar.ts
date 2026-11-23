@@ -1,7 +1,7 @@
 import { addDays, daysBetween, monthEnd, monthStart, shiftMonth } from "@/lib/domain/dates";
 import type { CardDue } from "./card-bill-status";
 import { periodReport } from "./state";
-import type { Book, Ledger } from "./types";
+import type { Book, FinancialEvent, Ledger } from "./types";
 
 export interface CalendarDay {
   date: string;
@@ -13,6 +13,33 @@ export interface CalendarDay {
   expensesMinor: number;
   /** Every entry dated that day, counted or not (transfers, loans, investments...). */
   entryCount: number;
+  /**
+   * Money that went out on debts, neither spending nor income: paying people back, lending, and EMIs' principal
+   * (interest on top is spending, counted above).
+   */
+  debtOutMinor: number;
+  /** Money that came in on debts: borrowing, being paid back, a loan paid out to you. */
+  debtInMinor: number;
+}
+
+/** What an entry moved on debts: out (paying back, lending, EMI principal) or in (borrowing, repaid, a loan). */
+export function debtMoney(e: FinancialEvent): { out: number; in: number } {
+  switch (e.type) {
+    case "repayment_made":
+      return { out: e.amountMinor - (e.interestMinor ?? 0), in: 0 };
+    case "lend":
+      return { out: e.predatesRecords ? 0 : e.amountMinor, in: 0 };
+    case "emi_payment":
+      return { out: e.amountMinor - e.interestMinor, in: 0 };
+    case "borrow":
+      // A service on credit brings no money in; one from before tracking moves none now.
+      return { out: 0, in: e.for === "service" || e.predatesRecords ? 0 : e.amountMinor };
+    case "repayment_received":
+    case "loan_taken":
+      return { out: 0, in: e.amountMinor };
+    default:
+      return { out: 0, in: 0 };
+  }
 }
 
 /** Weeks start on Sunday, like a wall calendar. */
@@ -32,7 +59,16 @@ export function calendarMonth(book: Book, ledger: Ledger, ym: string): CalendarD
   const end = addDays(last, 6 - weekdayOf(last));
 
   const counts = new Map<string, number>();
-  for (const e of book.events) if (e.date >= start && e.date <= end) counts.set(e.date, (counts.get(e.date) ?? 0) + 1);
+  const debts = new Map<string, { out: number; in: number }>();
+  for (const e of book.events) {
+    if (e.date < start || e.date > end) continue;
+    counts.set(e.date, (counts.get(e.date) ?? 0) + 1);
+    const m = debtMoney(e);
+    if (m.out || m.in) {
+      const d = debts.get(e.date) ?? { out: 0, in: 0 };
+      debts.set(e.date, { out: d.out + m.out, in: d.in + m.in });
+    }
+  }
 
   const weeks: CalendarDay[][] = [];
   for (let date = start; date <= end; date = addDays(date, 1)) {
@@ -45,6 +81,8 @@ export function calendarMonth(book: Book, ledger: Ledger, ym: string): CalendarD
       incomeMinor: r?.incomeMinor ?? 0,
       expensesMinor: r?.expensesMinor ?? 0,
       entryCount,
+      debtOutMinor: debts.get(date)?.out ?? 0,
+      debtInMinor: debts.get(date)?.in ?? 0,
     });
   }
   return weeks;

@@ -23,6 +23,7 @@ import { ACCOUNT_TYPE_INFO, AccountDialog, InlineAccountForm, type AddableAccoun
 import { PeopleList } from "./manage-lists";
 import { LoanPanel } from "./loan-panel";
 import { personDebts } from "@/lib/finance/debts";
+import { CountAsRepayment } from "../activity/count-as-repayment";
 import { EmiCalculator } from "./emi-calculator";
 import { emiOf, LOAN_KINDS, loanKindOf } from "@/lib/finance/loan";
 
@@ -271,6 +272,14 @@ export function MoneyView() {
                 </div>
               }
             />
+            {/* Payments to people you owe that are recorded as spending: count them against the debt, one tap each. */}
+            {section.id === "loans" && owedPeople.length > 0 && (
+              <div className="grid gap-2 px-4 pb-2 empty:hidden sm:px-5" data-testid="loans-count-paid">
+                {owedPeople.map((p) => (
+                  <CountAsRepayment key={p.person.id} person={p.person} only="paid" />
+                ))}
+              </div>
+            )}
             {/* What you can add on the Loans tab: each kind of debt, explained, one tap away. */}
             {section.id === "loans" && choosingDebt && (
               <div className="grid grid-cols-2 gap-2 px-4 pb-2 sm:grid-cols-4 sm:px-5" data-testid="debt-kinds">
@@ -422,6 +431,16 @@ export function MoneyView() {
               </Button>
             }
           />
+          {/* Money from people who owe you that's recorded as income: count it as them paying you back. */}
+          {owedToMe.some((p) => p.owedToMe.outstandingMinor > 0) && (
+            <div className="grid gap-2 px-4 pb-2 empty:hidden sm:px-5" data-testid="lent-count-received">
+              {owedToMe
+                .filter((p) => p.owedToMe.outstandingMinor > 0)
+                .map((p) => (
+                  <CountAsRepayment key={p.person.id} person={p.person} only="received" />
+                ))}
+            </div>
+          )}
           {owedToMe.length === 0 ? (
             <CardContent className="py-6 text-sm text-muted-foreground">Nobody owes you anything.</CardContent>
           ) : (

@@ -1,5 +1,6 @@
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "./client";
+import { pbkdf2Sha256 } from "./pbkdf2";
 
 /**
  * The app lock: once signed in the session stays on the device, so a passcode keeps the app closed until
@@ -82,6 +83,11 @@ const toHex = (bytes: ArrayBuffer | Uint8Array) => Array.from(new Uint8Array(byt
 const fromHex = (hex: string) => new Uint8Array(hex.match(/../g)?.map((h) => parseInt(h, 16)) ?? []);
 
 async function derive(code: string, salt: Uint8Array, iterations: number): Promise<string> {
+  // Plain http (not localhost) has no crypto.subtle: the same PBKDF2 in JavaScript gives the same bytes, a bit slower.
+  if (!globalThis.crypto?.subtle) {
+    await new Promise((r) => setTimeout(r, 0)); // let the last dot fill in before the work starts
+    return toHex(pbkdf2Sha256(new TextEncoder().encode(code), salt, iterations, 32));
+  }
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(code), "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: salt as BufferSource, iterations }, key, 256);
   return toHex(bits);

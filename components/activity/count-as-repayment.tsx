@@ -26,7 +26,7 @@ const asDraft = (e: FinancialEvent): EventDraft => {
  * spending); money from someone who owes you becomes them paying you back. Only payments made after the debt began,
  * from a bank or cash, and no more than what's owed. Undo puts them back.
  */
-export function CountAsRepayment({ person }: { person: Person }) {
+export function CountAsRepayment({ person, only }: { person: Person; /** Just one side: what you paid them, or what they paid you. */ only?: "paid" | "received" }) {
   const f = useFinance();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
@@ -127,11 +127,13 @@ export function CountAsRepayment({ person }: { person: Person }) {
     );
   };
 
-  if (plan.paid.entries.length === 0 && plan.received.entries.length === 0) return null;
+  const showPaid = only !== "received" && plan.paid.entries.length > 0;
+  const showReceived = only !== "paid" && plan.received.entries.length > 0;
+  if (!showPaid && !showReceived) return null;
   return (
     <>
-      {plan.paid.entries.length > 0 && banner(plan.paid, "repayment_made")}
-      {plan.received.entries.length > 0 && banner(plan.received, "repayment_received")}
+      {showPaid && banner(plan.paid, "repayment_made")}
+      {showReceived && banner(plan.received, "repayment_received")}
     </>
   );
 }

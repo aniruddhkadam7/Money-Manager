@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import Link from "next/link";
 import { shield } from "@/lib/privacy";
 import { formatBps, formatExactINR, formatSignedINR } from "@/lib/charts/format";
@@ -15,6 +15,9 @@ import { ExplainSheet, HowIcon, useExplain } from "../explainer";
 import { useFinance } from "../finance-provider";
 import { NetWorthBreakdown, NetWorthBreakdownSheet } from "./net-worth-breakdown";
 import { NetWorthSparkline } from "./net-worth-sparkline";
+import { useStatementGaps } from "../statements/use-statement-checks";
+import { applyAnchorGapsToSeries } from "@/lib/finance/statement-anchor";
+import { balanceSeries } from "@/lib/finance/series";
 import { explainIncome, explainNetWorthChange, explainSpent } from "@/lib/finance/explain";
 import { formatDisplayDate, shiftMonth } from "@/lib/domain/dates";
 
@@ -60,11 +63,19 @@ function formatHeadlineINR(minor: number): string {
 export function SummaryHero({ model, state, book }: { model: DashboardModel; state: FinancialState; book: Book }) {
   const { current } = model;
   const nw = state.netWorthMinor;
-  const change = model.netWorthChangeMinor;
   const spendBps = model.spendingChangeBps;
 
   // "How it adds up" for each number, built from the same entries as the number.
   const { ledger, getCategory, today } = useFinance();
+  // The change this month on the same footing as the headline and the chart: bank balances as their latest
+  // statements say. From entries alone it can differ (a statement shows money your entries don't).
+  const gaps = useStatementGaps();
+  const lastMonthClose = monthEnd(shiftMonth(model.ym, -1));
+  const change = useMemo(() => {
+    if (model.netWorthChangeMinor === null) return null;
+    const [before, now] = applyAnchorGapsToSeries(balanceSeries(book, ledger, [lastMonthClose, today]), gaps);
+    return now.netWorthMinor - before.netWorthMinor;
+  }, [model.netWorthChangeMinor, book, ledger, lastMonthClose, today, gaps]);
   const name = (id: string) => getCategory(id).name;
   const from = monthStart(model.ym);
   const to = monthEnd(model.ym);
@@ -166,8 +177,12 @@ export function SummaryHero({ model, state, book }: { model: DashboardModel; sta
           description={<>From the end of {formatDisplayDate(lastMonthEnd)} to today. Moving money between your own accounts, borrowing or lending, and paying bills don&apos;t change it: only income, spending, refunds, investment value and starting balances do.</>}
           sections={changeX.groups.map((g) => ({ title: g.label, rows: g.lines.map((l) => ({ ...l, href: catId(l.label) ? monthHref({ category: catId(l.label) }) : undefined })) }))}
           steps={[
-            { label: `Net worth on ${formatDisplayDate(lastMonthEnd)}`, amountMinor: nw - changeX.totalMinor },
+            { label: `Net worth on ${formatDisplayDate(lastMonthEnd)}`, amountMinor: nw - (change ?? changeX.totalMinor) },
             ...changeX.groups.map((g) => ({ label: g.label, amountMinor: Math.abs(g.amountMinor), op: (g.amountMinor >= 0 ? "+" : "−") as "+" | "−" })),
+            // What the bank statements show beyond your entries (bank balances follow the statements).
+            ...(change !== null && change !== changeX.totalMinor
+              ? [{ label: "Per your bank statements, beyond your entries", amountMinor: Math.abs(change - changeX.totalMinor), op: (change - changeX.totalMinor >= 0 ? "+" : "−") as "+" | "−" }]
+              : []),
             { label: "Net worth today", amountMinor: nw, op: "=" as const },
           ]}
         />
