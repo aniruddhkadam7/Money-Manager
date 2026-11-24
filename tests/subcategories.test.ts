@@ -39,3 +39,19 @@ describe("subcategories", () => {
     expect(familyIds("food", list)).toEqual(["food"]);
   });
 });
+
+describe("adding a subcategory", () => {
+  it("makes it under the main category asked for", async () => {
+    const { LocalStorageExpenseRepository } = await import("@/lib/storage/local-storage-expense-repository");
+    const c = await new LocalStorageExpenseRepository().addCategory("Hair care", "health");
+    expect(c).toMatchObject({ name: "Hair care", parentId: "health", isDefault: false });
+  });
+
+  it("says a name is taken instead of quietly handing back the other category", async () => {
+    const { LocalStorageExpenseRepository } = await import("@/lib/storage/local-storage-expense-repository");
+    const repo = new LocalStorageExpenseRepository();
+    await expect(repo.addCategory("Petrol", "transport")).rejects.toThrow(/already have a category called “Petrol”/);
+    expect((await repo.addCategory("petrol")).id).toBe("petrol");
+    await expect(repo.addCategory("Hair care", "custom-not-a-main")).rejects.toThrow(/main category/);
+  });
+});

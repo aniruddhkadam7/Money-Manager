@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createClient, supportsTemperature } from "@/lib/statements/ai-server";
 import { sameOrigin, signedInAllowed } from "@/lib/statements/ai-route";
+import { HEARTBEAT, STREAM_ERROR } from "./stream-markers";
 
 /**
  * The AI CA's instructions. The figures come worked out by the app (the snapshot); the model's job is judgement and
@@ -69,7 +70,12 @@ const bodySchema = z.object({
     .min(1)
     .max(MAX_MESSAGES),
   snapshot: z.record(z.string(), z.unknown()),
+  /** A spoken conversation: the answer is read aloud, so it's short plain sentences. */
+  voice: z.boolean().optional(),
 });
+
+/** For voice mode: what the answer must look like to sound right when read aloud. */
+export const VOICE_PROMPT = `VOICE MODE: this answer will be read aloud, and the user is talking to you, not reading. Override the FORMAT and LENGTH rules: reply in 2 to 4 short spoken sentences, under 70 words. No tables, headings, bullets, markdown, emoji or symbols. Say amounts the way people say them in India ("about 1 lakh 25 thousand rupees", "4,855 rupees"), round where it doesn't matter, and give only the one or two numbers that answer the question. If there's more worth knowing, end with a short offer like "Want me to go through it?"`;
 
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { "cache-control": "no-store" } });
 
@@ -97,41 +103,57 @@ export async function handleAdvisor(req: Request, env: Record<string, string | u
     return json({ error: "bad_request", message: "Request wasn't valid JSON." }, 400);
   }
   if (!parsed.success) return json({ error: "bad_request", message: "Request didn't match the expected format." }, 400);
-  const { messages, snapshot } = parsed.data;
+  const { messages, snapshot, voice } = parsed.data;
   const figures = JSON.stringify(snapshot);
   if (figures.length > MAX_SNAPSHOT) return json({ error: "too_large", message: "Too many figures to send." }, 413);
 
   const { client, model } = configured;
-  let stream;
-  try {
-    stream = await client.chat.completions.create({
-      model,
-      stream: true,
-      ...(supportsTemperature(model) ? { temperature: 0.3 } : {}),
-      messages: [
-        { role: "system", content: ADVISOR_PROMPT },
-        { role: "system", content: `SNAPSHOT (today ${String(snapshot.today ?? "")}):\n${figures}` },
-        ...messages,
-      ],
-    });
-  } catch (err) {
-    const status = typeof (err as { status?: unknown })?.status === "number" ? (err as { status: number }).status : 0;
-    if (status === 401 || status === 403) return json({ error: "auth", message: "The OpenAI key was rejected." }, 502);
-    if (status === 429) return json({ error: "rate_limited", message: "The AI is busy. Try again in a minute." }, 503);
-    return json({ error: "upstream", message: "The AI couldn't answer just now." }, 502);
-  }
-
   const encoder = new TextEncoder();
+  // The response starts at once, and while the AI thinks (it can take a while before its first word) an invisible
+  // "still here" goes out every few seconds, so phones and proxies never see an idle line and drop it. An AI error
+  // before any words is sent as STREAM_ERROR + message, for the page to show; the page strips HEARTBEAT.
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
+      const send = (text: string) => controller.enqueue(encoder.encode(text));
+      let started = false;
+      send(HEARTBEAT);
+      const beat = setInterval(() => {
+        if (!started) send(HEARTBEAT);
+      }, 4000);
       try {
+        const stream = await client.chat.completions.create({
+          model,
+          stream: true,
+          ...(supportsTemperature(model) ? { temperature: 0.3 } : {}),
+          messages: [
+            { role: "system", content: ADVISOR_PROMPT },
+            { role: "system", content: `SNAPSHOT (today ${String(snapshot.today ?? "")}):\n${figures}` },
+            ...(voice ? [{ role: "system" as const, content: VOICE_PROMPT }] : []),
+            ...messages,
+          ],
+        });
         for await (const chunk of stream) {
           const piece = chunk.choices[0]?.delta?.content;
-          if (piece) controller.enqueue(encoder.encode(piece));
+          if (!piece) continue;
+          started = true;
+          send(piece);
         }
-      } catch {
-        controller.enqueue(encoder.encode("\n\n(The answer was cut off. Ask again.)"));
+      } catch (err) {
+        const status = typeof (err as { status?: unknown })?.status === "number" ? (err as { status: number }).status : 0;
+        // Kinds only: never the conversation or the figures.
+        console.error("advisor: AI request failed", status || (err as Error)?.name);
+        if (started) send("\n\n(The answer was cut off. Ask again.)");
+        else
+          send(
+            STREAM_ERROR +
+              (status === 401 || status === 403
+                ? "The OpenAI key was rejected."
+                : status === 429
+                  ? "The AI is busy. Try again in a minute."
+                  : "The AI couldn't answer just now. Try again."),
+          );
       } finally {
+        clearInterval(beat);
         controller.close();
       }
     },

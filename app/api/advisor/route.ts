@@ -1,7 +1,8 @@
 import { advisorAvailability, handleAdvisor } from "@/lib/advisor/server";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// A long answer on a full year of records can take a while: up to 5 minutes, not 1.
+export const maxDuration = 300;
 
 export function GET() {
   return advisorAvailability();

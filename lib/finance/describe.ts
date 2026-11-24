@@ -71,7 +71,7 @@ export function makeDescriber(book: Book, categoryName: (id: string) => string):
       case "lend":
         return `Lent to ${who(e.personId)}`;
       case "borrow":
-        return e.for === "service" ? e.description || `Owe ${who(e.personId)}` : `Borrowed from ${who(e.personId)}`;
+        return e.for === "service" ? e.description || `Owe ${who(e.personId)}` : e.for === "held" ? `Keeping for ${who(e.personId)}` : `Borrowed from ${who(e.personId)}`;
       case "repayment_received":
         return `${who(e.personId)} paid you back`;
       case "repayment_made":

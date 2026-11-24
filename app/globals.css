@@ -249,11 +249,12 @@ body {
   isolation: isolate;
   background: radial-gradient(circle at 50% 50%, #2a1b6b 0%, #120c38 75%);
   box-shadow: 0 0 0.3em rgba(124, 58, 237, 0.55), 0 0 0.8em rgba(0, 212, 255, 0.28), inset 0 0 0.12em 0.02em rgba(255, 255, 255, 0.55);
-  filter: saturate(1.35);
+  /* No `filter` here: a filter on the orb renders its (blurred, blended) contents into a square layer whose edge
+     shows as a faint box over glass headers. Clip each inner layer to the circle instead of relying on overflow. */
   animation: friday-breathe 3.2s ease-in-out infinite;
 }
 /* The lights turn round the centre as a group, each also drifting on its own. */
-.friday-orb > .o-swirl { position: absolute; inset: 0; animation: friday-spin 5s linear infinite; }
+.friday-orb > .o-swirl { position: absolute; inset: 0; border-radius: 50%; clip-path: circle(50% at 50% 50%); animation: friday-spin 5s linear infinite; }
 .friday-orb i { position: absolute; border-radius: 50%; mix-blend-mode: screen; filter: blur(0.08em); }
 .friday-orb .o-a { width: 80%; height: 80%; left: -10%; top: -2%; background: radial-gradient(circle, #ff2d95 0%, rgba(255, 45, 149, 0.7) 30%, rgba(255, 45, 149, 0) 70%); animation: friday-a 3.4s ease-in-out infinite; }
 .friday-orb .o-b { width: 80%; height: 80%; right: -14%; top: 12%; background: radial-gradient(circle, #00d4ff 0%, rgba(0, 212, 255, 0.7) 30%, rgba(0, 212, 255, 0) 70%); animation: friday-b 3.9s ease-in-out infinite; }
@@ -266,6 +267,8 @@ body {
   width: auto;
   height: auto;
   filter: blur(0.06em);
+  /* It overhangs the orb by 10% each side, so the orb's own circle is 50/120 of its size. */
+  clip-path: circle(41.667% at 50% 50%);
   background: conic-gradient(from 0deg, rgba(255, 255, 255, 0) 0deg, rgba(255, 255, 255, 0.35) 40deg, rgba(255, 255, 255, 0) 90deg, rgba(255, 255, 255, 0) 360deg);
   animation: friday-spin 2.6s linear infinite reverse;
 }

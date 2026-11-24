@@ -178,22 +178,29 @@ export function CategorySelect({
     return (
       <CreateInline
         className={className}
-        placeholder="New category name"
+        placeholder="New category, or Health / Hair care"
         onCancel={() => setCreating(false)}
-        onCreate={(name) => {
+        onCreate={(typed) => {
+          // "Main / Sub" (or "Main > Sub") makes Sub a subcategory of Main.
+          const [first, ...rest] = typed.split(/\s*[/>›]\s*/).map((x) => x.trim()).filter(Boolean);
+          const sub = rest.join(" ");
+          const name = sub || first || "";
+          const parent = sub ? expenseCategories.find((c) => !c.parentId && c.name.toLowerCase() === first.toLowerCase()) : undefined;
+          if (sub && !parent) return `There's no main category called “${first}”.`;
           const existing = names.find((n) => n.toLowerCase() === name.toLowerCase());
-          if (existing) {
+          if (existing && !sub) {
             onChange(existing);
             setCreating(false);
             return null;
           }
           if (busy) return null;
           setBusy(true);
-          addCategory(name)
+          addCategory(name, parent?.id)
             .then((c) => {
               onChange(c.name);
               setCreating(false);
             })
+            .catch((err: unknown) => window.alert(err instanceof Error ? err.message : "Couldn't add that category."))
             .finally(() => setBusy(false));
           return null;
         }}

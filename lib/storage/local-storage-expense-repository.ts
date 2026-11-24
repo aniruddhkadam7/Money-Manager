@@ -83,11 +83,18 @@ export class LocalStorageExpenseRepository implements ExpenseRepository {
     const trimmed = name.trim();
     const custom = read<Category[]>(CUSTOM_CATEGORIES_KEY, []);
     const all = [...DEFAULT_CATEGORIES, ...custom];
-    const existing = all.find((c) => c.name.toLowerCase() === trimmed.toLowerCase());
-    if (existing) return existing;
-
+    if (!trimmed) throw new Error("Enter a name");
     const parent = parentId ? all.find((c) => c.id === parentId) : undefined;
     if (parentId && (!parent || parent.parentId)) throw new Error("Pick a main category to put it under");
+
+    // The same name again: the same category, if it's already where it was asked for; otherwise say it's taken
+    // (quietly handing back the other one looked like the subcategory was never made).
+    const existing = all.find((c) => c.name.toLowerCase() === trimmed.toLowerCase());
+    if (existing) {
+      if ((existing.parentId ?? undefined) === (parent?.id ?? undefined)) return existing;
+      const where = existing.parentId ? ` (under ${all.find((c) => c.id === existing.parentId)?.name ?? "another category"})` : "";
+      throw new Error(`You already have a category called “${existing.name}”${where}. Give the new one another name.`);
+    }
 
     const category: Category = {
       id: `custom-${newId()}`,

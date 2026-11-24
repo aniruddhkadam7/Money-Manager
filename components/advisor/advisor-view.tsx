@@ -1,10 +1,12 @@
 "use client";
 
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowDown, ArrowUp, Check, Copy, RefreshCw, SquarePen, Square } from "lucide-react";
+import { ArrowDown, ArrowUp, AudioLines, Check, Copy, RefreshCw, SquarePen, Square } from "lucide-react";
 import { FridayOrb } from "./friday-orb";
+import { DictateButton, useVoice, VoiceMode } from "./voice";
 import { authFetch } from "@/lib/cloud/client";
 import { buildSnapshot, type AdvisorSnapshot } from "@/lib/advisor/snapshot";
+import { HEARTBEAT, STREAM_ERROR } from "@/lib/advisor/stream-markers";
 import { detectRecurring, subscriptionsOf } from "@/lib/finance/recurring";
 import { cn } from "@/lib/utils";
 import { useFinance } from "../finance-provider";
@@ -110,20 +112,24 @@ export function AdvisorView() {
     if (!t) return;
     t.style.height = "auto";
     t.style.height = `${Math.min(t.scrollHeight, 200)}px`;
+    // A scroll bar only once it's grown as tall as it goes.
+    t.style.overflowY = t.scrollHeight > 200 ? "auto" : "hidden";
   }, [draft]);
 
-  async function send(history: Message[]) {
+  /** Sends the conversation and resolves with Friday's answer ("" if it failed or was stopped early). */
+  async function send(history: Message[], attempt = 1, voice = false): Promise<string> {
     setError(null);
     setMessages([...history, { role: "assistant", content: "" }]);
     setBusy(true);
     setAtBottom(true);
     const controller = new AbortController();
     abort.current = controller;
+    let answer = "";
     try {
       const res = await authFetch("/api/advisor", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ messages: history.slice(-20), snapshot }),
+        body: JSON.stringify({ messages: history.slice(-20), snapshot, ...(voice ? { voice: true } : {}) }),
         signal: controller.signal,
       });
       if (!res.ok || !res.body) {
@@ -132,24 +138,41 @@ export function AdvisorView() {
       }
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      let answer = "";
+      let raw = "";
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
-        answer += decoder.decode(value, { stream: true });
-        setMessages([...history, { role: "assistant", content: answer }]);
+        raw += decoder.decode(value, { stream: true });
+        // The server's "still here" signals aren't part of the answer.
+        const text = raw.replaceAll(HEARTBEAT, "");
+        if (text.startsWith(STREAM_ERROR)) throw new Error(text.slice(STREAM_ERROR.length) || "Couldn't get an answer.");
+        answer = text;
+        if (answer) setMessages([...history, { role: "assistant", content: answer }]);
       }
       if (!answer.trim()) throw new Error("The answer came back empty. Try again.");
+      return answer;
     } catch (err) {
-      // Stopped by you: keep what was written so far.
-      if ((err as Error).name !== "AbortError") {
-        setError((err as Error).message);
+      const e = err as Error;
+      if (e.name === "AbortError") {
+        // Stopped by you: keep what was written so far.
         setMessages((m) => (m.at(-1)?.role === "assistant" && !m.at(-1)?.content ? m.slice(0, -1) : m));
-      } else setMessages((m) => (m.at(-1)?.role === "assistant" && !m.at(-1)?.content ? m.slice(0, -1) : m));
+      } else {
+        // A dropped connection ("Load failed" on iPhone, "Failed to fetch" elsewhere) before any words: try once more.
+        const dropped = e instanceof TypeError || /load failed|failed to fetch|network/i.test(e.message);
+        if (dropped && !answer && attempt === 1) {
+          abort.current = null;
+          return send(history, 2, voice);
+        }
+        setError(dropped ? "The connection dropped before Friday could answer. Check your internet and try again." : e.message);
+        setMessages((m) => (m.at(-1)?.role === "assistant" && !m.at(-1)?.content ? m.slice(0, -1) : m));
+      }
     } finally {
-      setBusy(false);
-      abort.current = null;
+      if (abort.current === controller) {
+        setBusy(false);
+        abort.current = null;
+      }
     }
+    return "";
   }
 
   const ask = (text: string) => {
@@ -158,6 +181,13 @@ export function AdvisorView() {
     setDraft("");
     void send([...messages, { role: "user", content: question }]);
   };
+
+  // Voice chat: the conversation so far, kept current for each spoken question.
+  const voice = useVoice();
+  const [talking, setTalking] = useState(false);
+  const latest = useRef(messages);
+  latest.current = messages;
+  const askAloud = (question: string) => (snapshot ? send([...latest.current, { role: "user", content: question }], 1, true) : Promise.resolve(""));
 
   // Ask the last question again, for a fresh answer.
   const regenerate = () => {
@@ -192,6 +222,8 @@ export function AdvisorView() {
       {available === false && (
         <p className="mb-3 rounded-xl bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-300">The AI isn&apos;t set up on this server (no OpenAI key), so Friday can&apos;t answer yet.</p>
       )}
+
+      {empty && error && <p className="mb-3 rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
 
       {empty ? (
         // A new chat: just the question, and a few places to start.
@@ -255,7 +287,17 @@ export function AdvisorView() {
               </div>
             ),
           )}
-          {error && <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
+          {error && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-800">
+              <span>{error}</span>
+              {/* Ask the last question again. */}
+              {messages.at(-1)?.role === "user" && (
+                <button type="button" onClick={() => void send(messages)} className="rounded-lg bg-red-100 px-2.5 py-1 font-medium hover:bg-red-200">
+                  Try again
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
       {/* Room under the last message for the message box (a new chat needs none: it's sized to fit). */}
@@ -292,13 +334,40 @@ export function AdvisorView() {
                 }
               }}
               rows={1}
-              placeholder={canAsk ? "Ask Friday anything about your money…" : "Friday isn't available"}
+              placeholder={canAsk ? "Ask Friday about your money…" : "Friday isn't available"}
               aria-label="Ask Friday"
-              className="max-h-[200px] min-h-10 flex-1 resize-none bg-transparent py-2 text-base outline-none placeholder:text-muted-foreground"
+              className="max-h-[200px] min-h-10 min-w-0 flex-1 resize-none overflow-y-hidden bg-transparent py-2 text-base outline-none placeholder:text-muted-foreground"
             />
+            {voice && !busy && (
+              <DictateButton
+                disabled={!canAsk}
+                onText={(t) => {
+                  setDraft((d) => (d.trim() ? `${d.trimEnd()} ${t}` : t));
+                  box.current?.focus();
+                }}
+                onError={setError}
+              />
+            )}
             {busy ? (
               <button type="button" aria-label="Stop" onClick={() => abort.current?.abort()} className="grid size-10 shrink-0 place-items-center rounded-full bg-foreground text-background">
                 <Square className="size-3.5 fill-current" />
+              </button>
+            ) : voice && !draft.trim() ? (
+              // Nothing typed: talk with Friday instead (like a call). Typing turns this back into Send.
+              <button
+                type="button"
+                aria-label="Talk with Friday"
+                title="Talk with Friday"
+                disabled={!canAsk}
+                onClick={() => {
+                  setError(null);
+                  setTalking(true);
+                }}
+                // Friday's own colours (the orb's pink, violet and cyan), the same in light and dark.
+                className="grid size-10 shrink-0 place-items-center rounded-full bg-[linear-gradient(135deg,#ff2d95,#8b5cf6_55%,#00d4ff)] text-white shadow-md shadow-violet-500/30 transition-opacity disabled:opacity-25"
+                data-testid="voice-start"
+              >
+                <AudioLines className="size-5" />
               </button>
             ) : (
               <button
@@ -313,6 +382,15 @@ export function AdvisorView() {
           </form>
         </div>
       </div>
+      {talking && (
+        <VoiceMode
+          ask={askAloud}
+          onClose={() => {
+            setTalking(false);
+            abort.current?.abort();
+          }}
+        />
+      )}
     </div>
   );
 }

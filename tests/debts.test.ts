@@ -71,3 +71,20 @@ describe("same-day order", () => {
     expect(owed).toBe(-3_000_00);
   });
 });
+
+describe("money kept for someone", () => {
+  it("came in, is theirs (not income), and is settled by handing it back", () => {
+    const book = {
+      accounts: [{ id: "B", name: "Bank", type: "bank", openingBalanceMinor: 0, openedOn: "2026-01-01", createdAt: t }],
+      people: [{ id: "P", name: "Malu", createdAt: t }],
+      events: [
+        { ...base, id: "h1", type: "borrow", date: "2026-11-15", personId: "P", accountId: "B", amountMinor: 250_00, for: "held" },
+        { ...base, id: "r1", type: "repayment_made", date: "2026-11-20", personId: "P", accountId: "B", amountMinor: 100_00 },
+      ],
+    } as unknown as Book;
+    expect(buildLedger(book).issues).toEqual([]);
+    const d = personDebts(book.events, "P", "2026-11-24");
+    expect(d.owedMinor).toBe(150_00);
+    expect(d.debts[0]).toMatchObject({ for: "held", owedMinor: 150_00 });
+  });
+});

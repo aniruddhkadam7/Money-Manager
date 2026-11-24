@@ -76,7 +76,7 @@ function DuplicateCompare({ row, others }: { row: StatementRow; others: Statemen
  * One line that needs a person. The usual case is one click: confirm the suggestion, or tap what
  * it really was. Choices that need a detail (who, which account...) ask for just that detail.
  */
-export function ReviewCard({ row, siblings, compact = false }: { row: StatementRow; siblings: StatementRow[]; compact?: boolean }) {
+export function ReviewCard({ row, siblings, compact = false, onDone }: { row: StatementRow; siblings: StatementRow[]; compact?: boolean; /** Editing a line that was already settled: called once it's saved, or to cancel. */ onDone?: () => void }) {
   const { book, expenseCategories, incomeCategories, updateEvent } = useFinance();
   const statements = useStatements();
   const toast = useToast();
@@ -120,6 +120,7 @@ export function ReviewCard({ row, siblings, compact = false }: { row: StatementR
     if (!row.normalized.counterpartyKey || (decision.kind === "accept" && c?.source === "user_rule" && c.confidence >= 0.99)) {
       const res = statements.resolve(row.id, decision);
       if (!res.ok) setError(res.message);
+      else onDone?.();
       return res.ok;
     }
     setError(null);
@@ -150,6 +151,7 @@ export function ReviewCard({ row, siblings, compact = false }: { row: StatementR
       toast.show({ message: `Remembered: “${name}” is always ${ask.label}${parts.length ? ` · updated ${parts.join(" and ")}` : ""}` });
     }
     setAsk(null);
+    onDone?.();
   };
   const [picking, setPicking] = useState<StatementEventType | null>(null);
   const [error, setError] = useState<string | null>(row.error ?? null);
@@ -327,9 +329,14 @@ export function ReviewCard({ row, siblings, compact = false }: { row: StatementR
                 <ArrowRight /> Save
               </Button>
             )}
-            <Button size="sm" variant="ghost" className="ml-auto text-muted-foreground" onClick={() => statements.resolve(row.id, { kind: "skip" })}>
+            <Button size="sm" variant="ghost" className={cn("text-muted-foreground", !onDone && "ml-auto")} onClick={() => statements.resolve(row.id, { kind: "skip" })}>
               <X /> Skip this line
             </Button>
+            {onDone && (
+              <Button size="sm" variant="ghost" className="ml-auto" onClick={onDone} data-testid="cancel-edit">
+                Cancel
+              </Button>
+            )}
           </div>
 
           {picking && n && (n.person || n.account || n.holding) && (

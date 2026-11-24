@@ -17,6 +17,7 @@ import type { StatementRow } from "@/lib/statements/types";
 import { cn, scrollPage } from "@/lib/utils";
 import { useEventDialog } from "../events/event-dialog";
 import { useFinance } from "../finance-provider";
+import { eventOption } from "../events/event-meta";
 import { useToast } from "../toast";
 import { describeClassification, signedAmount, SOURCE_LABEL, STATUS_LABEL } from "./labels";
 import { BulkApply, DEFAULT_FILTERS, filtersActive, lineMatches, PartyRanking, rankParties, type PartyFilters } from "./party-filter";
@@ -121,7 +122,7 @@ function Section({ title, hint, count, children, defaultOpen = true, testId }: {
 
 /** A settled line: what it is, with the full trail (statement -> classification -> match -> decision -> entry) on demand. */
 function RowLine({ row }: { row: StatementRow }) {
-  const { book } = useFinance();
+  const { book, describer } = useFinance();
   const { openDetail, openEdit } = useEventDialog();
   const [open, setOpen] = useState(false);
   const c = row.classification;
@@ -131,11 +132,16 @@ function RowLine({ row }: { row: StatementRow }) {
   const restoreDeleted = useRestoreDeleted();
   const statements = useStatements();
   const toast = useToast();
+  // A line still waiting to be imported can be changed before it becomes an entry.
+  const editable = !event && (row.status === "auto" || row.status === "auto_flagged") && statements.imports.find((i) => i.id === row.importId)?.status !== "IMPORTED";
+  const [editing, setEditing] = useState(false);
   const bringBack = () => {
     const r = statements.resolve(row.id, { kind: "reopen" });
     toast.show({ message: r.ok ? "Moved to “Needs your decision” at the top: choose what it is, or skip it again." : r.message });
     if (r.ok) scrollPage({ top: 0, behavior: "smooth" });
   };
+
+  if (editing && editable) return <ReviewCard row={row} siblings={statements.rowsOf(row.importId)} onDone={() => setEditing(false)} />;
 
   return (
     <div className="rounded-xl border bg-card" data-testid="row-line" data-status={row.status}>
@@ -147,6 +153,9 @@ function RowLine({ row }: { row: StatementRow }) {
           <div className="truncate text-xs text-muted-foreground">
             {row.status === "matched_existing" && event
               ? "Matches your entry — nothing new will be added"
+              : event
+                ? // Imported: what the entry is now (changed since, maybe), not what the import first made it.
+                  `${eventOption(event.type).label} · ${describer.subtitle(event)}`
               : row.status === "already_imported"
                 ? row.match?.reason
                 : row.status === "skipped"
@@ -162,6 +171,10 @@ function RowLine({ row }: { row: StatementRow }) {
       {/* The entry this line made (or matched), to correct straight from the statement. */}
       {event ? (
         <Button variant="ghost" size="icon" className="mr-1 shrink-0" aria-label="Edit the entry" title="Edit the entry" onClick={() => openEdit(event.id)} data-testid="edit-entry">
+          <Pencil />
+        </Button>
+      ) : editable ? (
+        <Button variant="ghost" size="icon" className="mr-1 shrink-0" aria-label="Change this line" title="Change this line" onClick={() => setEditing(true)} data-testid="edit-line">
           <Pencil />
         </Button>
       ) : (

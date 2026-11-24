@@ -24,6 +24,7 @@ import { PictureIcon } from "../picture-icon";
 import { EVENT_OPTIONS, eventOption, FORM_SPEC, type FieldKey } from "./event-meta";
 import { NoteField, noteOf } from "./note-field";
 import { cn } from "@/lib/utils";
+import { useStatements } from "../statements/statements-provider";
 import { DebtTermsFields, debtTermsValues, parseDebtTerms, type DebtTermsValues } from "./debt-terms";
 import { personDebts, termsWords } from "@/lib/finance/debts";
 import { namesOf } from "@/lib/finance/person-summary";
@@ -41,7 +42,7 @@ export interface FormPreset {
   /** Pay EMI: which loan (from the loan's Pay EMI button). */
   loanId?: string;
   /** Borrow / owe: start as money borrowed or as a service on credit, and with the terms box open. */
-  borrowFor?: "money" | "service";
+  borrowFor?: "money" | "service" | "held";
   /** Borrow / owe: open the repayment terms (a short-term loan with a date, instalments, interest). */
   withTerms?: boolean;
 }
@@ -75,11 +76,13 @@ interface Values {
   /** A bill payment: when the bill is due again, or the plan expires (kept on the bill in Bills, see EventBase.billId). */
   billDue: string;
   /** Borrow: money that came in, or a service or goods to pay for later. */
-  borrowFor: "money" | "service";
+  borrowFor: "money" | "service" | "held";
   /** Borrow: how it's to be paid back (all optional). */
   debtTerms: DebtTermsValues;
   /** Paid someone back: the interest part, if any. */
   repayInterest: string;
+  /** An expense paid on someone else's behalf: they'll pay it back (saved as "Paid for someone"). */
+  forSomeone: boolean;
 }
 
 /** Kinds of entry that can pay a bill, and the categories where the bill date is offered without asking. */
@@ -127,6 +130,11 @@ export function EventForm({
   onSaved: (eventId: string, wasEdit: boolean) => void;
 }) {
   const f = useFinance();
+  // An entry from a bank statement: which way its line went (credit in, debit out), to offer only kinds that match.
+  const statementsCtx = useStatements();
+  const lineDirection = editing?.sources
+    ?.map((src) => statementsCtx.rowsOf(src.importId).find((r) => r.id === src.rowId)?.direction)
+    .find((d): d is "credit" | "debit" => !!d);
   // Bills (in the profile menu), live: a date changed there shows here straight away.
   const billsData = useBills();
   const spec = FORM_SPEC[type];
@@ -153,13 +161,20 @@ export function EventForm({
   const [values, setValues] = useState<Values>(() => initialValues());
   // Borrowing a service or goods: what it was and its category, and no account (no money came in).
   const serviceDebt = type === "borrow" && values.borrowFor === "service";
-  const fields: FieldKey[] = serviceDebt ? ["person", "amount", "description", "category", "date"] : spec.fields;
+  // An expense paid for someone: whose, too (they'll pay you back).
+  const forSomeone = type === "expense" && values.forSomeone;
+  const fields: FieldKey[] = serviceDebt
+    ? ["person", "amount", "description", "category", "date"]
+    : forSomeone
+      ? [...spec.fields.filter((k) => k !== "date"), "person", "date"]
+      : spec.fields;
   const [errors, setErrors] = useState<Errors>({});
   const [saving, setSaving] = useState(false);
   const [pickingCategory, setPickingCategory] = useState(false);
   const [addingCategory, setAddingCategory] = useState(false);
   const [newCategory, setNewCategory] = useState("");
   const [newParent, setNewParent] = useState("");
+  const [categoryError, setCategoryError] = useState<string | null>(null);
   // A repayment larger than what was owed is saved only once confirmed, for exactly these values.
   const [overpayConfirmed, setOverpayConfirmed] = useState<string | null>(null);
 
@@ -228,6 +243,7 @@ export function EventForm({
       borrowFor: preset?.borrowFor ?? "money",
       debtTerms: debtTermsValues(),
       repayInterest: "",
+      forSomeone: false,
     };
     if (!e) return base;
     base.date = editing ? e.date : todayISO();
@@ -387,13 +403,18 @@ export function EventForm({
 
   async function handleAddCategory() {
     const name = newCategory.trim();
-    if (!name) return;
-    const created = await f.addCategory(name, newParent || undefined);
-    set("categoryId", created.id);
-    setNewCategory("");
-    setNewParent("");
-    setAddingCategory(false);
-    setPickingCategory(false);
+    if (!name) return setCategoryError("Enter a name for the category.");
+    try {
+      const created = await f.addCategory(name, newParent || undefined);
+      set("categoryId", created.id);
+      setNewCategory("");
+      setNewParent("");
+      setCategoryError(null);
+      setAddingCategory(false);
+      setPickingCategory(false);
+    } catch (err) {
+      setCategoryError(err instanceof Error ? err.message : "Couldn't add that category.");
+    }
   }
 
   function closeCategoryPicker() {
@@ -473,7 +494,7 @@ export function EventForm({
                 onChange={(e) => setNewParent(e.target.value)}
                 className="h-9 rounded-md border border-input bg-transparent px-2 text-sm"
               >
-                <option value="">Main category</option>
+                <option value="">A main category</option>
                 {categories
                   .filter((c) => !c.parentId)
                   .map((c) => (
@@ -498,6 +519,7 @@ export function EventForm({
               <Button type="button" variant="outline" onClick={() => void handleAddCategory()}>
                 Add
               </Button>
+              {categoryError && <p className="text-xs text-destructive sm:col-span-3">{categoryError}</p>}
             </div>
           )}
         </div>
@@ -529,7 +551,7 @@ export function EventForm({
               const words = termsWords(x.terms, formatRupees, formatDisplayDate);
               return (
                 <p key={x.eventId} className="text-xs text-muted-foreground">
-                  {x.for === "service" ? x.description || "Service" : "Borrowed"} {formatDisplayDate(x.date)}: {formatRupees(x.owedMinor)} left{words && ` · ${words}`}
+                  {x.for === "service" ? x.description || "Service" : x.for === "held" ? "Keeping for them" : "Borrowed"} {formatDisplayDate(x.date)}: {formatRupees(x.owedMinor)} left{words && ` · ${words}`}
                 </p>
               );
             })}
@@ -661,8 +683,14 @@ export function EventForm({
     const personId = () => f.resolvePerson(values.person);
 
     switch (type) {
-      case "expense":
+      case "expense": {
+        // Paid on someone else's behalf: not your spending; they owe it until they pay you back.
+        if (values.forSomeone) {
+          const id = personId();
+          return id ? { type: "reimbursable_expense", date, description, accountId: values.accountId, amountMinor: amount, categoryId: values.categoryId, personId: id } : null;
+        }
         return { type, date, description, accountId: values.accountId, amountMinor: amount, categoryId: values.categoryId };
+      }
       case "income":
         return { type, date, description, accountId: values.accountId, amountMinor: amount, categoryId: values.categoryId };
       case "transfer":
@@ -676,7 +704,16 @@ export function EventForm({
         if (type === "borrow" && serviceDebt) {
           return { type, date, personId: id, accountId: "", amountMinor: amount, for: "service", categoryId: values.categoryId, ...(description ? { description } : {}), ...terms };
         }
-        return { type, date, personId: id, accountId: values.accountId, amountMinor: amount, ...(values.beforeTracking ? { predatesRecords: true } : {}), ...terms };
+        return {
+          type,
+          date,
+          personId: id,
+          accountId: values.accountId,
+          amountMinor: amount,
+          ...(type === "borrow" && values.borrowFor === "held" ? { for: "held" as const } : {}),
+          ...(values.beforeTracking ? { predatesRecords: true } : {}),
+          ...terms,
+        };
       }
       case "repayment_received":
       case "repayment_made": {
@@ -751,7 +788,7 @@ export function EventForm({
   /* ---------------- field renderers ---------------- */
 
   const label = (key: FieldKey, fallback: string) =>
-    serviceDebt && key === "person" ? "Who do you owe?" : serviceDebt && key === "description" ? "What was it for?" : serviceDebt && key === "amount" ? "Amount you owe" : (spec.labels[key] ?? fallback);
+    serviceDebt && key === "person" ? "Who do you owe?" : forSomeone && key === "person" ? "Who did you pay for? (they'll pay you back)" : serviceDebt && key === "description" ? "What was it for?" : serviceDebt && key === "amount" ? "Amount you owe" : (spec.labels[key] ?? fallback);
 
   const field = (key: FieldKey): ReactNode => {
     switch (key) {
@@ -797,7 +834,13 @@ export function EventForm({
       case "category": {
         const chosen = categories.find((c) => c.id === values.categoryId);
         return (
-          <Field key={key} id="category" label="Category" error={errors.category}>
+          // Paid for someone: the category only says what it was; it's money they owe you, not your spending.
+          <Field
+            key={key}
+            id="category"
+            label={type === "reimbursable_expense" || forSomeone ? "What was it? (not counted as your spending)" : "Category"}
+            error={errors.category}
+          >
             <button
               type="button"
               id="category"
@@ -1166,13 +1209,32 @@ export function EventForm({
           <Label>What kind of entry is this?</Label>
           <Select value={type} onValueChange={(v) => v !== type && onChangeType(v as EventType)}>
             <SelectTrigger aria-label="Kind of entry">
-              <SelectValue />
+              {/* Closed: the chosen kind's picture and name. */}
+              <SelectValue>
+                <span className="flex items-center gap-2">
+                  <PictureIcon name={option.picture} className="size-6" />
+                  {option.label}
+                </span>
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {/* Stock trades have their own order window, so an entry can't be switched into one here. */}
-              {EVENT_OPTIONS.filter((o) => (o.type !== "update_valuation" || type === "update_valuation") && o.type !== "trade").map((o) => (
+              {EVENT_OPTIONS.filter(
+                (o) =>
+                  (o.type !== "update_valuation" || type === "update_valuation") &&
+                  o.type !== "trade" &&
+                  // Only kinds that move money the same way as the entry did: money in stays money in, out stays out.
+                  (o.type === editing.type || sameDirection(editing.type, o.type, lineDirection)),
+              ).map((o) => (
                 <SelectItem key={o.type} value={o.type}>
-                  {o.label} — {o.hint}
+                  {/* Each kind with its picture (as in "What happened?"), and what it means under its name. */}
+                  <span className="flex items-center gap-2.5 py-0.5">
+                    <PictureIcon name={o.picture} className="size-7" />
+                    <span className="grid">
+                      <span className="font-medium">{o.label}</span>
+                      <span className="text-xs text-muted-foreground">{o.hint}</span>
+                    </span>
+                  </span>
                 </SelectItem>
               ))}
             </SelectContent>
@@ -1190,10 +1252,11 @@ export function EventForm({
           {type === "borrow" && (
             <div className="grid gap-1.5">
               <Label>What was it?</Label>
-              <div role="radiogroup" aria-label="What was it?" className="grid grid-cols-2 gap-1 rounded-lg border bg-muted p-0.5 text-sm" data-testid="borrow-for">
+              <div role="radiogroup" aria-label="What was it?" className="grid grid-cols-3 gap-1 rounded-lg border bg-muted p-0.5 text-sm" data-testid="borrow-for">
                 {(
                   [
-                    ["money", "Money", "It came into my account"],
+                    ["money", "Borrowed", "A loan to me"],
+                    ["held", "Keeping it for them", "Theirs: to give back or spend for them"],
                     ["service", "Service or goods", "I'll pay for it later"],
                   ] as const
                 ).map(([v, title, hint]) => (
@@ -1211,9 +1274,25 @@ export function EventForm({
                 ))}
               </div>
               {serviceDebt && <p className="text-xs text-muted-foreground">It counts as spending now, under its category, and as owed to them until you pay.</p>}
+              {type === "borrow" && values.borrowFor === "held" && (
+                <p className="text-xs text-muted-foreground">Not your income: it&apos;s theirs until you hand it back (Paid someone back) or pay for something of theirs.</p>
+              )}
             </div>
           )}
-          {fields.map((k) => field(k))}
+          {/* Paid for someone: their name comes right under the switch, not among the fields above it. */}
+          {fields.filter((k) => !(forSomeone && k === "person")).map((k) => field(k))}
+          {type === "expense" && !editing && (
+            <label className="flex cursor-pointer items-center gap-3 rounded-lg border bg-muted/40 px-3 py-2.5" data-testid="paid-for-someone">
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium">I paid this for someone else</span>
+                <span className="block text-xs text-muted-foreground">
+                  {values.forSomeone ? "Not your spending: they owe you this until they pay you back (Got paid back settles it)." : "Turn on if someone will pay you back for it."}
+                </span>
+              </span>
+              <Switch checked={values.forSomeone} onCheckedChange={(on) => set("forSomeone", on)} aria-label="I paid this for someone else" className={values.forSomeone ? undefined : "bg-slate-300 dark:bg-slate-600"} />
+            </label>
+          )}
+          {forSomeone && field("person")}
           {type === "borrow" && <DebtTermsFields value={values.debtTerms} onChange={(v) => set("debtTerms", v)} startOpen={!!preset?.withTerms} />}
           {/* Called, not mounted: a component defined in here would remount each render and drop the cursor. */}
           {type === "repayment_made" && repayHelp()}
@@ -1270,6 +1349,23 @@ export function EventForm({
       {categorySheet()}
     </form>
   );
+}
+
+const MONEY_IN = new Set<EventType>(["income", "borrow", "repayment_received", "loan_taken", "sell_investment"]);
+const MONEY_OUT = new Set<EventType>(["expense", "lend", "repayment_made", "emi_payment", "split_expense", "reimbursable_expense", "invest"]);
+
+/**
+ * Whether an entry recorded as `from` can be changed into `to` without the money changing direction: money that came
+ * in stays money in (income, got paid back, borrowed…), money that went out stays out (expense, lent, paid back…).
+ * Transfer fits either, and an entry that was a transfer can become anything.
+ */
+function sameDirection(from: EventType, to: EventType, line?: "credit" | "debit"): boolean {
+  // From a bank statement: what the bank says happened decides, whatever the entry is recorded as now.
+  if (line) return to === "transfer" || (line === "credit" ? MONEY_IN.has(to) : MONEY_OUT.has(to));
+  if (to === from || to === "transfer") return true;
+  if (MONEY_IN.has(from)) return MONEY_IN.has(to);
+  if (MONEY_OUT.has(from)) return MONEY_OUT.has(to);
+  return true;
 }
 
 /** One person's share of a bill split equally between you and `others` people (rounded down to the paisa). */

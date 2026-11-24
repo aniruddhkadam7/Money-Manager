@@ -378,7 +378,7 @@ export function MoneyView() {
                         : d.dueDate
                           ? `${late ? "Was due" : "Pay back by"} ${formatDisplayDate(d.dueDate)}`
                           : null;
-                      const what = d.debts.map((x) => (x.for === "service" ? x.description || "Service" : "Borrowed")).filter((v, i, a) => a.indexOf(v) === i).join(", ");
+                      const what = d.debts.map((x) => (x.for === "service" ? x.description || "Service" : x.for === "held" ? "Keeping for them" : "Borrowed")).filter((v, i, a) => a.indexOf(v) === i).join(", ");
                       return (
                       <li key={p.person.id} className="flex items-center gap-3 px-4 py-2.5 sm:px-5 sm:py-3" data-testid="owed-person">
                         <Link href={activityHref({ person: p.person.id })} className="flex min-w-0 flex-1 items-center gap-3 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring">

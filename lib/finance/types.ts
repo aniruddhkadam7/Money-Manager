@@ -156,8 +156,12 @@ export interface BorrowEvent extends EventBase {
   amountMinor: number;
   /** Borrowed before records began: you owe it, but no money arrives in `accountId` now. */
   predatesRecords?: boolean;
-  /** What it was: money (the default) or a service or goods on credit. */
-  for?: "money" | "service";
+  /**
+   * What it was: money borrowed (the default), a service or goods on credit, or money that's theirs that you're
+   * keeping for them (to hand back, or to pay something on their behalf). Booked like money borrowed: it came in,
+   * and it's theirs until it goes back to them.
+   */
+  for?: "money" | "service" | "held";
   /** A service or goods: what it counts as spending under. */
   categoryId?: string;
   /** How it's to be paid back, if agreed: by a date, with interest, in instalments. */

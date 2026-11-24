@@ -6,7 +6,7 @@ import type { BorrowEvent, DebtTerms, FinancialEvent } from "./types";
 export interface OpenDebt {
   eventId: string;
   date: string;
-  for: "money" | "service";
+  for: "money" | "service" | "held";
   description?: string;
   originalMinor: number;
   owedMinor: number;
