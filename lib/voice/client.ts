@@ -33,6 +33,8 @@ export interface RecordOptions {
   noSpeechTimeout?: number;
   /** How loud you are right now, 0 to 1, for the picture. */
   onLevel?: (level: number) => void;
+  /** Everything recorded so far, as it grows (about every quarter second), e.g. to show words while you talk. */
+  onAudio?: (soFar: Blob) => void;
 }
 
 /** Starts recording from the microphone. */
@@ -47,7 +49,11 @@ export async function record(opts: RecordOptions = {}): Promise<Recording> {
   let source: MediaStreamAudioSourceNode | undefined;
 
   const done = new Promise<Blob | null>((resolve) => {
-    rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+    rec.ondataavailable = (e) => {
+      if (!e.data.size) return;
+      chunks.push(e.data);
+      if (!cancelled) opts.onAudio?.(new Blob(chunks, { type: rec.mimeType || type || "audio/webm" }));
+    };
     rec.onstop = () => {
       clearInterval(timer);
       source?.disconnect();

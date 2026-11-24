@@ -185,6 +185,10 @@ export function AdvisorView() {
   // Voice chat: the conversation so far, kept current for each spoken question.
   const voice = useVoice();
   const [talking, setTalking] = useState(false);
+  // Dictating: what was in the box when you started, so the words as you speak go after it.
+  const dictBase = useRef<string | null>(null);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
   const latest = useRef(messages);
   latest.current = messages;
   const askAloud = (question: string) => (snapshot ? send([...latest.current, { role: "user", content: question }], 1, true) : Promise.resolve(""));
@@ -341,8 +345,15 @@ export function AdvisorView() {
             {voice && !busy && (
               <DictateButton
                 disabled={!canAsk}
+                // Your words appear in the box as you speak; what was typed before stays in front of them.
+                onPartial={(t) => {
+                  if (dictBase.current === null) dictBase.current = draftRef.current.trim();
+                  setDraft(dictBase.current ? `${dictBase.current} ${t}` : t);
+                }}
                 onText={(t) => {
-                  setDraft((d) => (d.trim() ? `${d.trimEnd()} ${t}` : t));
+                  const base = dictBase.current ?? draftRef.current.trim();
+                  dictBase.current = null;
+                  setDraft(base ? `${base} ${t}` : t);
                   box.current?.focus();
                 }}
                 onError={setError}
@@ -385,6 +396,10 @@ export function AdvisorView() {
       {talking && (
         <VoiceMode
           ask={askAloud}
+          snapshot={snapshot}
+          history={messages.filter((m) => m.content)}
+          // The live conversation lands in the chat as it goes.
+          onLine={(role, content) => setMessages((m) => [...m, { role, content }])}
           onClose={() => {
             setTalking(false);
             abort.current?.abort();

@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2, Mic, X } from "lucide-react";
 import { record, speak, transcribe, voiceAvailable, voiceSupported, type Recording } from "@/lib/voice/client";
+import { startAgent, type AgentFunction, type AgentSession } from "@/lib/voice/agent";
+import { ADVISOR_PROMPT, VOICE_PROMPT } from "@/lib/advisor/prompt";
+import type { AdvisorSnapshot } from "@/lib/advisor/snapshot";
 import { cn } from "@/lib/utils";
 import { FridayOrb } from "./friday-orb";
 
@@ -33,12 +36,43 @@ const micError = (e: unknown) => {
 };
 
 /**
- * Speech to text only: tap, speak, tap again, and what you said lands in the message box to check and send.
+ * Speech to text: tap and speak, and your words appear in the message box as you go (refined about every second);
+ * tap again to stop, and the final words stay there to check and send.
  */
-export function DictateButton({ onText, onError, disabled }: { onText: (text: string) => void; onError: (message: string) => void; disabled?: boolean }) {
+export function DictateButton({
+  onText,
+  onPartial,
+  onError,
+  disabled,
+}: {
+  onText: (text: string) => void;
+  /** The words so far, while you're still speaking. */
+  onPartial?: (text: string) => void;
+  onError: (message: string) => void;
+  disabled?: boolean;
+}) {
   const [state, setState] = useState<"idle" | "recording" | "working">("idle");
   const rec = useRef<Recording | null>(null);
   useEffect(() => () => rec.current?.cancel(), []);
+  // While recording: the words so far, at most one request at a time, the latest audio each time.
+  const live = useRef({ busy: false, last: 0, pending: null as Blob | null, stopped: false });
+  const refresh = (soFar: Blob) => {
+    const l = live.current;
+    l.pending = soFar;
+    if (l.busy || l.stopped || Date.now() - l.last < 900) return;
+    const audio = l.pending;
+    l.pending = null;
+    l.busy = true;
+    l.last = Date.now();
+    void transcribe(audio)
+      .then((t) => {
+        if (!live.current.stopped && t) onPartial?.(t);
+      })
+      .catch(() => {})
+      .finally(() => {
+        live.current.busy = false;
+      });
+  };
 
   const toggle = async () => {
     if (state === "recording") {
@@ -47,11 +81,13 @@ export function DictateButton({ onText, onError, disabled }: { onText: (text: st
     }
     if (state !== "idle") return;
     try {
-      const r = await record();
+      live.current = { busy: false, last: Date.now(), pending: null, stopped: false };
+      const r = await record({ onAudio: onPartial ? refresh : undefined });
       rec.current = r;
       setState("recording");
       const audio = await r.done;
       rec.current = null;
+      live.current.stopped = true;
       if (!audio) return setState("idle");
       setState("working");
       const text = await transcribe(audio);
@@ -97,7 +133,21 @@ const PHASE_TEXT: Record<Phase, string> = {
  * Tap the orb to cut in while it speaks, or to finish what you're saying sooner. Everything also lands in the chat.
  * `ask` sends a question and resolves with Friday's answer ("" if it failed).
  */
-export function VoiceMode({ ask, onClose }: { ask: (question: string) => Promise<string>; onClose: () => void }) {
+export function VoiceMode({
+  ask,
+  onClose,
+  snapshot,
+  history = [],
+  onLine,
+}: {
+  ask: (question: string) => Promise<string>;
+  onClose: () => void;
+  /** Your figures: given, Friday talks live (Deepgram's Voice Agent); otherwise, or if that can't start, it takes turns. */
+  snapshot?: AdvisorSnapshot | null;
+  history?: { role: "user" | "assistant"; content: string }[];
+  /** A finished line of the live conversation, for the chat. */
+  onLine?: (role: "user" | "assistant", text: string) => void;
+}) {
   const [phase, setPhase] = useState<Phase>("starting");
   const [level, setLevel] = useState(0);
   const [heard, setHeard] = useState("");
@@ -107,6 +157,43 @@ export function VoiceMode({ ask, onClose }: { ask: (question: string) => Promise
   const speaking = useRef<AbortController | null>(null);
   // Each run of the conversation has a number; ending (or restarting) makes the old run stop at its next step.
   const run = useRef(0);
+  // The live conversation, when it could start.
+  const live = useRef<AgentSession | null>(null);
+
+  /** Talking live: one connection that listens, notices when you stop, and answers as it thinks. */
+  async function startLive(): Promise<boolean> {
+    if (!snapshot || !ctx.current) return false;
+    try {
+      live.current = await startAgent({
+        ctx: ctx.current,
+        instructions: liveInstructions(snapshot, true),
+        managedInstructions: liveInstructions(snapshot, false),
+        functions: lookups(snapshot),
+        history,
+        events: {
+          onPhase: (p) => setPhase(p === "connecting" ? "starting" : p),
+          onText: (role, text) => {
+            if (role === "user") setHeard(text);
+            onLine?.(role, text);
+          },
+          onLevel: setLevel,
+          onError: (message) => {
+            setError(message);
+            setPhase("error");
+          },
+          onClose: () => {
+            live.current = null;
+            setError("The live conversation ended.");
+            setPhase("error");
+          },
+        },
+      });
+      return true;
+    } catch {
+      live.current = null;
+      return false;
+    }
+  }
 
   async function loop() {
     const id = ++run.current;
@@ -170,7 +257,10 @@ export function VoiceMode({ ask, onClose }: { ask: (question: string) => Promise
 
   const start = () => {
     setError(null);
-    void loop();
+    // Live if it can be; otherwise the step-by-step way (record, then answer), which needs no live connection.
+    void startLive().then((ok) => {
+      if (!ok) void loop();
+    });
   };
 
   useEffect(() => {
@@ -181,6 +271,7 @@ export function VoiceMode({ ask, onClose }: { ask: (question: string) => Promise
     start();
     return () => {
       run.current++;
+      live.current?.end();
       rec.current?.cancel();
       speaking.current?.abort();
       void ctx.current?.close();
@@ -189,6 +280,11 @@ export function VoiceMode({ ask, onClose }: { ask: (question: string) => Promise
   }, []);
 
   const tapOrb = () => {
+    if (live.current) {
+      // Live: tap to cut Friday off; it listens again at once.
+      if (phase === "speaking") live.current.interrupt();
+      return;
+    }
     if (phase === "speaking") speaking.current?.abort();
     else if (phase === "listening") rec.current?.stop();
     else if (phase === "error") {
@@ -227,4 +323,52 @@ export function VoiceMode({ ask, onClose }: { ask: (question: string) => Promise
       </button>
     </div>
   );
+}
+
+/**
+ * Friday's instructions for the live conversation: its usual ones, the voice rules, and your figures. On the app's
+ * own model they go in full; on Deepgram's hosted model (limited length) the entry list is left out and looked up
+ * with find_entries instead.
+ */
+function liveInstructions(s: AdvisorSnapshot, full: boolean): string {
+  const figures = full ? s : { ...s, entries: { columns: s.entries.columns, rows: [], truncated: true, note: "Use find_entries to look entries up." } };
+  return `${ADVISOR_PROMPT}\n\n${VOICE_PROMPT}\n\nThis is a live spoken conversation: answer quickly and briefly, then stop and listen.\n\nSNAPSHOT (today ${s.today}):\n${JSON.stringify(figures)}`;
+}
+
+/** Lookups Friday may call during a live conversation (run here, on your own figures). */
+function lookups(s: AdvisorSnapshot): AgentFunction[] {
+  return [
+    {
+      name: "find_entries",
+      description:
+        "Find the user's entries (last 12 months) matching words and filters, newest first, with their total. Use it for questions about specific payments, people, shops, categories or dates.",
+      parameters: {
+        type: "object",
+        properties: {
+          text: { type: "string", description: "Words to match in who, category or reason, e.g. 'swiggy' or 'Ravi'" },
+          kind: { type: "string", description: "Kind of entry, e.g. 'spent', 'income', 'paid back', 'borrowed', 'lent'" },
+          from: { type: "string", description: "Earliest date, YYYY-MM-DD" },
+          to: { type: "string", description: "Latest date, YYYY-MM-DD" },
+        },
+      },
+      run: (a) => {
+        const words = String(a.text ?? "").toLowerCase().split(/\s+/).filter(Boolean);
+        const kind = String(a.kind ?? "").toLowerCase();
+        const rows = s.entries.rows.filter((r) => {
+          const [date, k, , who, category, , reason] = r.map((x) => String(x).toLowerCase());
+          return (
+            (!a.from || date >= String(a.from)) &&
+            (!a.to || date <= String(a.to)) &&
+            (!kind || k.includes(kind)) &&
+            words.every((w) => `${who} ${category} ${reason}`.includes(w))
+          );
+        });
+        return {
+          count: rows.length,
+          total: rows.reduce((t, r) => t + (Number(r[2]) || 0), 0),
+          entries: rows.slice(0, 25).map((r) => ({ date: r[0], kind: r[1], amount: r[2], who: r[3], category: r[4], reason: r[6] })),
+        };
+      },
+    },
+  ];
 }

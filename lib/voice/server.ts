@@ -1,4 +1,5 @@
 import { sameOrigin, signedInAllowed } from "@/lib/statements/ai-route";
+import { issuePass } from "./llm-pass";
 
 /**
  * Friday's voice, through Deepgram: what you say becomes text (listen), and Friday's answer becomes speech (speak).
@@ -85,6 +86,51 @@ export async function handleSpeak(req: Request, env: Record<string, string | und
     return new Response(res.body, { headers: { "content-type": "audio/mpeg", "cache-control": "no-store" } });
   } catch (err) {
     console.error("voice: speak failed", (err as Error)?.name);
+    return json({ error: "upstream", message: failure(0) }, 502);
+  }
+}
+
+/**
+ * A short-lived Deepgram token for the live voice assistant (the Voice Agent), so the browser can open its own
+ * connection without ever holding the key. Minting needs a key with the Member role or higher: DEEPGRAM_AGENT_KEY if
+ * set, else DEEPGRAM_API_KEY. The token only has to be valid when the connection opens.
+ */
+export async function handleAgentToken(req: Request, env: Record<string, string | undefined> = process.env) {
+  const fallback = await guard(req, env);
+  if (typeof fallback !== "string") return fallback;
+  const key = env.DEEPGRAM_AGENT_KEY?.trim() || fallback;
+  try {
+    const res = await fetch(`${DEEPGRAM}/auth/grant`, {
+      method: "POST",
+      headers: { authorization: `Token ${key}`, "content-type": "application/json" },
+      body: JSON.stringify({ ttl_seconds: 60 }),
+    });
+    if (!res.ok) {
+      console.error("voice: agent token failed", res.status);
+      return json(
+        {
+          error: res.status === 403 ? "key_role" : "upstream",
+          message:
+            res.status === 403
+              ? "The live assistant needs a Deepgram key with the Member role (set it as DEEPGRAM_AGENT_KEY)."
+              : failure(res.status),
+        },
+        res.status === 403 ? 503 : 502,
+      );
+    }
+    const data = (await res.json()) as { access_token?: string; expires_in?: number };
+    if (!data.access_token) return json({ error: "upstream", message: failure(0) }, 502);
+    // Friday's own thinking (your model, on this server): only where Deepgram can reach it, i.e. not this computer.
+    const host = (req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "").split(",")[0].trim();
+    const reachable = !!host && !/^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|\[::1\])/.test(host);
+    const pass = reachable ? issuePass(env) : null;
+    return json({
+      token: data.access_token,
+      expiresIn: data.expires_in ?? 60,
+      ...(pass ? { llm: { url: `https://${host}/api/voice/llm`, pass } } : {}),
+    });
+  } catch (err) {
+    console.error("voice: agent token failed", (err as Error)?.name);
     return json({ error: "upstream", message: failure(0) }, 502);
   }
 }
