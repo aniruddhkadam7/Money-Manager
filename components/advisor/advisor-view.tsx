@@ -4,6 +4,7 @@ import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type R
 import { ArrowDown, ArrowUp, AudioLines, Check, Copy, RefreshCw, SquarePen, Square } from "lucide-react";
 import { FridayOrb } from "./friday-orb";
 import { DictateButton, useVoice, VoiceMode } from "./voice";
+import { prefetchAgentGrant } from "@/lib/voice/agent";
 import { authFetch } from "@/lib/cloud/client";
 import { buildSnapshot, type AdvisorSnapshot } from "@/lib/advisor/snapshot";
 import { HEARTBEAT, STREAM_ERROR } from "@/lib/advisor/stream-markers";
@@ -185,6 +186,13 @@ export function AdvisorView() {
   // Voice chat: the conversation so far, kept current for each spoken question.
   const voice = useVoice();
   const [talking, setTalking] = useState(false);
+  // While Friday is open, keep a live-assistant token ready, so talking starts without waiting for one.
+  useEffect(() => {
+    if (!voice) return;
+    prefetchAgentGrant();
+    const t = setInterval(prefetchAgentGrant, 40_000);
+    return () => clearInterval(t);
+  }, [voice]);
   // Dictating: what was in the box when you started, so the words as you speak go after it.
   const dictBase = useRef<string | null>(null);
   const draftRef = useRef(draft);
@@ -320,6 +328,19 @@ export function AdvisorView() {
               <ArrowDown className="size-4" />
             </button>
           )}
+          {talking ? (
+            <VoiceMode
+              ask={askAloud}
+              snapshot={snapshot}
+              history={messages.filter((m) => m.content)}
+              // The live conversation lands in the chat as it goes.
+              onLine={(role, content) => setMessages((m) => [...m, { role, content }])}
+              onClose={() => {
+                setTalking(false);
+                abort.current?.abort();
+              }}
+            />
+          ) : (
           <form
             className="flex items-end gap-2 rounded-[28px] border bg-card p-2 pl-4 shadow-lg"
             onSubmit={(e) => {
@@ -391,21 +412,9 @@ export function AdvisorView() {
               </button>
             )}
           </form>
+          )}
         </div>
       </div>
-      {talking && (
-        <VoiceMode
-          ask={askAloud}
-          snapshot={snapshot}
-          history={messages.filter((m) => m.content)}
-          // The live conversation lands in the chat as it goes.
-          onLine={(role, content) => setMessages((m) => [...m, { role, content }])}
-          onClose={() => {
-            setTalking(false);
-            abort.current?.abort();
-          }}
-        />
-      )}
     </div>
   );
 }

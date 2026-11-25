@@ -40,8 +40,61 @@ export async function handleVoiceLlm(req: Request, env: Record<string, string | 
     return Response.json({ error: { message: "The AI couldn't answer just now." } }, { status: 502 });
   }
   if (!res.ok) console.error("voice llm: OpenAI answered", res.status);
+  // What Friday says here is read aloud: formatting marks would be spoken ("star star"), so they're taken out of
+  // every piece of the answer on its way back (each mark is a single character, so pieces split mid-mark are fine).
+  if (res.ok && res.body) {
+    const streamed = (res.headers.get("content-type") ?? "").includes("event-stream");
+    if (streamed) {
+      return new Response(res.body.pipeThrough(sseSpeakable()), {
+        status: res.status,
+        headers: { "content-type": res.headers.get("content-type") ?? "text/event-stream", "cache-control": "no-store" },
+      });
+    }
+    const data = (await res.json().catch(() => null)) as { choices?: { message?: { content?: string } }[] } | null;
+    if (data) {
+      for (const c of data.choices ?? []) if (c.message && typeof c.message.content === "string") c.message.content = speakable(c.message.content);
+      return Response.json(data, { status: res.status, headers: { "cache-control": "no-store" } });
+    }
+  }
   return new Response(res.body, {
     status: res.status,
     headers: { "content-type": res.headers.get("content-type") ?? "application/json", "cache-control": "no-store" },
+  });
+}
+
+/** Text fit to be spoken: no markdown marks (bold stars, headings, table bars, code ticks), no long dashes. */
+export function speakable(text: string): string {
+  return text.replace(/[*#|`]/g, "").replace(/\s*[—–]\s*/g, ", ");
+}
+
+/**
+ * Rewrites an OpenAI chat-completions event stream so each piece of the answer is speakable (see speakable); the
+ * rest of each event (ids, tool calls, finish reasons) passes through untouched.
+ */
+function sseSpeakable(): TransformStream<Uint8Array, Uint8Array> {
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let buffer = "";
+  const fix = (line: string) => {
+    if (!line.startsWith("data: ") || line === "data: [DONE]") return line;
+    try {
+      const event = JSON.parse(line.slice(6)) as { choices?: { delta?: { content?: unknown } }[] };
+      for (const c of event.choices ?? []) if (c.delta && typeof c.delta.content === "string") c.delta.content = speakable(c.delta.content);
+      return `data: ${JSON.stringify(event)}`;
+    } catch {
+      return line;
+    }
+  };
+  return new TransformStream({
+    transform(chunk, controller) {
+      buffer += decoder.decode(chunk, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      if (lines.length) controller.enqueue(encoder.encode(lines.map(fix).join("\n") + "\n"));
+    },
+    flush(controller) {
+      buffer += decoder.decode();
+      if (buffer) controller.enqueue(encoder.encode(fix(buffer)));
+    },
   });
 }

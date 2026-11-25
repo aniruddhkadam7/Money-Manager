@@ -48,11 +48,32 @@ interface Grant {
 }
 
 /** The token (and, on the live site, the pass for Friday's own thinking), from this app's server. */
-async function grant(): Promise<Grant> {
+async function fetchGrant(): Promise<Grant> {
   const res = await authFetch("/api/voice/agent", { method: "POST" });
   const d = (await res.json().catch(() => ({}))) as Grant & { message?: string };
   if (!res.ok || !d.token) throw new Error(d.message ?? "Couldn't start the live assistant.");
   return d;
+}
+
+// A token fetched ahead (on opening Friday) so starting to talk doesn't wait for one. Tokens only need to be valid
+// when the connection opens, so one younger than 45 seconds (of 60) is used; older ones are fetched afresh.
+let ahead: { at: number; grant: Promise<Grant> } | null = null;
+
+/** Fetch a token now, ready for the next conversation. */
+export function prefetchAgentGrant() {
+  if (ahead && Date.now() - ahead.at < 40_000) return;
+  const grant = fetchGrant();
+  grant.catch(() => {
+    ahead = null;
+  });
+  ahead = { at: Date.now(), grant };
+}
+
+function grant(): Promise<Grant> {
+  const ready = ahead && Date.now() - ahead.at < 45_000 ? ahead.grant : null;
+  // Each token opens one conversation.
+  ahead = null;
+  return ready ?? fetchGrant();
 }
 
 /** Float samples at `from` Hz to 16-bit PCM at `to` Hz (linear interpolation; voice needs no better). */
@@ -86,9 +107,12 @@ export async function startAgent(opts: {
 }): Promise<AgentSession> {
   const { ctx, events } = opts;
   events.onPhase("connecting");
-  const g = await grant();
-  const mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
-  if (ctx.state === "suspended") await ctx.resume();
+  // The token, the microphone and the audio all at once, not one after another.
+  const [g, mic] = await Promise.all([
+    grant(),
+    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } }),
+    ctx.state === "suspended" ? ctx.resume() : Promise.resolve(),
+  ]);
 
   // A temporary token goes as a "bearer" subprotocol; some setups expect "token": try one, then the other.
   const ws = await new Promise<WebSocket>((resolve, reject) => {

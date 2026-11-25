@@ -7,7 +7,6 @@ import { startAgent, type AgentFunction, type AgentSession } from "@/lib/voice/a
 import { ADVISOR_PROMPT, VOICE_PROMPT } from "@/lib/advisor/prompt";
 import type { AdvisorSnapshot } from "@/lib/advisor/snapshot";
 import { cn } from "@/lib/utils";
-import { FridayOrb } from "./friday-orb";
 
 /** Whether this browser can record and the server has voice set up (null while checking). */
 export function useVoice(): boolean | null {
@@ -294,34 +293,54 @@ export function VoiceMode({
   };
 
   const busy = phase === "thinking" || phase === "hearing";
+  // A slim bar in place of the message box: the chat stays in view, with the conversation landing in it as it goes.
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col items-center justify-between bg-background/95 px-6 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-[calc(3rem+env(safe-area-inset-top))] backdrop-blur" role="dialog" aria-label="Talking with Friday" data-testid="voice-mode">
-      <p className="text-xs font-bold uppercase tracking-wider text-[#0eadff]">Friday</p>
-      <div className="grid justify-items-center gap-8">
-        <button type="button" onClick={tapOrb} aria-label={PHASE_TEXT[phase] || "Try again"} className="rounded-full transition-transform duration-100" style={{ transform: `scale(${1 + level * 0.35})` }}>
-          <FridayOrb size={160} active={phase === "speaking" || busy} />
-        </button>
-        <div className="grid max-w-md justify-items-center gap-2 text-center">
-          {phase === "error" ? (
-            <>
-              <p className="text-sm text-red-600">{error}</p>
-              <button type="button" onClick={tapOrb} className="rounded-full border px-4 py-1.5 text-sm hover:bg-muted">
-                Try again
-              </button>
-            </>
-          ) : (
-            <p className="flex items-center gap-2 text-base font-medium text-muted-foreground">
-              {busy && <Loader2 className="size-4 animate-spin" />}
-              {PHASE_TEXT[phase]}
-            </p>
+    <div className="flex min-h-14 items-center gap-3 rounded-[28px] border bg-card py-2 pl-4 pr-2 shadow-lg" role="status" aria-live="polite" data-testid="voice-mode">
+      {phase === "error" ? (
+        <>
+          <p className="min-w-0 flex-1 text-sm text-red-600">{error}</p>
+          <button type="button" onClick={tapOrb} className="shrink-0 rounded-full border px-3 py-1.5 text-sm font-medium hover:bg-muted">
+            Try again
+          </button>
+        </>
+      ) : (
+        <>
+          <Wave level={level} phase={phase} />
+          <p className="min-w-0 flex-1 truncate text-sm font-medium text-muted-foreground">
+            {phase === "starting" ? "Connecting…" : phase === "listening" ? "Listening…" : phase === "speaking" ? "Friday is speaking" : "Thinking…"}
+          </p>
+          {phase === "speaking" && (
+            <button type="button" onClick={tapOrb} className="shrink-0 rounded-full border px-3 py-1.5 text-sm font-medium hover:bg-muted" data-testid="voice-interrupt">
+              Stop
+            </button>
           )}
-          {heard && phase !== "listening" && <p className="line-clamp-3 text-sm text-muted-foreground">“{heard}”</p>}
-        </div>
-      </div>
-      <button type="button" onClick={onClose} aria-label="End voice chat" className="grid size-14 place-items-center rounded-full bg-red-500 text-white shadow-lg hover:bg-red-600" data-testid="voice-end">
-        <X className="size-6" />
+        </>
+      )}
+      <button type="button" onClick={onClose} aria-label="End voice chat" title="End" className="grid size-10 shrink-0 place-items-center rounded-full bg-red-500 text-white hover:bg-red-600" data-testid="voice-end">
+        <X className="size-5" />
       </button>
     </div>
+  );
+}
+
+/**
+ * A calm sound wave: five bars that follow the voice (yours while listening, Friday's while it speaks), gently
+ * breathing while it thinks. No flashing: the bars glide between heights.
+ */
+function Wave({ level, phase }: { level: number; phase: Phase }) {
+  const shape = [0.55, 0.85, 1, 0.85, 0.55];
+  const idle = phase === "thinking" || phase === "hearing" || phase === "starting";
+  const color = phase === "speaking" ? "bg-[#0eadff]" : phase === "listening" ? "bg-[#f23c57]" : "bg-muted-foreground/50";
+  return (
+    <span className="flex h-6 w-9 shrink-0 items-center justify-between" aria-hidden>
+      {shape.map((k, i) => (
+        <span
+          key={i}
+          className={cn("w-1 rounded-full transition-[height] duration-150 ease-out", color, idle && "animate-pulse motion-reduce:animate-none")}
+          style={{ height: `${Math.round(5 + (idle ? 6 : Math.min(1, level * 1.6) * 19) * k)}px`, animationDelay: idle ? `${i * 120}ms` : undefined }}
+        />
+      ))}
+    </span>
   );
 }
 
@@ -332,8 +351,12 @@ export function VoiceMode({
  */
 function liveInstructions(s: AdvisorSnapshot, full: boolean): string {
   const figures = full ? s : { ...s, entries: { columns: s.entries.columns, rows: [], truncated: true, note: "Use find_entries to look entries up." } };
-  return `${ADVISOR_PROMPT}\n\n${VOICE_PROMPT}\n\nThis is a live spoken conversation: answer quickly and briefly, then stop and listen.\n\nSNAPSHOT (today ${s.today}):\n${JSON.stringify(figures)}`;
+  // The spoken-answer rules come last, after the figures, so they win over the written-chat formatting rules above.
+  return `${ADVISOR_PROMPT}\n\nSNAPSHOT (today ${s.today}):\n${JSON.stringify(figures)}\n\n${VOICE_PROMPT}\n\n${LIVE_RULES}`;
 }
+
+/** The last word for a live conversation: everything said is read aloud as it's written. */
+const LIVE_RULES = `LIVE VOICE (most important): everything you write is read aloud word for word, as you write it. Write plain spoken sentences only. Never write asterisks, hashes, bullets, dashes as list marks, table bars, emoji or the rupee sign: write "rupees" as a word ("1 lakh 20 thousand rupees"). No lists or tables: say it in 1 to 3 short sentences, then stop and listen.`;
 
 /** Lookups Friday may call during a live conversation (run here, on your own figures). */
 function lookups(s: AdvisorSnapshot): AgentFunction[] {
