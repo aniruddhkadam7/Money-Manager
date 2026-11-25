@@ -13,7 +13,9 @@ const MAX_AUDIO = 8 * 1024 * 1024;
 const MAX_SPEAK = 2000;
 
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { "cache-control": "no-store" } });
-const keyOf = (env: Record<string, string | undefined>) => env.DEEPGRAM_API_KEY?.trim() || null;
+// The Member key (DEEPGRAM_AGENT_KEY) first: it does everything (speech to text, voice, the live assistant);
+// DEEPGRAM_API_KEY only when that isn't set.
+const keyOf = (env: Record<string, string | undefined>) => env.DEEPGRAM_AGENT_KEY?.trim() || env.DEEPGRAM_API_KEY?.trim() || null;
 
 /** Whether voice can be used (the Deepgram key is set on the server). */
 export function voiceAvailability(env: Record<string, string | undefined> = process.env) {
