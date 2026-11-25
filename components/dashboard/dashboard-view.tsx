@@ -16,6 +16,7 @@ import { SpendingSection } from "./cash-flow-sections";
 import { InvestmentSection } from "./investment-section";
 import { SamePeopleBanner } from "../money/same-people-banner";
 import { SoFarSection } from "./so-far-section";
+import { HealthSection } from "./health-section";
 import { SummaryHero } from "./summary-hero";
 import { hasPartyData, TopParties } from "./top-parties";
 import { SubscriptionsSection } from "./subscriptions-section";
@@ -83,6 +84,11 @@ export function DashboardView() {
       {/* So far: earned, spent, and where */}
       <div className="col-span-full">
         <SoFarSection />
+      </div>
+
+      {/* Money health: runway, savings rate, EMIs, fixed costs, debt, card usage, money owed to you, growth */}
+      <div className="col-span-full">
+        <HealthSection />
       </div>
 
       <SamePeopleBanner className="col-span-full" />

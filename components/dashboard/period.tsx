@@ -51,7 +51,7 @@ export function MonthStepper({ ym, monthsBack, canGoBack, onChange }: { ym: stri
         <ChevronLeft className="size-4" />
       </button>
       <div className="min-w-[4.75rem] text-center leading-tight" aria-live="polite">
-        <div className="text-sm font-semibold">{name}</div>
+        <div className="text-sm font-semibold text-foreground">{name}</div>
         <div className="text-[10px] text-muted-foreground">{monthsBack === 0 ? "So far" : monthsBack === 1 ? "Last month" : `${monthsBack} months ago`}</div>
       </div>
       <button type="button" className={btn} onClick={() => onChange(monthsBack - 1)} disabled={monthsBack === 0} aria-label="Next month">

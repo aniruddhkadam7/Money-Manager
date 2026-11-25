@@ -115,7 +115,11 @@ export function SummaryHero({ model, state: stateNow, book }: { model: Dashboard
 
       <div className="relative lg:flex lg:items-end lg:justify-between lg:gap-10">
         <div className="shrink-0">
-        <p className="text-sm font-medium text-slate-500">{past ? `Net worth on ${formatDisplayDate(asOf)}` : "Net worth"}</p>
+        {/* The title, with the month switcher in the top-right corner (on "This month"), as on the other cards. */}
+        <div className="flex min-h-9 items-center justify-between gap-3">
+          <p className="text-sm font-medium text-slate-500">{past ? `Net worth on ${formatDisplayDate(asOf)}` : "Net worth"}</p>
+          {period.stepper}
+        </div>
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-2">
           <Link
             href="/money"
@@ -128,7 +132,7 @@ export function SummaryHero({ model, state: stateNow, book }: { model: Dashboard
           {change !== null && (
             <button type="button" onClick={howChange.open} className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring" title={`Why it changed ${inMonth}`} data-testid="net-worth-change">
               <DeltaPill tone={change > 0 ? "positive" : change < 0 ? "negative" : "neutral"}>
-                {change === 0 ? "No change" : formatSignedINR(change)} {inMonth}
+                {change === 0 ? "No change" : formatSignedINR(Math.round(change / 100) * 100).replace(/\.00$/, "")} {inMonth}
               </DeltaPill>
             </button>
           )}

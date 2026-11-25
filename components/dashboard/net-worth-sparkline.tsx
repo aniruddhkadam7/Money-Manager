@@ -85,9 +85,9 @@ export function NetWorthSparkline({ firstActivity, period }: { firstActivity: st
   };
 
   return (
-    <div className="mt-2 w-full sm:mt-3 lg:w-80" data-testid="net-worth-sparkline">
-      {period.stepper && <div className="mb-2 flex justify-end">{period.stepper}</div>}
-      <div className="mb-2 flex items-center justify-end gap-2">
+    <div className="mt-4 w-full sm:mt-5 lg:w-80" data-testid="net-worth-sparkline">
+      {/* The periods across the full width (the month switcher is in the card's top-right corner). */}
+      <div className="mb-3 [&>[role=tablist]]:flex [&>[role=tablist]]:w-full [&_[role=tab]]:flex-auto [&_[role=tab]]:whitespace-nowrap">
         <RangeTabs label="Net worth timeline" value={period.span} options={period.options} onChange={(v) => { period.setSpan(v); setHover(null); }} />
       </div>
       <div className="mb-1 flex items-baseline justify-between gap-2 text-[11px] tabular-nums text-slate-400">
@@ -99,8 +99,8 @@ export function NetWorthSparkline({ firstActivity, period }: { firstActivity: st
         ) : (
           <>
             <span>{words}</span>
-            <span className={delta > 0 ? "font-medium text-emerald-600" : delta < 0 ? "font-medium text-rose-600" : "text-slate-500"}>
-              {delta === 0 ? "No change" : `${delta > 0 ? "Up" : "Down"} ${formatExactINR(Math.abs(delta))}`}
+            <span className={cn("text-xs", delta > 0 ? "font-medium text-emerald-600" : delta < 0 ? "font-medium text-rose-600" : "text-slate-500")}>
+              {delta === 0 ? "No change" : `${delta > 0 ? "Up" : "Down"} ${formatExactINR(Math.round(Math.abs(delta) / 100) * 100).replace(/\.00$/, "")}`}
             </span>
           </>
         )}
