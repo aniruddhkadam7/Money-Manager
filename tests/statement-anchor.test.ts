@@ -40,14 +40,38 @@ describe("balances from the latest bank statement", () => {
     expect(state.netWorthMinor).toBe(state.cashMinor);
   });
 
-  it("leaves days before the statement as recorded", () => {
+  it("works days before the statement back from it, not from entries alone (no made-up negative balance)", () => {
     const gaps = anchorGaps(book, ledger, anchors);
-    const before = deriveState(book, ledger, "2026-10-15");
-    expect(applyAnchorGaps(before, gaps)).toBe(before);
+    // 15 Oct: nothing recorded between then and the statement, so the bank held what the statement closed at.
+    const before = applyAnchorGaps(deriveState(book, ledger, "2026-10-15"), gaps);
+    expect(before.accounts.find((a) => a.account.id === "Kotak")?.balanceMinor).toBe(940674);
+    // 9 Oct: before the ₹818.26 spent on the 10th, so that much more.
+    const earlier = applyAnchorGaps(deriveState(book, ledger, "2026-10-09"), gaps);
+    expect(earlier.accounts.find((a) => a.account.id === "Kotak")?.balanceMinor).toBe(940674 + 81826);
 
-    const [p15, p16] = applyAnchorGapsToSeries(balanceSeries(book, ledger, ["2026-10-15", "2026-10-16"]), gaps);
-    expect(p15.netWorthMinor).toBe(5000000 - 81826);
+    // The chart says the same, with no jump on the statement's day.
+    const [p9, p15, p16] = applyAnchorGapsToSeries(balanceSeries(book, ledger, ["2026-10-09", "2026-10-15", "2026-10-16"]), gaps);
+    expect(p9.netWorthMinor).toBe(5000000 + 940674 + 81826);
+    expect(p15.netWorthMinor).toBe(5000000 + 940674);
     expect(p16.netWorthMinor).toBe(5000000 + 940674);
+    expect(p15.netWorthMinor).toBe(before.netWorthMinor);
+  });
+
+  it("with several statements, each day goes by the latest one up to it (or the first one, before any)", () => {
+    // Statements closing 16 Oct (₹9,406.74) and 31 Oct (₹1,000, which the entries miss ₹8,000 of on top of the rest).
+    const gaps = anchorGaps(book, ledger, [...anchors, { accountId: "Kotak", date: "2026-10-31", closingMinor: 100000 }], true);
+    const kotak = (date: string) => applyAnchorGaps(deriveState(book, ledger, date), gaps).accounts.find((a) => a.account.id === "Kotak")?.balanceMinor;
+    expect(kotak("2026-10-05")).toBe(940674 + 81826);
+    expect(kotak("2026-10-16")).toBe(940674);
+    expect(kotak("2026-10-20")).toBe(940674 - 50000);
+    expect(kotak("2026-10-31")).toBe(100000);
+    expect(kotak("2026-11-02")).toBe(100000);
+  });
+
+  it("a statement that agrees with the entries still settles the days around it", () => {
+    const agreeing = anchorGaps(book, ledger, [{ accountId: "Kotak", date: "2026-10-12", closingMinor: -81826 }, ...anchors], true);
+    // 12 Oct: the entries match that statement; the later statement's gap mustn't leak back past it.
+    expect(applyAnchorGaps(deriveState(book, ledger, "2026-10-13"), agreeing).accounts.find((a) => a.account.id === "Kotak")?.balanceMinor).toBe(-81826);
   });
 
   it("counts entries marked as not in a statement on top of the statement's balance", () => {

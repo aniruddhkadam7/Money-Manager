@@ -47,14 +47,23 @@ export function useStatementChecks(): Map<string, StatementCheck> {
   }, [imports, book, ledger]);
 }
 
-/** Each bank account's gap between its latest statement and the app's entries on that statement's day. */
+/**
+ * For every bank statement imported, the gap between its closing balance and the app's entries on its last day.
+ * Every statement counts, not only the latest, so an earlier day goes by the statement nearest it (see gapAt).
+ */
 export function useStatementGaps(): AnchorGap[] {
   const { book, ledger } = useFinance();
-  const checks = useStatementChecks();
-  return useMemo(
-    () => anchorGaps(book, ledger, [...checks].map(([accountId, c]) => ({ accountId, date: c.date, closingMinor: c.closingMinor }))),
-    [book, ledger, checks],
-  );
+  const { imports } = useStatements();
+  return useMemo(() => {
+    // One per account and day (a statement imported twice counts once).
+    const anchors = new Map<string, { accountId: string; date: string; closingMinor: number }>();
+    for (const i of imports) {
+      const closing = statementClosing(i, book.accounts.find((a) => a.id === i.accountId)?.type);
+      if (i.status === "FAILED" || closing == null || !i.periodEnd || !i.accountId) continue;
+      anchors.set(`${i.accountId}|${i.periodEnd}`, { accountId: i.accountId, date: i.periodEnd, closingMinor: closing });
+    }
+    return anchorGaps(book, ledger, [...anchors.values()], true);
+  }, [imports, book, ledger]);
 }
 
 /**

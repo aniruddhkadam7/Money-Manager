@@ -16,7 +16,7 @@ import { useFinance } from "../finance-provider";
 import { NetWorthBreakdown, NetWorthBreakdownSheet } from "./net-worth-breakdown";
 import { NetWorthSparkline } from "./net-worth-sparkline";
 import { useStatementGaps } from "../statements/use-statement-checks";
-import { applyAnchorGapsToSeries } from "@/lib/finance/statement-anchor";
+import { applyAnchorGaps, applyAnchorGapsToSeries } from "@/lib/finance/statement-anchor";
 import { balanceSeries, changeBps } from "@/lib/finance/series";
 import { deriveState } from "@/lib/finance/state";
 import { formatMonthLong } from "@/lib/domain/dates";
@@ -73,7 +73,9 @@ export function SummaryHero({ model, state: stateNow, book }: { model: Dashboard
   const ym = past ? period.from.slice(0, 7) : model.ym;
   const asOf = past ? period.to : today;
   const monthName = formatMonthLong(ym);
-  const state = useMemo(() => (past ? deriveState(book, ledger, asOf) : stateNow), [past, book, ledger, asOf, stateNow]);
+  // Bank balances as the statements say (as everywhere else), for that day too.
+  const gaps = useStatementGaps();
+  const state = useMemo(() => (past ? applyAnchorGaps(deriveState(book, ledger, asOf), gaps) : stateNow), [past, book, ledger, asOf, stateNow, gaps]);
   const month = useMemo(() => {
     if (!past) return { expensesMinor: model.current.expensesMinor, incomeMinor: model.current.incomeMinor, savingsMinor: model.current.savingsMinor, spendBps: model.spendingChangeBps };
     const r = report(monthStart(ym), monthEnd(ym));
@@ -87,7 +89,6 @@ export function SummaryHero({ model, state: stateNow, book }: { model: Dashboard
   const inMonth = past ? `in ${monthName}` : "this month";
   // The change this month on the same footing as the headline and the chart: bank balances as their latest
   // statements say. From entries alone it can differ (a statement shows money your entries don't).
-  const gaps = useStatementGaps();
   const lastMonthClose = monthEnd(shiftMonth(ym, -1));
   const change = useMemo(() => {
     if (model.netWorthChangeMinor === null) return null;
