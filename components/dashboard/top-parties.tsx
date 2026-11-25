@@ -11,6 +11,8 @@ import type { FinancialState, PersonSummary } from "@/lib/finance/state";
 import { brandFor } from "@/lib/finance/brands";
 import { CategoryIcon } from "../category-icon";
 import { PartyLogo } from "../brand-logo";
+import { PersonAvatar } from "../money/person-photo";
+import { usePersonSheet } from "../money/person-sheet-provider";
 import { ChartCard, EmptyChart, RangeTabs } from "../charts/primitives";
 import { cn } from "@/lib/utils";
 import { useFinance } from "../finance-provider";
@@ -62,6 +64,7 @@ function Row({
   ratio,
   color,
   href,
+  onOpen,
 }: {
   lead: ReactNode;
   title: string;
@@ -69,11 +72,13 @@ function Row({
   amount: string;
   ratio: number;
   color: string;
-  href: string;
+  href?: string;
+  /** Instead of a link: what tapping does (a person's profile). */
+  onOpen?: () => void;
 }) {
-  return (
-    <li className="min-w-0">
-      <Link href={href} className="flex min-w-0 items-center gap-3 rounded-xl px-1.5 py-1.5 outline-none hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-ring">
+  const cls = "flex w-full min-w-0 items-center gap-3 rounded-xl px-1.5 py-1.5 text-left outline-none hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-ring";
+  const inner = (
+    <>
         {lead}
         <div className="min-w-0 flex-1">
           {/* Phones (two cards side by side): the name on one line, cut short if need be, and the amount under it. */}
@@ -85,7 +90,19 @@ function Row({
           <Bar ratio={ratio} color={color} />
           <p className="mt-1 truncate text-[11px] text-slate-400 max-sm:hidden">{caption}</p>
         </div>
-      </Link>
+    </>
+  );
+  return (
+    <li className="min-w-0">
+      {onOpen || !href ? (
+        <button type="button" onClick={onOpen} className={cls}>
+          {inner}
+        </button>
+      ) : (
+        <Link href={href} className={cls}>
+          {inner}
+        </Link>
+      )}
     </li>
   );
 }
@@ -160,6 +177,7 @@ function IncomeSourcesCard() {
 /** People who owe me (my borrowers) or whom I owe (my lenders). */
 function PeopleCard({ title, side, people }: { title: string; side: "borrowers" | "lenders"; people: PersonSummary[] }) {
   const mine = side === "borrowers";
+  const { openPerson } = usePersonSheet();
   const rows = people
     .map((p) => ({
       person: p.person,
@@ -194,8 +212,8 @@ function PeopleCard({ title, side, people }: { title: string; side: "borrowers" 
             {shown.map((r) => (
               <Row
                 key={r.person.id}
-                href={activityHref({ person: r.person.id })}
-                lead={<PartyLogo name={r.person.name} className="!rounded-full [&>img]:!size-6" fallback={<Avatar name={r.person.name} />} />}
+                onOpen={() => openPerson(r.person.id)}
+                lead={<PersonAvatar person={r.person} logoClassName="!rounded-full [&>img]:!size-6" fallback={<Avatar name={r.person.name} />} />}
                 title={r.person.name}
                 caption={
                   r.settled > 0

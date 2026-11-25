@@ -2,15 +2,18 @@
 
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { CalendarClock, Copy, FileText, Pencil, Trash2 } from "lucide-react";
+import { CalendarClock, ChevronRight, Copy, FileText, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatDisplayDate } from "@/lib/domain/dates";
 import { formatRupees } from "@/lib/finance/describe";
 import { findSimilar } from "@/lib/finance/similar";
+import { involvesPerson } from "@/lib/finance/person-summary";
 import { billFor, useBills } from "@/lib/finance/bills";
 import type { EventType, FinancialEvent } from "@/lib/finance/types";
 import { useFinance } from "../finance-provider";
+import { PersonAvatar } from "../money/person-photo";
+import { usePersonSheet } from "../money/person-sheet-provider";
 import { PictureIcon } from "../picture-icon";
 import { EventLogo } from "./event-logo";
 import { useToast } from "../toast";
@@ -30,6 +33,8 @@ interface EventDialogApi {
   openDuplicate: (eventId: string) => void;
   /** Asks before deleting, then offers Undo. */
   requestDelete: (eventId: string) => void;
+  /** Whether the entry window is showing (something opened over it, like a person's profile, may need to step aside). */
+  isOpen: boolean;
 }
 
 const EventDialogContext = createContext<EventDialogApi | null>(null);
@@ -96,9 +101,10 @@ export function EventDialogProvider({ children }: { children: ReactNode }) {
   );
   const requestDelete = useCallback((eventId: string) => setView({ kind: "confirmDelete", eventId }), []);
 
+  const isOpen = view.kind !== "closed";
   const api = useMemo(
-    () => ({ openAdd, openDetail, openEdit, openDuplicate, requestDelete }),
-    [openAdd, openDetail, openEdit, openDuplicate, requestDelete],
+    () => ({ openAdd, openDetail, openEdit, openDuplicate, requestDelete, isOpen }),
+    [openAdd, openDetail, openEdit, openDuplicate, requestDelete, isOpen],
   );
   const close = () => setView({ kind: "closed" });
 
@@ -330,6 +336,8 @@ function Detail({
 
       <p className="text-sm text-muted-foreground">{describer.subtitle(event)}</p>
 
+      <EntryPeople event={event} />
+
       {event.note && (
         <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm" data-testid="event-note">
           <p className="text-xs font-medium text-muted-foreground">Reason</p>
@@ -391,6 +399,35 @@ function Detail({
         </DialogFooter>
       )}
     </>
+  );
+}
+
+/** The people an entry is with (or that its payment names): tap one for their profile, over this entry. */
+function EntryPeople({ event }: { event: FinancialEvent }) {
+  const { book } = useFinance();
+  const { openPerson } = usePersonSheet();
+  const people = book.people.filter((p) => involvesPerson(event, p));
+  if (people.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5" data-testid="entry-people">
+      {people.map((p) => (
+        <button
+          key={p.id}
+          type="button"
+          onClick={() => openPerson(p.id)}
+          className="flex max-w-full items-center gap-2 rounded-full border py-1 pl-1 pr-2.5 text-sm font-medium hover:bg-muted"
+        >
+          <PersonAvatar
+            person={p}
+            className="size-6"
+            logoClassName="!size-6 !rounded-full [&>img]:!size-4"
+            fallback={<span className="grid size-6 shrink-0 place-items-center rounded-full bg-indigo-500/15 text-[11px] font-semibold text-indigo-600">{p.name.charAt(0).toUpperCase()}</span>}
+          />
+          <span className="truncate">{p.name}</span>
+          <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
+        </button>
+      ))}
+    </div>
   );
 }
 

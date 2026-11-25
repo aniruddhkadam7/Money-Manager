@@ -11,6 +11,7 @@ interface Line {
   note?: string;
   amountMinor: number;
   href: string;
+  personId?: string;
 }
 
 /**
@@ -36,8 +37,9 @@ export function buildBreakdown(state: FinancialState): { own: Line[]; owe: Line[
   }
   for (const p of state.people) {
     const href = activityHref({ person: p.person.id });
-    if (p.owedToMe.outstandingMinor !== 0) own.push({ key: `r-${p.person.id}`, label: p.person.name, note: "Owes you", amountMinor: p.owedToMe.outstandingMinor, href });
-    if (p.iOwe.outstandingMinor !== 0) owe.push({ key: `p-${p.person.id}`, label: p.person.name, note: "You owe", amountMinor: p.iOwe.outstandingMinor, href });
+    const personId = p.person.id;
+    if (p.owedToMe.outstandingMinor !== 0) own.push({ key: `r-${p.person.id}`, label: p.person.name, note: "Owes you", amountMinor: p.owedToMe.outstandingMinor, href, personId });
+    if (p.iOwe.outstandingMinor !== 0) owe.push({ key: `p-${p.person.id}`, label: p.person.name, note: "You owe", amountMinor: p.iOwe.outstandingMinor, href, personId });
   }
   own.sort((a, b) => b.amountMinor - a.amountMinor);
   owe.sort((a, b) => b.amountMinor - a.amountMinor);

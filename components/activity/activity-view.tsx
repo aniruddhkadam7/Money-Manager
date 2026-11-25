@@ -12,16 +12,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SearchableSelect, type SearchableOption } from "@/components/ui/searchable-select";
 import { accountIdsUsedBy, personIdsUsedBy } from "@/lib/finance/book-ops";
 import { formatRupees } from "@/lib/finance/describe";
-import { involvesPerson, personSummary, type PersonSummary } from "@/lib/finance/person-summary";
+import { involvesPerson, personSummary } from "@/lib/finance/person-summary";
 import { chronological } from "@/lib/finance/order";
 import { isMoneyBack } from "@/lib/finance/state";
 import { categoryLabel, familyIds } from "@/lib/domain/categories";
-import type { Category } from "@/lib/domain/types";
 import type { EventType, FinancialEvent } from "@/lib/finance/types";
 import { cn } from "@/lib/utils";
 import { ActivityViewSwitch } from "../calendar/calendar-view";
 import { CategoryIcon } from "../category-icon";
-import { PartyLogo } from "../brand-logo";
+import { PersonAvatar } from "../money/person-photo";
+import { usePersonSheet } from "../money/person-sheet-provider";
+import { TogetherSummary } from "../money/person-together";
 import { useEventDialog } from "../events/event-dialog";
 import { EVENT_OPTIONS } from "../events/event-meta";
 import { EventRow, headline } from "../events/event-row";
@@ -137,6 +138,7 @@ export function ActivityView() {
 function ActivityContent() {
   const { status, book, categories, describer, state } = useFinance();
   const { openAdd } = useEventDialog();
+  const { openPerson } = usePersonSheet();
 
   const params = useSearchParams();
   const router = useRouter();
@@ -310,15 +312,18 @@ function ActivityContent() {
         <Card>
           <CardContent className="flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
             <div className="flex items-center gap-4">
-              <PartyLogo
-                name={person.person.name}
-                className="!size-12 !rounded-full"
-                fallback={
-                  <span className="grid size-12 shrink-0 place-items-center rounded-full bg-indigo-50 text-lg font-semibold text-indigo-600">
-                    {person.person.name.charAt(0).toUpperCase()}
-                  </span>
-                }
-              />
+              <button type="button" onClick={() => openPerson(person.person.id)} className="shrink-0 rounded-full" aria-label={`${person.person.name}'s profile`} title="Profile">
+                <PersonAvatar
+                  person={person.person}
+                  className="size-12"
+                  logoClassName="!size-12 !rounded-full"
+                  fallback={
+                    <span className="grid size-12 shrink-0 place-items-center rounded-full bg-indigo-50 text-lg font-semibold text-indigo-600">
+                      {person.person.name.charAt(0).toUpperCase()}
+                    </span>
+                  }
+                />
+              </button>
               <div>
                 <button
                   type="button"
@@ -327,7 +332,11 @@ function ActivityContent() {
                 >
                   <ArrowLeft className="size-3" /> All people
                 </button>
-                <h1 className="text-xl font-semibold leading-tight">{person.person.name}</h1>
+                <h1 className="text-xl font-semibold leading-tight">
+                  <button type="button" onClick={() => openPerson(person.person.id)} className="text-left hover:text-emerald-700 hover:underline">
+                    {person.person.name}
+                  </button>
+                </h1>
                 <p className="text-sm text-muted-foreground">
                   {person.owedToMe.outstandingMinor > 0 && (
                     <span className="font-medium text-foreground">Owes you {formatRupees(person.owedToMe.outstandingMinor)}</span>
@@ -510,56 +519,3 @@ function ActivityContent() {
   );
 }
 
-
-/** Everything you've had with one person, in a few figures, and what the shared spending was on. */
-function TogetherSummary({ summary: s, categories }: { summary: PersonSummary; categories: Category[] }) {
-  const figures: { label: string; value: number; note?: string }[] = [
-    { label: "You lent", value: s.lentMinor },
-    { label: "They paid back", value: s.theyRepaidMinor },
-    { label: "You borrowed", value: s.borrowedMinor },
-    { label: "You paid back", value: s.youRepaidMinor },
-    {
-      label: s.splits.count === 1 ? "Their share of 1 split" : `Their share of ${s.splits.count} splits`,
-      value: s.splits.theirShareMinor,
-      note: `of ${formatRupees(s.splits.billsMinor)} in bills`,
-    },
-    { label: "You paid for them", value: s.paidForThemMinor },
-    { label: "Paid to them", value: s.paidToThemMinor, note: "payments naming them" },
-    { label: "Received from them", value: s.receivedFromThemMinor, note: "payments naming them" },
-  ].filter((x) => x.value > 0);
-  if (figures.length === 0) return null;
-  const top = s.byCategory.slice(0, 5);
-  return (
-    <div className="grid w-full basis-full gap-3 border-t pt-4" data-testid="person-summary">
-      <p className="text-xs font-medium text-muted-foreground">
-        Everything with them · {s.entries} {s.entries === 1 ? "entry" : "entries"}
-      </p>
-      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {figures.map((x) => (
-          <div key={x.label} className="rounded-xl bg-muted/50 px-3 py-2">
-            <dt className="truncate text-xs text-muted-foreground">{x.label}</dt>
-            <dd className="font-semibold tabular-nums">{formatRupees(x.value)}</dd>
-            {x.note && <dd className="truncate text-[11px] text-muted-foreground">{x.note}</dd>}
-          </div>
-        ))}
-      </dl>
-      {top.length > 0 && (
-        <div className="grid gap-1.5">
-          <p className="text-xs font-medium text-muted-foreground">Where it went</p>
-          <div className="flex flex-wrap gap-1.5">
-            {top.map(({ categoryId, amountMinor }) => {
-              const c = categories.find((x) => x.id === categoryId);
-              return (
-                <span key={categoryId} className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs">
-                  {c && <CategoryIcon category={c} className="size-4" />}
-                  {c?.name ?? "Other"}
-                  <span className="font-medium tabular-nums">{formatRupees(amountMinor)}</span>
-                </span>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}

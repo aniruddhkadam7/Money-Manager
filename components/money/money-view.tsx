@@ -6,7 +6,6 @@ import { useUrlTab } from "../use-url-tab";
 import { Calculator, CheckCircle2, HandCoins, Pencil, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { activityHref } from "@/lib/charts/links";
 import { bankBrandFor } from "@/lib/finance/bank-logos";
 import { formatRupees } from "@/lib/finance/describe";
 import { formatDisplayDate } from "@/lib/domain/dates";
@@ -21,6 +20,8 @@ import { PageTitle } from "../page-title";
 import { statementMatches, useBalances, useCardUsage, useStatementChecks, type StatementCheck } from "../statements/use-statement-checks";
 import { ACCOUNT_TYPE_INFO, AccountDialog, InlineAccountForm, type AddableAccountType } from "./account-dialog";
 import { PeopleList } from "./manage-lists";
+import { PersonAvatar } from "./person-photo";
+import { usePersonSheet } from "./person-sheet-provider";
 import { LoanPanel } from "./loan-panel";
 import { personDebts } from "@/lib/finance/debts";
 import { CountAsRepayment } from "../activity/count-as-repayment";
@@ -127,6 +128,7 @@ export function MoneyView() {
   const bankOf = useBankHints();
   const usageOf = useCardUsage();
   const { openAdd } = useEventDialog();
+  const { openPerson } = usePersonSheet();
   const theyPaidMe = useQuickRepaymentReceived();
   const [calcOpen, setCalcOpen] = useSessionState("money:calcOpen", false);
   // Loans tab: the kinds of debt to add, shown under "Whom you pay" when Add is tapped.
@@ -382,10 +384,17 @@ export function MoneyView() {
                       const what = d.debts.map((x) => (x.for === "service" ? x.description || "Service" : x.for === "held" ? "Keeping for them" : "Borrowed")).filter((v, i, a) => a.indexOf(v) === i).join(", ");
                       return (
                       <li key={p.person.id} className="flex items-center gap-3 px-4 py-2.5 sm:px-5 sm:py-3" data-testid="owed-person">
-                        <Link href={activityHref({ person: p.person.id })} className="flex min-w-0 flex-1 items-center gap-3 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                          <span className="grid size-11 shrink-0 place-items-center rounded-[14px] bg-indigo-500/15 text-base font-semibold text-indigo-600 dark:text-indigo-300">
-                            {p.person.name.charAt(0).toUpperCase()}
-                          </span>
+                        <button type="button" onClick={() => openPerson(p.person.id)} className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                          <PersonAvatar
+                            person={p.person}
+                            className="size-11"
+                            logoClassName="!size-11 !rounded-[14px]"
+                            fallback={
+                              <span className="grid size-11 shrink-0 place-items-center rounded-[14px] bg-indigo-500/15 text-base font-semibold text-indigo-600 dark:text-indigo-300">
+                                {p.person.name.charAt(0).toUpperCase()}
+                              </span>
+                            }
+                          />
                           <span className="min-w-0 flex-1">
                             <span className="block truncate font-medium">{p.person.name}</span>
                             <span className="block truncate text-sm text-muted-foreground">
@@ -400,7 +409,7 @@ export function MoneyView() {
                               </span>
                             )}
                           </span>
-                        </Link>
+                        </button>
                         <p className="shrink-0 text-right font-semibold tabular-nums">
                           {formatRupees(p.iOwe.outstandingMinor)}
                           <span className="block text-xs font-normal text-muted-foreground">owed</span>
@@ -449,7 +458,15 @@ export function MoneyView() {
               {owedToMe.map((p) => (
                 <li key={p.person.id} className="grid gap-1 px-4 py-3 sm:px-5">
                   <div className="flex items-center justify-between gap-3">
-                    <Link href={activityHref({ person: p.person.id })} className="font-medium hover:text-emerald-700 hover:underline">{p.person.name}</Link>
+                    <button type="button" onClick={() => openPerson(p.person.id)} className="flex min-w-0 items-center gap-2 text-left font-medium hover:text-emerald-700 hover:underline">
+                      <PersonAvatar
+                        person={p.person}
+                        className="size-7"
+                        logoClassName="!size-7 !rounded-full [&>img]:!size-5"
+                        fallback={<span className="grid size-7 shrink-0 place-items-center rounded-full bg-emerald-500/15 text-xs font-semibold text-emerald-700">{p.person.name.charAt(0).toUpperCase()}</span>}
+                      />
+                      <span className="truncate">{p.person.name}</span>
+                    </button>
                     <p className="font-semibold tabular-nums">{formatRupees(p.owedToMe.outstandingMinor)}</p>
                   </div>
                   <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">

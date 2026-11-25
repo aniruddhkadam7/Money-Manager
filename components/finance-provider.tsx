@@ -20,6 +20,7 @@ import { makeDescriber, type Describer } from "@/lib/finance/describe";
 import { buildLedger } from "@/lib/finance/engine";
 import { bookFromLegacyExpenses, withDefaultAccounts, withMoneyBackCategories } from "@/lib/finance/migrate";
 import { deriveState, periodReport, type FinancialState, type PeriodReport } from "@/lib/finance/state";
+import { mergePersonPhotos, setPersonPhoto } from "@/lib/people-photos";
 import type { Account, Book, EventDraft, EventIssue, FinancialEvent, Ledger, TradeStyle } from "@/lib/finance/types";
 
 type Status = "loading" | "ready" | "error";
@@ -219,8 +220,16 @@ export function FinanceProvider({
       deleteEvent: (id) => apply(ops.deleteEvent(bookRef.current, id), () => null),
       restoreEvent: (event) => apply(ops.restoreEvent(bookRef.current, event), () => event.id, event.id),
       renamePerson: (id, name) => apply(ops.renamePerson(bookRef.current, id, name), () => null),
-      deletePerson: (id) => apply(ops.deletePerson(bookRef.current, id), () => null),
-      mergePeople: (keepId, dropId) => apply(ops.mergePeople(bookRef.current, keepId, dropId), () => null),
+      deletePerson: (id) =>
+        apply(ops.deletePerson(bookRef.current, id), () => {
+          setPersonPhoto(id, undefined);
+          return null;
+        }),
+      mergePeople: (keepId, dropId) =>
+        apply(ops.mergePeople(bookRef.current, keepId, dropId), () => {
+          mergePersonPhotos(keepId, dropId);
+          return null;
+        }),
       setPersonAliases: (id, aliases) => apply(ops.setPersonAliases(bookRef.current, id, aliases), () => null),
       categoryUsage: (id) => bookRef.current.events.filter((e) => "categoryId" in e && e.categoryId === id).length,
       renameCategory: async (id, name) => {

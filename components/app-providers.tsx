@@ -6,6 +6,7 @@ import { CloudGate } from "./cloud-gate";
 import { expenseRepository } from "@/lib/storage";
 import { EventDialogProvider } from "./events/event-dialog";
 import { FinanceProvider } from "./finance-provider";
+import { PersonSheetHost, PersonSheetProvider } from "./money/person-sheet-provider";
 import { StatementsProvider } from "./statements/statements-provider";
 import { ToastProvider } from "./toast";
 
@@ -21,7 +22,12 @@ export function AppProviders({ children }: { children: ReactNode }) {
       <FinanceProvider bookRepository={bookRepository} categoryRepository={expenseRepository}>
         <StatementsProvider>
           <ToastProvider>
-            <EventDialogProvider>{children}</EventDialogProvider>
+            <PersonSheetProvider>
+              <EventDialogProvider>
+                {children}
+                <PersonSheetHost />
+              </EventDialogProvider>
+            </PersonSheetProvider>
           </ToastProvider>
         </StatementsProvider>
       </FinanceProvider>

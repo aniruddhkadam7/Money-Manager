@@ -3,6 +3,7 @@
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
+import { useBackToClose } from "@/lib/back-close";
 import { cn } from "@/lib/utils";
 
 const Dialog = DialogPrimitive.Root;
@@ -94,6 +95,15 @@ function DialogContent({
   // Closes the way the ✕ does, so the dialog's own onOpenChange runs.
   const close = React.useCallback(() => closeRef.current?.click(), []);
   useSwipeToClose(sheet, close);
+  // The phone's / browser's Back closes this window first, one window at a time, before leaving the page.
+  const release = useBackToClose(close);
+  // Closing (✕, a swipe, Escape, the app's own button): its Back step goes now, not after the closing animation.
+  React.useEffect(() => {
+    if (!sheet) return;
+    const watch = new MutationObserver(() => sheet.dataset.state === "closed" && release());
+    watch.observe(sheet, { attributes: true, attributeFilter: ["data-state"] });
+    return () => watch.disconnect();
+  }, [sheet, release]);
   const setRefs = React.useCallback(
     (node: HTMLDivElement | null) => {
       setSheet(node);

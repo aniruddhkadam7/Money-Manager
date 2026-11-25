@@ -15,6 +15,8 @@ import { CategoryIcon } from "./category-icon";
 import { useEventDialog } from "./events/event-dialog";
 import { EventLogo } from "./events/event-logo";
 import { useFinance } from "./finance-provider";
+import { PersonAvatar } from "./money/person-photo";
+import { usePersonSheet } from "./money/person-sheet-provider";
 
 /** Lower case, spaces squeezed: how names are compared. */
 const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
@@ -62,6 +64,8 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
   const f = useFinance();
   const router = useRouter();
   const { openDetail } = useEventDialog();
+  // Over the search, so Back returns to the results.
+  const { openPerson: showPerson } = usePersonSheet();
   const bankOf = useBankHints();
   const [q, setQ] = useState("");
   const input = useRef<HTMLInputElement>(null);
@@ -161,15 +165,15 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
                   <Row
                     key={person.id}
                     lead={
-                      <PartyLogo
-                        name={person.name}
-                        className="!rounded-full [&>img]:!size-6"
+                      <PersonAvatar
+                        person={person}
+                        logoClassName="!rounded-full [&>img]:!size-6"
                         fallback={<span className="grid size-9 shrink-0 place-items-center rounded-full bg-indigo-500/15 text-sm font-semibold text-indigo-600 dark:text-indigo-300">{person.name.charAt(0).toUpperCase()}</span>}
                       />
                     }
                     title={person.name}
                     detail={detail}
-                    onClick={() => go(activityHref({ person: person.id }))}
+                    onClick={() => showPerson(person.id)}
                   />
                 ))}
               </Group>

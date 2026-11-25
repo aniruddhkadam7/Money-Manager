@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Info, ListTree } from "lucide-react";
 import { formatExactINR } from "@/lib/charts/format";
 import { cn } from "@/lib/utils";
+import { usePersonSheet } from "./money/person-sheet-provider";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 
 export interface ExplainRow {
@@ -12,6 +13,8 @@ export interface ExplainRow {
   note?: string;
   amountMinor: number;
   href?: string;
+  /** A person's line: tapping opens their profile instead of a link. */
+  personId?: string;
 }
 
 export interface ExplainSection {
@@ -32,6 +35,7 @@ export interface ExplainStep {
 const signed = (minor: number) => (minor > 0 ? "+" : minor < 0 ? "−" : "") + formatExactINR(Math.abs(minor));
 
 function Row({ row, showSign }: { row: ExplainRow; showSign: boolean }) {
+  const { openPerson } = usePersonSheet();
   const body = (
     <>
       <span className="min-w-0">
@@ -45,7 +49,12 @@ function Row({ row, showSign }: { row: ExplainRow; showSign: boolean }) {
   );
   return (
     <li>
-      {row.href ? (
+      {row.personId ? (
+        // Over this sheet, so Back returns to it.
+        <button type="button" onClick={() => openPerson(row.personId!)} className="flex w-full items-center justify-between gap-3 py-2 text-left hover:bg-slate-50">
+          {body}
+        </button>
+      ) : row.href ? (
         <Link href={row.href} className="flex items-center justify-between gap-3 py-2 hover:bg-slate-50">
           {body}
         </Link>

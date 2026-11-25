@@ -232,7 +232,7 @@ const TRADE_LABELS: { re: RegExp; category: string }[] = [
 /** "Restaurants" should match "restaurant": every merchant keyword also matches its plural. */
 const PLURAL_TOLERANT = MERCHANTS.map((m) => ({ ...m, re: new RegExp(m.re.source.replace(/\)\\b$/, ")(?:e?s)?\\b"), m.re.flags) }));
 
-function merchantCategory(text: string): string | null {
+export function merchantCategory(text: string): string | null {
   // A known travel brand wins over the trade words ("Treebo Hotels" is a stay, not a meal).
   const travel = PLURAL_TOLERANT.find((m) => m.category === "Travel");
   if (travel?.re.test(text)) return "Travel";

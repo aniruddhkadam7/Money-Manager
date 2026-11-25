@@ -14,6 +14,7 @@ import { dueWording, stageOf, upcomingBills, type DebtDue, type EmiDue, type Rem
 import { personDebts } from "@/lib/finance/debts";
 import { loanProgress } from "@/lib/finance/loan";
 import { useEventDialog } from "./events/event-dialog";
+import { usePersonSheet } from "./money/person-sheet-provider";
 import { readSent, useRemindersOn, writeSent } from "@/lib/reminder-settings";
 import { cn } from "@/lib/utils";
 import { BillsDialog, DateDialog, usePayBill } from "./bills-manager";
@@ -96,6 +97,7 @@ export function DueSoon({ className }: { className?: string }) {
   const reminders = useReminders();
   const pay = usePayBill();
   const { openAdd } = useEventDialog();
+  const { openPerson } = usePersonSheet();
   const [managing, setManaging] = useState(false);
   const [dateFor, setDateFor] = useState<Reminder | null>(null);
   // Nothing near: no card at all. Dates are managed from the profile menu (Bills & due dates).
@@ -114,9 +116,15 @@ export function DueSoon({ className }: { className?: string }) {
             {r.kind === "custom" ? (
               <RowBody r={r} className="flex-1" />
             ) : (
-              <Link href={hrefOf(r)} className="min-w-0 flex-1 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                <RowBody r={r} />
-              </Link>
+              r.kind === "debt" && r.personId ? (
+                <button type="button" onClick={() => openPerson(r.personId!)} className="min-w-0 flex-1 rounded-xl text-left outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <RowBody r={r} />
+                </button>
+              ) : (
+                <Link href={hrefOf(r)} className="min-w-0 flex-1 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <RowBody r={r} />
+                </Link>
+              )
             )}
             {r.kind === "custom" && r.billId && (
               <Button size="icon" variant="ghost" aria-label={`Mark ${r.title} paid`} title="Mark paid" onClick={() => pay(r.billId!)}>
@@ -215,6 +223,7 @@ export function ReminderNotifier() {
 /** A bell in the top bar: a badge for bills due within three days (or overdue), and the list of what's coming. */
 export function NotificationsBell() {
   const reminders = useReminders();
+  const { openPerson } = usePersonSheet();
   const [open, setOpen] = useState(false);
   const [managing, setManaging] = useState(false);
   const urgent = reminders.filter((r) => stageOf(r.days) > 0).length;
@@ -242,6 +251,11 @@ export function NotificationsBell() {
                 <li key={r.id}>
                   {r.kind === "custom" ? (
                     <RowBody r={r} />
+                  ) : r.kind === "debt" && r.personId ? (
+                    // Over the notifications, so Back returns to them.
+                    <button type="button" onClick={() => openPerson(r.personId!)} className="block w-full rounded-xl text-left outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                      <RowBody r={r} />
+                    </button>
                   ) : (
                     <Link href={hrefOf(r)} onClick={() => setOpen(false)} className="block rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring">
                       <RowBody r={r} />

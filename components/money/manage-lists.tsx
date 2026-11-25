@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { Check, Lock, Pencil, Trash2, UsersRound, X } from "lucide-react";
+import { Check, ChevronRight, Lock, Pencil, Trash2, UserPlus, X } from "lucide-react";
+import { findPeopleInEntries } from "@/lib/finance/found-people";
+import { hideFoundName, useNotPeople } from "@/lib/not-people";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,10 +12,9 @@ import { activityHref } from "@/lib/charts/links";
 import { formatRupees } from "@/lib/finance/describe";
 import { CategoryIcon } from "../category-icon";
 import { useFinance } from "../finance-provider";
-import { PartyLogo } from "../brand-logo";
+import { PersonAvatar } from "./person-photo";
+import { usePersonSheet } from "./person-sheet-provider";
 import { SamePeopleBanner } from "./same-people-banner";
-import { PersonNamesDialog } from "./person-names";
-import type { Person } from "@/lib/finance/types";
 
 /** One line with inline rename and delete. Shows why when something can't be removed. */
 function ManagedRow({
@@ -144,12 +145,14 @@ function ManagedRow({
   );
 }
 
-/** People: fix a typo in a name, tidy up, or remove someone you never used. */
+/** People: tap someone for everything about them (photo, names, merging, what went between you, deleting). */
 export function PeopleList({ className }: { className?: string }) {
   const f = useFinance();
   const people = f.state.people;
-  // Whose names (other names, merging) are open.
-  const [namesFor, setNamesFor] = useState<Person | null>(null);
+  const { openPerson } = usePersonSheet();
+  // Everyone else the entries name (a UPI payment to someone, "paid to Rahul"), so nobody is missed.
+  const notPeople = useNotPeople();
+  const found = useMemo(() => findPeopleInEntries(f.book, notPeople), [f.book, notPeople]);
 
   return (
     <Card className={className}>
@@ -158,9 +161,11 @@ export function PeopleList({ className }: { className?: string }) {
       </CardHeader>
       <SamePeopleBanner className="mx-4 sm:mx-5" />
       {people.length === 0 ? (
-        <CardContent className="py-6 text-sm text-muted-foreground">
-          Added when you lend, borrow or split a bill.
-        </CardContent>
+        found.length === 0 && (
+          <CardContent className="py-6 text-sm text-muted-foreground">
+            Added when you lend, borrow or split a bill, or when a payment names someone.
+          </CardContent>
+        )
       ) : (
         <ul className="divide-y py-2">
           {people.map((p) => {
@@ -170,37 +175,69 @@ export function PeopleList({ className }: { className?: string }) {
             const aka = p.person.aliases?.length ? ` · also ${p.person.aliases.join(", ")}` : "";
             const detail = money + aka;
             return (
-              <ManagedRow
-                key={p.person.id}
-                lead={
-                  <PartyLogo
-                    name={p.person.name}
-                    className="!rounded-full [&>img]:!size-6"
+              <li key={p.person.id}>
+                <button
+                  type="button"
+                  onClick={() => openPerson(p.person.id)}
+                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:outline-none sm:px-5"
+                >
+                  <PersonAvatar
+                    person={p.person}
+                    logoClassName="!rounded-full [&>img]:!size-6"
                     fallback={<span className="grid size-9 shrink-0 place-items-center rounded-full bg-slate-100 text-sm font-semibold text-slate-600">{p.person.name.charAt(0).toUpperCase()}</span>}
                   />
-                }
-                name={p.person.name}
-                detail={detail}
-                href={activityHref({ person: p.person.id })}
-                onRename={(name) => {
-                  const r = f.renamePerson(p.person.id, name);
-                  return r.ok ? null : r.issues[0]?.message ?? "Couldn't rename.";
-                }}
-                onDelete={() => {
-                  const r = f.deletePerson(p.person.id);
-                  return r.ok ? null : r.issues[0]?.message ?? "Couldn't delete.";
-                }}
-                extra={
-                  <Button variant="ghost" size="icon" aria-label={`Other names of ${p.person.name}, or merge`} title="Other names & merge" onClick={() => setNamesFor(p.person)}>
-                    <UsersRound />
-                  </Button>
-                }
-              />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">{p.person.name}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{detail}</span>
+                  </span>
+                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                </button>
+              </li>
             );
           })}
         </ul>
       )}
-      {namesFor && <PersonNamesDialog person={namesFor} onClose={() => setNamesFor(null)} />}
+      {found.length > 0 && (
+        <section aria-labelledby="found-people" className="border-t">
+          <div className="flex items-center justify-between gap-3 px-4 pb-1 pt-4 sm:px-5">
+            <div className="min-w-0">
+              <h3 id="found-people" className="text-sm font-semibold">
+                Found in your entries ({found.length})
+              </h3>
+              <p className="text-xs text-muted-foreground">Payments that name someone not in your list yet.</p>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => found.forEach((p) => f.resolvePerson(p.name))}>
+              <UserPlus /> Add all
+            </Button>
+          </div>
+          <ul className="divide-y py-2">
+            {found.map((p) => {
+              const money = [p.paidMinor > 0 && `Paid ${formatRupees(p.paidMinor)}`, p.receivedMinor > 0 && `Received ${formatRupees(p.receivedMinor)}`].filter(Boolean).join(" · ");
+              return (
+                <li key={p.key} className="flex items-center gap-3 px-4 py-2.5 sm:px-5">
+                  <span className="grid size-9 shrink-0 place-items-center rounded-full border border-dashed border-slate-300 text-sm font-semibold text-slate-500">
+                    {p.name.charAt(0).toUpperCase()}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <Link href={activityHref({ q: p.name })} className="block truncate text-sm font-medium hover:text-emerald-700 hover:underline">
+                      {p.name}
+                    </Link>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {money} · {p.entries} {p.entries === 1 ? "entry" : "entries"}
+                    </p>
+                  </div>
+                  <Button variant="ghost" size="icon" aria-label={`Add ${p.name} to People`} title="Add to People" onClick={() => f.resolvePerson(p.name)}>
+                    <UserPlus />
+                  </Button>
+                  <Button variant="ghost" size="icon" aria-label={`${p.name} isn't a person`} title="Not a person (hide)" onClick={() => hideFoundName(p.key)}>
+                    <X />
+                  </Button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
     </Card>
   );
 }

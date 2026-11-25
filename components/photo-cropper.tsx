@@ -14,7 +14,18 @@ const MAX_ZOOM = 4;
  * Lets the user place a freshly picked photo before it's saved: drag to move it, pinch / scroll / the slider
  * to zoom, and turn it a quarter at a time. The circle shows what the profile picture will be.
  */
-export function PhotoCropper({ img, onSave, onCancel }: { img: HTMLImageElement; onSave: (photo: string) => void; onCancel: () => void }) {
+export function PhotoCropper({
+  img,
+  onSave,
+  onCancel,
+  size,
+}: {
+  img: HTMLImageElement;
+  onSave: (photo: string) => void;
+  onCancel: () => void;
+  /** Side of the saved square picture, in px (cropPhoto's default when left out). */
+  size?: number;
+}) {
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -130,7 +141,7 @@ export function PhotoCropper({ img, onSave, onCancel }: { img: HTMLImageElement;
           <Button type="button" variant="ghost" onClick={onCancel}>
             Cancel
           </Button>
-          <Button type="button" onClick={() => onSave(cropPhoto(img, { frame: FRAME, x: offset.x, y: offset.y, scale, rotation }))}>
+          <Button type="button" onClick={() => onSave(cropPhoto(img, { frame: FRAME, x: offset.x, y: offset.y, scale, rotation }, size))}>
             Save photo
           </Button>
         </DialogFooter>
