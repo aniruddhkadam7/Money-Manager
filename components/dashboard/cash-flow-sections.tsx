@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { activityHref } from "@/lib/charts/links";
 import { formatBps, formatCompactINR, formatExactINR } from "@/lib/charts/format";
@@ -13,6 +13,7 @@ import { TooltipCard, TooltipHint, TooltipRow, TooltipTitle } from "../charts/to
 import { useFinance } from "../finance-provider";
 import { usePhone } from "../use-phone";
 import { GAIN, LOSS } from "./chart-helpers";
+import { useSessionState } from "@/lib/use-session-state";
 
 /** The months a month-by-month chart shows for a period; "All" can reach back further than the model's 12. */
 function usePeriodMonths(model: DashboardModel, range: RangeKey): MonthlyPoint[] {
@@ -54,7 +55,7 @@ const signed = (bps: number) => `${bps > 0 ? "+" : bps < 0 ? "−" : ""}${format
 /** Am I spending more than before? Month by month; this month's total and its change are in the summary at the top. */
 export function SpendingSection({ model }: { model: DashboardModel }) {
   const router = useRouter();
-  const [span, setSpan] = useState<RangeKey>(MONTHLY_DEFAULT_PERIOD);
+  const [span, setSpan] = useSessionState<RangeKey>("spending:span", MONTHLY_DEFAULT_PERIOD);
   const months = usePeriodMonths(model, span);
   const phone = usePhone();
 

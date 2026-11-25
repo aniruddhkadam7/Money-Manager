@@ -24,6 +24,7 @@ import { BulkApply, DEFAULT_FILTERS, filtersActive, lineMatches, PartyRanking, r
 import { ReviewCard } from "./review-card";
 import { useStatements, type CommitOutcomeResult } from "./statements-provider";
 import { ViewInStatement } from "./source-viewer";
+import { useSessionState } from "@/lib/use-session-state";
 
 export const STATUS_STYLE: Record<string, string> = {
   UPLOADED: "bg-muted text-muted-foreground",
@@ -251,10 +252,11 @@ export function ImportDetail({ importId, onBack }: { importId: string; onBack: (
   const [justImported, setJustImported] = useState<{ created: number; matched: number } | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [undoing, setUndoing] = useState(false);
-  const [partyFilter, setPartyFilter] = useState<string | null>(null);
-  const [tile, setTile] = useState<{ key: TileKey; label: string } | null>(null);
-  const [rowSort, setRowSort] = useState<RowSort>("statement");
-  const [filters, setFilters] = useState<PartyFilters>(DEFAULT_FILTERS);
+  // How you were looking at the rows comes back with Back.
+  const [partyFilter, setPartyFilter] = useSessionState<string | null>(`import:${importId}:party`, null);
+  const [tile, setTile] = useSessionState<{ key: TileKey; label: string } | null>(`import:${importId}:tile`, null);
+  const [rowSort, setRowSort] = useSessionState<RowSort>(`import:${importId}:sort`, "statement");
+  const [filters, setFilters] = useSessionState<PartyFilters>(`import:${importId}:filters`, DEFAULT_FILTERS);
 
   if (!record) {
     return (

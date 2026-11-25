@@ -3,6 +3,8 @@
 import { useEffect } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { scrollPage } from "@/lib/utils";
+// Listening for Back from the start, for pages that put back how you left them (see cameBack).
+import "@/lib/back-navigation";
 
 const KEY = "money-manager:scroll";
 /** How long to keep trying after going back: the dashboard's charts and cards draw in after the page itself. */

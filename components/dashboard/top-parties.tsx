@@ -14,6 +14,7 @@ import { PartyLogo } from "../brand-logo";
 import { ChartCard, EmptyChart, RangeTabs } from "../charts/primitives";
 import { cn } from "@/lib/utils";
 import { useFinance } from "../finance-provider";
+import { useSessionState } from "@/lib/use-session-state";
 
 const MAX_ROWS = 4;
 const AVATAR_COLORS = ["#6366f1", "#0ea5e9", "#14b8a6", "#f59e0b", "#ec4899", "#8b5cf6"];
@@ -101,7 +102,7 @@ function More({ count, href }: { count: number; href: string }) {
 /** Who pays me? */
 function IncomeSourcesCard() {
   const { book, ledger, today, getCategory } = useFinance();
-  const [span, setSpan] = useState<RangeKey>(DEFAULT_PERIOD);
+  const [span, setSpan] = useSessionState<RangeKey>("parties:span", DEFAULT_PERIOD);
 
   const range = useMemo(
     () => ({ from: rangeStart(span, today, firstActivityDate(ledger)), to: today, label: periodWords(span) }),

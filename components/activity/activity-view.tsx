@@ -33,6 +33,7 @@ import { DuplicatesBanner } from "./duplicates-banner";
 import { DeletedEntries } from "./deleted-entries";
 import { WaitingLines } from "./waiting-lines";
 import { CountAsRepayment } from "./count-as-repayment";
+import { useSessionState } from "@/lib/use-session-state";
 
 const ALL = "all";
 
@@ -144,26 +145,29 @@ function ActivityContent() {
     const show = initialShow(params.get("group"), params.get("type"));
     return show.startsWith("type:") && !SHOW.some((o) => o.value === show) ? { show: ALL, type: show.slice(5) } : { show, type: ALL };
   });
-  const [group, setGroup] = useState(initial.show);
-  const [entryType, setEntryType] = useState(initial.type);
-  const [categoryId, setCategoryId] = useState(params.get("category") ?? ALL);
-  const [accountId, setAccountId] = useState(params.get("account") ?? ALL);
-  const [personId, setPersonId] = useState(params.get("person") ?? ALL);
-  const [from, setFrom] = useState(params.get("from") ?? "");
-  const [to, setTo] = useState(params.get("to") ?? "");
-  const [query, setQuery] = useState(params.get("q") ?? "");
+  // Filters start from the link; any you change come back with Back (from a person, a shop, an entry), per link.
+  const at = `activity:${params.toString()}`;
+  const [group, setGroup] = useSessionState(`${at}:group`, initial.show);
+  const [entryType, setEntryType] = useSessionState(`${at}:type`, initial.type);
+  const [categoryId, setCategoryId] = useSessionState(`${at}:category`, params.get("category") ?? ALL);
+  const [accountId, setAccountId] = useSessionState(`${at}:account`, params.get("account") ?? ALL);
+  const [personId, setPersonId] = useSessionState(`${at}:person`, params.get("person") ?? ALL);
+  const [from, setFrom] = useSessionState(`${at}:from`, params.get("from") ?? "");
+  const [to, setTo] = useSessionState(`${at}:to`, params.get("to") ?? "");
+  const [query, setQuery] = useSessionState(`${at}:q`, params.get("q") ?? "");
   // "me": only people who still owe me; "you": only people I still owe (from the dashboard cards).
-  const [sort, setSort] = useState<SortKey>("newest");
+  const [sort, setSort] = useSessionState<SortKey>(`${at}:sort`, "newest");
   // Tapping an entry narrows the list to everything with the same shop, company or name.
-  const [party, setParty] = useState<{ key: string; label: string } | null>(() => {
-    const label = params.get("party");
-    return label ? { key: label.trim().toLowerCase(), label } : null;
-  });
-  const [owed, setOwed] = useState<string | null>(params.get("owed"));
-  const [origin, setOrigin] = useState<Origin>(ALL);
+  const partyLabel = params.get("party");
+  const [party, setParty] = useSessionState<{ key: string; label: string } | null>(
+    `${at}:party`,
+    partyLabel ? { key: partyLabel.trim().toLowerCase(), label: partyLabel } : null,
+  );
+  const [owed, setOwed] = useSessionState<string | null>(`${at}:owed`, params.get("owed"));
+  const [origin, setOrigin] = useSessionState<Origin>(`${at}:origin`, ALL);
   // Phones: the detailed filters fold away behind the filter button, whose badge counts the ones set (a dashboard link sets dates).
   const detailFilters = [entryType !== ALL, categoryId !== ALL, accountId !== ALL, personId !== ALL, from !== "", to !== "", origin !== ALL].filter(Boolean).length;
-  const [moreOpen, setMoreOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useSessionState(`${at}:moreOpen`, false);
 
   const owedPeople = useMemo(() => {
     if (!owed) return null;

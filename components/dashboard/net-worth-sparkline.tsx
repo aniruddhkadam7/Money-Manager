@@ -13,6 +13,7 @@ import { useWidth } from "../charts/use-width";
 import { useFinance } from "../finance-provider";
 import { useStatementGaps } from "../statements/use-statement-checks";
 import { axisLabel, GAIN, LOSS } from "./chart-helpers";
+import { useSessionState } from "@/lib/use-session-state";
 
 const HEIGHT = 120;
 const PAD = 6;
@@ -30,7 +31,7 @@ export function NetWorthSparkline({ firstActivity }: { firstActivity: string | n
   const gaps = useStatementGaps();
   const [ref, width] = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
-  const [range, setRange] = useState<RangeKey>(DEFAULT_PERIOD);
+  const [range, setRange] = useSessionState<RangeKey>("networth:range", DEFAULT_PERIOD);
   const words = periodWords(range).replace(/^./, (c) => c.toUpperCase());
 
   const points = useMemo(() => {

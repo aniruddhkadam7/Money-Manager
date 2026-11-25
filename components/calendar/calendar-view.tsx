@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, CreditCard, Plus } from "lucide-react";
@@ -23,6 +23,7 @@ import { AccountLogo, useBankHints } from "../account-logo";
 import { ReminderLogo } from "../reminder-logo";
 import { useReminders } from "../reminders";
 import { useStatements } from "../statements/statements-provider";
+import { useSessionState } from "@/lib/use-session-state";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const isMonth = (s: string | null): s is string => !!s && /^\d{4}-\d{2}$/.test(s);
@@ -84,8 +85,9 @@ export function CalendarBoard({ initialMonth }: { initialMonth?: string }) {
   const { status, book, ledger, today } = useFinance();
   const statements = useStatements();
   const { openAdd } = useEventDialog();
-  const [ym, setYm] = useState(() => initialMonth ?? monthKey(today));
-  const [selected, setSelected] = useState(() => (initialMonth ? null : today));
+  // The month and day you were on come back with Back (from an entry, a person, a card).
+  const [ym, setYm] = useSessionState(`calendar:${initialMonth ?? ""}:ym`, initialMonth ?? monthKey(today));
+  const [selected, setSelected] = useSessionState<string | null>(`calendar:${initialMonth ?? ""}:day`, initialMonth ? null : today);
   const weeks = useMemo(() => calendarMonth(book, ledger, ym), [book, ledger, ym]);
   const totals = useMemo(
     () =>

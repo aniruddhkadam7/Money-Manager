@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { CalendarClock, Calculator, ListOrdered } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -11,6 +10,7 @@ import type { Account } from "@/lib/finance/types";
 import { cn } from "@/lib/utils";
 import { useEventDialog } from "../events/event-dialog";
 import { useFinance } from "../finance-provider";
+import { useSessionState } from "@/lib/use-session-state";
 
 const pct = (bps: number) => `${(bps / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 })}%`;
 
@@ -33,7 +33,7 @@ export function LoanPanel({
 }) {
   const { book, today } = useFinance();
   const { openAdd } = useEventDialog();
-  const [schedule, setSchedule] = useState(false);
+  const [schedule, setSchedule] = useSessionState(`loan:${account.id}:schedule`, false);
   const terms = account.loanTerms;
 
   if (!terms) {

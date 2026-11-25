@@ -17,6 +17,7 @@ import { CategoryIcon } from "../category-icon";
 import { ChartCard, EmptyChart } from "../charts/primitives";
 import { useFinance } from "../finance-provider";
 import { usePhone } from "../use-phone";
+import { useSessionState } from "@/lib/use-session-state";
 
 const EVERY: Record<Frequency, string> = { weekly: "weekly", monthly: "monthly", yearly: "yearly" };
 
@@ -35,7 +36,8 @@ export function SubscriptionsSection({ model }: { model: DashboardModel }) {
   const [managing, setManaging] = useState(false);
   // Ones marked not active (a one-off, or cancelled) are left out, and their cost with them.
   const subs = model.subscriptions.filter((c) => !isStopped(stopped, `sub:${c.key}`, c.lastDate));
-  const [all, setAll] = useState(false);
+  // "+2 more" stays open when you come back with Back.
+  const [all, setAll] = useSessionState("subscriptions:all", false);
   const top = usePhone() ? 4 : 6;
   const monthly = subs.reduce((t, c) => t + c.monthlyEquivalentMinor, 0);
 

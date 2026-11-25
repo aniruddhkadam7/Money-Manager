@@ -18,6 +18,7 @@ import { PageTitle } from "../page-title";
 import { PictureIcon } from "../picture-icon";
 import { SIDE_TONE, signedPrice, type TradePreset } from "./trade-form";
 import { useLtp } from "./use-ltp";
+import { useSessionState } from "@/lib/use-session-state";
 
 type Tab = "positions" | "holdings" | "orders" | "pnl";
 const TABS: { value: Tab; label: string }[] = [
@@ -442,7 +443,7 @@ function Orders({ fills, rejected }: { fills: TradeFill[]; rejected: string[] })
 /* ---------------- P&L ---------------- */
 
 function PnL({ journal, today }: { journal: ReturnType<typeof buildJournal>; today: string }) {
-  const [period, setPeriod] = useState<Period>("month");
+  const [period, setPeriod] = useSessionState<Period>("investments:pnl", "month");
   const s = periodStats(journal, periodStart(period, today), today);
   const peak = Math.max(1, ...s.days.map((d) => Math.abs(d.netMinor)));
 

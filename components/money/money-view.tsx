@@ -26,6 +26,7 @@ import { personDebts } from "@/lib/finance/debts";
 import { CountAsRepayment } from "../activity/count-as-repayment";
 import { EmiCalculator } from "./emi-calculator";
 import { emiOf, LOAN_KINDS, loanKindOf } from "@/lib/finance/loan";
+import { useSessionState } from "@/lib/use-session-state";
 
 /** Phones show the page a part at a time, like a phone app's tabs; wider screens show it all. (Categories and
  * Start over are in the profile's settings.) */
@@ -127,7 +128,7 @@ export function MoneyView() {
   const usageOf = useCardUsage();
   const { openAdd } = useEventDialog();
   const theyPaidMe = useQuickRepaymentReceived();
-  const [calcOpen, setCalcOpen] = useState(false);
+  const [calcOpen, setCalcOpen] = useSessionState("money:calcOpen", false);
   // Loans tab: the kinds of debt to add, shown under "Whom you pay" when Add is tapped.
   const [choosingDebt, setChoosingDebt] = useState(false);
   const owedPeople = state.people.filter((p) => p.iOwe.outstandingMinor > 0).sort((a, b) => b.iOwe.outstandingMinor - a.iOwe.outstandingMinor);

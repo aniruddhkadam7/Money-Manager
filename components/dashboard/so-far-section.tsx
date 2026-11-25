@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useSessionState } from "@/lib/use-session-state";
 import Link from "next/link";
 import { ArrowDownLeft, ArrowUpRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { formatExactINR } from "@/lib/charts/format";
@@ -27,12 +28,13 @@ const rupees = (minor: number) => {
  */
 export function SoFarSection() {
   const { book, report, getCategory, categories } = useFinance();
-  // The same periods as every other card on the dashboard.
-  const [span, setSpan] = useState<RangeKey>(DEFAULT_PERIOD);
+  // The same periods as every other card on the dashboard. The period, month and side you pick are kept for this
+  // visit: open a category and come back, and it's the same month, not this one again.
+  const [span, setSpan] = useSessionState<RangeKey>("sofar:span", DEFAULT_PERIOD);
   // "This month" steps back a month at a time: 0 is this month, 1 last month, and so on.
-  const [monthsBack, setMonthsBack] = useState(0);
+  const [monthsBack, setMonthsBack] = useSessionState("sofar:monthsBack", 0);
   // Phones show one breakdown at a time; wider screens show both side by side.
-  const [side, setSide] = useState<"out" | "in">("out");
+  const [side, setSide] = useSessionState<"out" | "in">("sofar:side", "out");
 
   const { from, to } = useMemo(() => {
     const today = todayISO();
@@ -258,15 +260,11 @@ function Breakdown({
 }) {
   const [hover, setHover] = useState<string | null>(null);
   // Phones list the top few; the rest open on request.
-  const [all, setAll] = useState(false);
-  // Main categories whose subcategories are showing; they start folded.
-  const [open, setOpen] = useState<Set<string>>(new Set());
-  const toggleOpen = (id: string) =>
-    setOpen((prev) => {
-      const next = new Set(prev);
-      if (!next.delete(id)) next.add(id);
-      return next;
-    });
+  const [all, setAll] = useSessionState(`sofar:${tone}:all`, false);
+  // Main categories whose subcategories are showing; they start folded (and stay as you left them this visit).
+  const [openIds, setOpenIds] = useSessionState<string[]>(`sofar:${tone}:open`, []);
+  const open = useMemo(() => new Set(openIds), [openIds]);
+  const toggleOpen = (id: string) => setOpenIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   const total = rows.reduce((t, r) => t + r.amountMinor, 0);
   const shownTotal = net?.minor ?? total;
   const moneyBack = total - shownTotal;

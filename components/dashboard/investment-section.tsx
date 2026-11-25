@@ -15,13 +15,14 @@ import { useEventDialog } from "../events/event-dialog";
 import { useFinance } from "../finance-provider";
 import { usePhone } from "../use-phone";
 import { axisLabel, dateTitle, GAIN, LOSS } from "./chart-helpers";
+import { useSessionState } from "@/lib/use-session-state";
 
 /** Are my investments growing? Value over time against what I put in. */
 export function InvestmentSection({ model }: { model: DashboardModel }) {
   const { book, ledger, state, today } = useFinance();
   const router = useRouter();
   const { openAdd } = useEventDialog();
-  const [range, setRange] = useState<RangeKey>(DEFAULT_PERIOD);
+  const [range, setRange] = useSessionState<RangeKey>("investments:range", DEFAULT_PERIOD);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const phone = usePhone();
 

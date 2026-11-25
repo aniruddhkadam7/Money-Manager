@@ -15,6 +15,7 @@ import { useFinance } from "../finance-provider";
 import { useStatementGaps } from "../statements/use-statement-checks";
 import { usePhone } from "../use-phone";
 import { axisLabel, dateTitle, GAIN, LOSS } from "./chart-helpers";
+import { useSessionState } from "@/lib/use-session-state";
 
 const NET = "#64748b";
 
@@ -24,7 +25,7 @@ export function AssetsLiabilitiesSection({ model }: { model: DashboardModel }) {
   // Bank balances as the latest statements say, like the net worth line in the summary.
   const gaps = useStatementGaps();
   const router = useRouter();
-  const [range, setRange] = useState<RangeKey>(DEFAULT_PERIOD);
+  const [range, setRange] = useSessionState<RangeKey>("assets:range", DEFAULT_PERIOD);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const phone = usePhone();
 
