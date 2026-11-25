@@ -17,7 +17,10 @@ import { NetWorthBreakdown, NetWorthBreakdownSheet } from "./net-worth-breakdown
 import { NetWorthSparkline } from "./net-worth-sparkline";
 import { useStatementGaps } from "../statements/use-statement-checks";
 import { applyAnchorGapsToSeries } from "@/lib/finance/statement-anchor";
-import { balanceSeries } from "@/lib/finance/series";
+import { balanceSeries, changeBps } from "@/lib/finance/series";
+import { deriveState } from "@/lib/finance/state";
+import { formatMonthLong } from "@/lib/domain/dates";
+import { useCardPeriod } from "./period";
 import { explainIncome, explainNetWorthChange, explainSpent } from "@/lib/finance/explain";
 import { formatDisplayDate, shiftMonth } from "@/lib/domain/dates";
 
@@ -60,33 +63,48 @@ function formatHeadlineINR(minor: number): string {
 }
 
 /** The 10-second answer: how much am I worth, and how is this month going. */
-export function SummaryHero({ model, state, book }: { model: DashboardModel; state: FinancialState; book: Book }) {
-  const { current } = model;
-  const nw = state.netWorthMinor;
-  const spendBps = model.spendingChangeBps;
-
+export function SummaryHero({ model, state: stateNow, book }: { model: DashboardModel; state: FinancialState; book: Book }) {
   // "How it adds up" for each number, built from the same entries as the number.
-  const { ledger, getCategory, today } = useFinance();
+  const { ledger, getCategory, today, report } = useFinance();
+  // The card's month switcher (above the chart) moves every figure here: an earlier month shows where you stood at
+  // its end and what came in and went out during it. Other periods (1M, 3M…) change only the chart.
+  const period = useCardPeriod("networth", model.firstActivity);
+  const past = period.past;
+  const ym = past ? period.from.slice(0, 7) : model.ym;
+  const asOf = past ? period.to : today;
+  const monthName = formatMonthLong(ym);
+  const state = useMemo(() => (past ? deriveState(book, ledger, asOf) : stateNow), [past, book, ledger, asOf, stateNow]);
+  const month = useMemo(() => {
+    if (!past) return { expensesMinor: model.current.expensesMinor, incomeMinor: model.current.incomeMinor, savingsMinor: model.current.savingsMinor, spendBps: model.spendingChangeBps };
+    const r = report(monthStart(ym), monthEnd(ym));
+    const before = report(monthStart(shiftMonth(ym, -1)), monthEnd(shiftMonth(ym, -1)));
+    return { expensesMinor: r.expensesMinor, incomeMinor: r.incomeMinor, savingsMinor: r.savingsMinor, spendBps: changeBps(r.expensesMinor, before.expensesMinor) };
+  }, [past, ym, report, model]);
+  const current = month;
+  const nw = state.netWorthMinor;
+  const spendBps = month.spendBps;
+  /** "this month" / "in October 2026". */
+  const inMonth = past ? `in ${monthName}` : "this month";
   // The change this month on the same footing as the headline and the chart: bank balances as their latest
   // statements say. From entries alone it can differ (a statement shows money your entries don't).
   const gaps = useStatementGaps();
-  const lastMonthClose = monthEnd(shiftMonth(model.ym, -1));
+  const lastMonthClose = monthEnd(shiftMonth(ym, -1));
   const change = useMemo(() => {
     if (model.netWorthChangeMinor === null) return null;
-    const [before, now] = applyAnchorGapsToSeries(balanceSeries(book, ledger, [lastMonthClose, today]), gaps);
+    const [before, now] = applyAnchorGapsToSeries(balanceSeries(book, ledger, [lastMonthClose, asOf]), gaps);
     return now.netWorthMinor - before.netWorthMinor;
-  }, [model.netWorthChangeMinor, book, ledger, lastMonthClose, today, gaps]);
+  }, [model.netWorthChangeMinor, book, ledger, lastMonthClose, asOf, gaps]);
   const name = (id: string) => getCategory(id).name;
-  const from = monthStart(model.ym);
-  const to = monthEnd(model.ym);
-  const lastMonthEnd = monthEnd(shiftMonth(model.ym, -1));
-  const monthHref = (extra: Parameters<typeof activityHref>[0]) => activityHref({ ...monthFilter(model.ym), ...extra });
+  const from = monthStart(ym);
+  const to = monthEnd(ym);
+  const lastMonthEnd = monthEnd(shiftMonth(ym, -1));
+  const monthHref = (extra: Parameters<typeof activityHref>[0]) => activityHref({ ...monthFilter(ym), ...extra });
   const howAssets = useExplain();
   const howLiabilities = useExplain();
   const howChange = useExplain();
   const howSpent = useExplain();
   const howIncome = useExplain();
-  const changeX = howChange.props.open ? explainNetWorthChange(book, ledger, lastMonthEnd, today, name) : null;
+  const changeX = howChange.props.open ? explainNetWorthChange(book, ledger, lastMonthEnd, asOf, name) : null;
   const spentX = howSpent.props.open ? explainSpent(book, ledger, from, to, name) : null;
   const incomeX = howIncome.props.open ? explainIncome(book, ledger, from, to, name) : null;
   const catId = (label: string) => [...book.events].map((e) => ("categoryId" in e ? e.categoryId : "")).find((id) => id && name(id) === label);
@@ -96,7 +114,7 @@ export function SummaryHero({ model, state, book }: { model: DashboardModel; sta
 
       <div className="relative lg:flex lg:items-end lg:justify-between lg:gap-10">
         <div className="shrink-0">
-        <p className="text-sm font-medium text-slate-500">Net worth</p>
+        <p className="text-sm font-medium text-slate-500">{past ? `Net worth on ${formatDisplayDate(asOf)}` : "Net worth"}</p>
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-2">
           <Link
             href="/money"
@@ -107,14 +125,14 @@ export function SummaryHero({ model, state, book }: { model: DashboardModel; sta
             {formatHeadlineINR(nw)}
           </Link>
           {change !== null && (
-            <button type="button" onClick={howChange.open} className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring" title="Why it changed this month" data-testid="net-worth-change">
+            <button type="button" onClick={howChange.open} className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring" title={`Why it changed ${inMonth}`} data-testid="net-worth-change">
               <DeltaPill tone={change > 0 ? "positive" : change < 0 ? "negative" : "neutral"}>
-                {change === 0 ? "No change" : formatSignedINR(change)} this month
+                {change === 0 ? "No change" : formatSignedINR(change)} {inMonth}
               </DeltaPill>
             </button>
           )}
         </div>
-        <NetWorthSparkline firstActivity={model.firstActivity} />
+        <NetWorthSparkline firstActivity={model.firstActivity} period={period} />
         {/* Phones: the ⓘ on Total assets and Liabilities open the same breakdown, so the button is for wider screens. */}
         <div className="mt-3 max-sm:hidden">
           <NetWorthBreakdown state={state} />
@@ -144,8 +162,8 @@ export function SummaryHero({ model, state, book }: { model: DashboardModel; sta
             }
           />
           <Metric
-            href={activityHref({ group: "spending", ...monthFilter(model.ym) })}
-            label="Spent this month"
+            href={activityHref({ group: "spending", ...monthFilter(ym) })}
+            label={past ? `Spent in ${monthName.slice(0, 3)}` : "Spent this month"}
             onHow={howSpent.open}
             value={formatHeadlineINR(current.expensesMinor)}
             title={formatExactINR(current.expensesMinor)}
@@ -157,8 +175,8 @@ export function SummaryHero({ model, state, book }: { model: DashboardModel; sta
             subTone={spendBps === null ? undefined : spendBps > 0 ? "negative" : spendBps < 0 ? "positive" : "neutral"}
           />
           <Metric
-            href={activityHref({ group: "income", ...monthFilter(model.ym) })}
-            label="Income this month"
+            href={activityHref({ group: "income", ...monthFilter(ym) })}
+            label={past ? `Income in ${monthName.slice(0, 3)}` : "Income this month"}
             onHow={howIncome.open}
             value={formatHeadlineINR(current.incomeMinor)}
             title={formatExactINR(current.incomeMinor)}
@@ -173,8 +191,8 @@ export function SummaryHero({ model, state, book }: { model: DashboardModel; sta
         <ExplainSheet
           {...howChange.props}
           signed
-          title="Why your net worth changed this month"
-          description={<>From the end of {formatDisplayDate(lastMonthEnd)} to today. Moving money between your own accounts, borrowing or lending, and paying bills don&apos;t change it: only income, spending, refunds, investment value and starting balances do.</>}
+          title={`Why your net worth changed ${inMonth}`}
+          description={<>From the end of {formatDisplayDate(lastMonthEnd)} to {past ? formatDisplayDate(asOf) : "today"}. Moving money between your own accounts, borrowing or lending, and paying bills don&apos;t change it: only income, spending, refunds, investment value and starting balances do.</>}
           sections={changeX.groups.map((g) => ({ title: g.label, rows: g.lines.map((l) => ({ ...l, href: catId(l.label) ? monthHref({ category: catId(l.label) }) : undefined })) }))}
           steps={[
             { label: `Net worth on ${formatDisplayDate(lastMonthEnd)}`, amountMinor: nw - (change ?? changeX.totalMinor) },
@@ -183,23 +201,23 @@ export function SummaryHero({ model, state, book }: { model: DashboardModel; sta
             ...(change !== null && change !== changeX.totalMinor
               ? [{ label: "Per your bank statements, beyond your entries", amountMinor: Math.abs(change - changeX.totalMinor), op: (change - changeX.totalMinor >= 0 ? "+" : "−") as "+" | "−" }]
               : []),
-            { label: "Net worth today", amountMinor: nw, op: "=" as const },
+            { label: past ? `Net worth on ${formatDisplayDate(asOf)}` : "Net worth today", amountMinor: nw, op: "=" as const },
           ]}
         />
       )}
       {spentX && (
         <ExplainSheet
           {...howSpent.props}
-          title="What you spent this month"
+          title={`What you spent ${inMonth}`}
           description="Purchases by category, with refunds taken off. Card bill payments aren't counted: the card's purchases already are. Tap a line to see its entries."
           sections={[{ title: "By category", rows: spentX.lines.map(({ entry, ...l }) => ({ ...l, href: entry ? activityHref({ category: entry.categoryId, from: entry.date, to: entry.date }) : catId(l.label) ? monthHref({ category: catId(l.label) }) : undefined })), totalMinor: spentX.totalMinor, empty: "Nothing spent yet." }]}
-          steps={[{ label: "Spent this month", amountMinor: spentX.totalMinor, op: "=" }]}
+          steps={[{ label: past ? `Spent in ${monthName}` : "Spent this month", amountMinor: spentX.totalMinor, op: "=" }]}
         />
       )}
       {incomeX && (
         <ExplainSheet
           {...howIncome.props}
-          title="Your income this month"
+          title={`Your income ${inMonth}`}
           description="Money earned, by kind. Refunds and reimbursements aren't income: they reduce spending instead. Borrowed money isn't income either."
           sections={[{ title: "Income", rows: incomeX.lines.map((l) => ({ ...l, href: catId(l.label) ? monthHref({ category: catId(l.label) }) : undefined })), totalMinor: incomeX.totalMinor, empty: "No income yet this month." }]}
           steps={[

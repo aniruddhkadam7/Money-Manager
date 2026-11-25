@@ -28,6 +28,8 @@ export interface Reminder {
   categoryId?: string;
   /** A subscription's last charge. */
   lastDate?: string;
+  /** A subscription's entries, to list exactly those. */
+  eventIds?: string[];
   /** A subscription you said is on autopay. */
   autopay?: boolean;
   /** For a bill you added. */
@@ -175,7 +177,7 @@ export function upcomingBills(
     const { date, moved } = dateOf(baseKey, s.nextDate);
     const days = daysBetween(today, date);
     if (!all && (days < 0 || days > SUBSCRIPTION_WINDOW_DAYS)) continue;
-    out.push({ id: `${baseKey}:${date}`, kind: "subscription", title: s.name, dueDate: date, days, amountMinor: s.amountMinor, baseKey, originalDate: s.nextDate, moved, brand: s.brand, categoryId: s.categoryId, lastDate: s.lastDate, autopay: !!data.autopay?.[baseKey], repeat: s.frequency });
+    out.push({ id: `${baseKey}:${date}`, kind: "subscription", title: s.name, dueDate: date, days, amountMinor: s.amountMinor, baseKey, originalDate: s.nextDate, moved, brand: s.brand, categoryId: s.categoryId, lastDate: s.lastDate, autopay: !!data.autopay?.[baseKey], repeat: s.frequency, eventIds: s.eventIds });
   }
 
   for (const b of data.bills) {

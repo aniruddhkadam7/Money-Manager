@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useSessionState } from "@/lib/use-session-state";
 import Link from "next/link";
-import { ArrowDownLeft, ArrowUpRight, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, ChevronRight } from "lucide-react";
 import { formatExactINR } from "@/lib/charts/format";
 import { activityHref } from "@/lib/charts/links";
 import { rollUpByParent } from "@/lib/domain/categories";
@@ -16,6 +16,7 @@ import { CategoryIcon } from "../category-icon";
 import { shield } from "@/lib/privacy";
 import { RangeTabs } from "../charts/primitives";
 import { useFinance } from "../finance-provider";
+import { MonthStepper } from "./period";
 
 const rupees = (minor: number) => {
   const sign = minor < 0 ? "−" : "";
@@ -159,27 +160,6 @@ export function SoFarSection() {
         <Breakdown className={cn(side !== "in" && "max-lg:hidden")} tone="in" title="Where you earned from" rows={earned} getCategory={getCategory} hrefFor={(id) => activityHref({ type: "income", category: id, from, to })} slotOf={(id) => slots.earned.get(id)} />
       </div>
     </section>
-  );
-}
-
-/** ‹ Nov 2026 › in the card's top-right corner: one month at a time, from this month back to the first month with entries. */
-function MonthStepper({ ym, monthsBack, canGoBack, onChange }: { ym: string; monthsBack: number; canGoBack: boolean; onChange: (n: number) => void }) {
-  const name = new Date(`${ym}-01T00:00:00`).toLocaleDateString("en-IN", { month: "short", year: "numeric" });
-  const btn =
-    "flex size-8 shrink-0 items-center justify-center rounded-full border bg-card text-slate-700 outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-30";
-  return (
-    <div className="flex shrink-0 items-center gap-1.5" data-testid="month-stepper">
-      <button type="button" className={btn} onClick={() => onChange(monthsBack + 1)} disabled={!canGoBack} aria-label="Previous month">
-        <ChevronLeft className="size-4" />
-      </button>
-      <div className="min-w-[4.75rem] text-center leading-tight" aria-live="polite">
-        <div className="text-sm font-semibold">{name}</div>
-        <div className="text-[10px] text-muted-foreground">{monthsBack === 0 ? "So far" : monthsBack === 1 ? "Last month" : `${monthsBack} months ago`}</div>
-      </div>
-      <button type="button" className={btn} onClick={() => onChange(monthsBack - 1)} disabled={monthsBack === 0} aria-label="Next month">
-        <ChevronRight className="size-4" />
-      </button>
-    </div>
   );
 }
 

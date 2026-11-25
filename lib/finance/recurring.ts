@@ -44,6 +44,8 @@ export interface RecurringCharge {
   occurrences: number;
   /** What this costs per month on average. */
   monthlyEquivalentMinor: number;
+  /** The entries it was found from, oldest first (to list exactly those: the bank's text varies month to month). */
+  eventIds: string[];
 }
 
 const BANDS: Record<Frequency, { min: number; max: number }> = {
@@ -105,7 +107,7 @@ interface Group {
   /** Its name reads like a person's ("Rahul Sharma"), not a company's. */
   person: boolean;
   brand?: string;
-  items: { date: string; amountMinor: number }[];
+  items: { id: string; date: string; amountMinor: number }[];
 }
 
 /** Bank narrations are cut off differently month to month ("Razorpay" / "Razorpay Pv"): a name that starts another is the same payee. */
@@ -170,7 +172,7 @@ export function detectRecurring(book: Book, ledger: Ledger, today: string): Recu
     group.subscription ||= merchant.subscription || explicit;
     group.explicit ||= explicit;
     if (e.sources?.some((x) => x.narration && AUTOPAY.test(x.narration))) group.autopay = true;
-    group.items.push({ date: e.date, amountMinor: e.amountMinor });
+    group.items.push({ id: e.id, date: e.date, amountMinor: e.amountMinor });
     group.name = display;
     group.categoryId = e.categoryId;
     raw.set(key, group);
@@ -229,6 +231,7 @@ export function detectRecurring(book: Book, ledger: Ledger, today: string): Recu
         nextDate: nextAfter(last.date, frequency),
         occurrences: items.length,
         monthlyEquivalentMinor: monthlyEquivalent(last.amountMinor, frequency),
+        eventIds: items.map((i) => i.id),
       });
     });
   }

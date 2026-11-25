@@ -7,7 +7,7 @@ import { activityHref } from "@/lib/charts/links";
 import { formatBps, formatCompactINR, formatExactINR, formatHeadlineINR, formatSignedINR } from "@/lib/charts/format";
 import { addDays, daysBetween } from "@/lib/domain/dates";
 import type { DashboardModel } from "@/lib/finance/dashboard-model";
-import { balanceSeries, DEFAULT_PERIOD, PERIODS, rangeStart, sampleDates, type RangeKey } from "@/lib/finance/series";
+import { balanceSeries, sampleDates } from "@/lib/finance/series";
 import { LineChart, type ChartSeries } from "../charts/line-chart";
 import { ChartCard, EmptyChart, Headline, RangeTabs } from "../charts/primitives";
 import { TooltipCard, TooltipHint, TooltipRow, TooltipTitle } from "../charts/tooltip";
@@ -15,24 +15,25 @@ import { useEventDialog } from "../events/event-dialog";
 import { useFinance } from "../finance-provider";
 import { usePhone } from "../use-phone";
 import { axisLabel, dateTitle, GAIN, LOSS } from "./chart-helpers";
-import { useSessionState } from "@/lib/use-session-state";
+import { useCardPeriod } from "./period";
 
 /** Are my investments growing? Value over time against what I put in. */
 export function InvestmentSection({ model }: { model: DashboardModel }) {
   const { book, ledger, state, today } = useFinance();
   const router = useRouter();
   const { openAdd } = useEventDialog();
-  const [range, setRange] = useSessionState<RangeKey>("investments:range", DEFAULT_PERIOD);
+  const period = useCardPeriod("investments", model.firstActivity);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const phone = usePhone();
 
   const { dates, points } = useMemo(() => {
-    const dates = sampleDates(rangeStart(range, today, model.firstActivity), today, 90);
+    const dates = sampleDates(period.from, period.to, 90);
     return { dates, points: balanceSeries(book, ledger, dates) };
-  }, [book, ledger, today, range, model.firstActivity]);
+  }, [book, ledger, period.from, period.to]);
 
   const xs = useMemo(() => dates.map((d) => daysBetween(dates[0], d)), [dates]);
-  const hp = hoverIdx !== null ? points[hoverIdx] : undefined;
+  // An earlier month shows where things stood at its end; this month, where they stand now.
+  const hp = hoverIdx !== null ? points[hoverIdx] : period.past ? points[points.length - 1] : undefined;
   const value = hp ? hp.investmentsMinor : state.investments.valueMinor;
   const invested = hp ? hp.investedMinor : state.investments.costBasisMinor;
   const gain = value - invested;
@@ -50,7 +51,10 @@ export function InvestmentSection({ model }: { model: DashboardModel }) {
   );
 
   return (
-    <ChartCard title="Investments" action={<RangeTabs label="Investment range" value={range} options={PERIODS} onChange={setRange} />}>
+    <ChartCard title="Investments" action={period.stepper}>
+      <div className="mb-3">
+        <RangeTabs label="Investment range" value={period.span} options={period.options} onChange={period.setSpan} />
+      </div>
       <Headline
         value={formatHeadlineINR(value)}
         delta={invested > 0 ? `${formatSignedINR(gain, false)}${pctBps !== null ? ` (${pctBps >= 0 ? "+" : "−"}${formatBps(Math.abs(pctBps), 1)})` : ""}` : undefined}
@@ -74,7 +78,7 @@ export function InvestmentSection({ model }: { model: DashboardModel }) {
           series={series}
           height={phone ? 160 : 220}
           includeZero
-          animateKey={`${range}-${dates.length}-${value}`}
+          animateKey={`${period.from}-${period.to}-${dates.length}-${value}`}
           ariaLabel="Investment value over time"
           formatY={formatCompactINR}
           xLabel={(i) => axisLabel(dates[i], span)}

@@ -6,14 +6,14 @@ import { areaPath, monotonePath } from "@/lib/charts/path";
 import { linearScale, nearestIndex, niceTicks } from "@/lib/charts/scale";
 import { addDays, daysBetween, formatLongDayMonth } from "@/lib/domain/dates";
 import { applyAnchorGapsToSeries } from "@/lib/finance/statement-anchor";
-import { balanceSeries, DEFAULT_PERIOD, PERIODS, periodWords, rangeStart, sampleDates, type RangeKey } from "@/lib/finance/series";
+import { balanceSeries, sampleDates } from "@/lib/finance/series";
 import { cn } from "@/lib/utils";
 import { RangeTabs } from "../charts/primitives";
 import { useWidth } from "../charts/use-width";
 import { useFinance } from "../finance-provider";
 import { useStatementGaps } from "../statements/use-statement-checks";
 import { axisLabel, GAIN, LOSS } from "./chart-helpers";
-import { useSessionState } from "@/lib/use-session-state";
+import type { CardPeriod } from "./period";
 
 const HEIGHT = 120;
 const PAD = 6;
@@ -26,19 +26,18 @@ const AXIS = 46;
  * colour and the pill tell the same story. A ₹ scale with grid lines (₹0 marked) sits on the left, the start and today's
  * values are printed under it, and a tap or hover shows any day.
  */
-export function NetWorthSparkline({ firstActivity }: { firstActivity: string | null }) {
+export function NetWorthSparkline({ firstActivity, period }: { firstActivity: string | null; period: CardPeriod }) {
   const { book, ledger, today } = useFinance();
   const gaps = useStatementGaps();
   const [ref, width] = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
-  const [range, setRange] = useSessionState<RangeKey>("networth:range", DEFAULT_PERIOD);
-  const words = periodWords(range).replace(/^./, (c) => c.toUpperCase());
+  const words = period.words.replace(/^./, (c) => c.toUpperCase());
 
   const points = useMemo(() => {
     // The day before the span: its closing net worth is the starting point, so the span's first day's entries show as a move.
-    const dates = sampleDates(addDays(rangeStart(range, today, firstActivity), -1), today, 60);
+    const dates = sampleDates(addDays(period.from, -1), period.to, 60);
     return applyAnchorGapsToSeries(balanceSeries(book, ledger, dates), gaps);
-  }, [book, ledger, today, firstActivity, range, gaps]);
+  }, [book, ledger, period.from, period.to, gaps]);
 
   const layout = useMemo(() => {
     if (!width || points.length < 2) return null;
@@ -87,8 +86,9 @@ export function NetWorthSparkline({ firstActivity }: { firstActivity: string | n
 
   return (
     <div className="mt-2 w-full sm:mt-3 lg:w-80" data-testid="net-worth-sparkline">
+      {period.stepper && <div className="mb-2 flex justify-end">{period.stepper}</div>}
       <div className="mb-2 flex items-center justify-end gap-2">
-        <RangeTabs label="Net worth timeline" value={range} options={PERIODS} onChange={(v) => { setRange(v); setHover(null); }} />
+        <RangeTabs label="Net worth timeline" value={period.span} options={period.options} onChange={(v) => { period.setSpan(v); setHover(null); }} />
       </div>
       <div className="mb-1 flex items-baseline justify-between gap-2 text-[11px] tabular-nums text-slate-400">
         {shown ? (
@@ -112,7 +112,7 @@ export function NetWorthSparkline({ firstActivity }: { firstActivity: string | n
             height={HEIGHT}
             className="block touch-pan-y overflow-visible"
             role="img"
-            aria-label={`Net worth, ${words.toLowerCase()}: from ${formatExactINR(first.netWorthMinor)} on ${formatLongDayMonth(first.date)} to ${formatExactINR(last.netWorthMinor)} today.`}
+            aria-label={`Net worth, ${words.toLowerCase()}: from ${formatExactINR(first.netWorthMinor)} on ${formatLongDayMonth(first.date)} to ${formatExactINR(last.netWorthMinor)} ${last.date === today ? "today" : `on ${formatLongDayMonth(last.date)}`}.`}
             onPointerMove={onMove}
             onPointerDown={onMove}
             onPointerLeave={() => setHover(null)}
@@ -148,7 +148,7 @@ export function NetWorthSparkline({ firstActivity }: { firstActivity: string | n
       <div className="mt-1 flex justify-between text-[10px] tabular-nums text-slate-400" style={{ paddingLeft: AXIS - PAD }} aria-hidden>
         {ticks.map((d, i) => (
           <span key={i} className={cn("flex flex-col", i === 2 && "items-end")}>
-            <span>{i === 2 ? "Today" : axisLabel(d, span)}</span>
+            <span>{i === 2 && d === today ? "Today" : axisLabel(d, span)}</span>
             {i !== 1 && (
               <span className={cn("text-[11px] font-medium", i === 2 ? "text-slate-700" : "text-slate-500")}>
                 {formatCompactINR((i === 0 ? first : last).netWorthMinor)}

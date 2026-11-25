@@ -5,7 +5,7 @@ import Link from "next/link";
 import { activityHref } from "@/lib/charts/links";
 import { formatBps, formatExactINR, formatHeadlineINR } from "@/lib/charts/format";
 import { formatDayMonth } from "@/lib/domain/dates";
-import { DEFAULT_PERIOD, firstActivityDate, PERIODS, periodWords, rangeStart, type RangeKey } from "@/lib/finance/series";
+import { firstActivityDate } from "@/lib/finance/series";
 import { incomeSources } from "@/lib/finance/sources";
 import type { FinancialState, PersonSummary } from "@/lib/finance/state";
 import { brandFor } from "@/lib/finance/brands";
@@ -16,7 +16,7 @@ import { usePersonSheet } from "../money/person-sheet-provider";
 import { ChartCard, EmptyChart, RangeTabs } from "../charts/primitives";
 import { cn } from "@/lib/utils";
 import { useFinance } from "../finance-provider";
-import { useSessionState } from "@/lib/use-session-state";
+import { useCardPeriod } from "./period";
 
 const MAX_ROWS = 4;
 const AVATAR_COLORS = ["#6366f1", "#0ea5e9", "#14b8a6", "#f59e0b", "#ec4899", "#8b5cf6"];
@@ -119,12 +119,8 @@ function More({ count, href }: { count: number; href: string }) {
 /** Who pays me? */
 function IncomeSourcesCard() {
   const { book, ledger, today, getCategory } = useFinance();
-  const [span, setSpan] = useSessionState<RangeKey>("parties:span", DEFAULT_PERIOD);
-
-  const range = useMemo(
-    () => ({ from: rangeStart(span, today, firstActivityDate(ledger)), to: today, label: periodWords(span) }),
-    [today, span, ledger],
-  );
+  const period = useCardPeriod("parties", firstActivityDate(ledger));
+  const range = { from: period.from, to: period.to, label: period.words };
 
   const sources = useMemo(
     () => incomeSources(book, ledger, range.from, range.to, (id) => getCategory(id).name),
@@ -136,15 +132,11 @@ function IncomeSourcesCard() {
   return (
     <ChartCard
       title="Top income sources"
-      action={
-        <RangeTabs
-          label="Income sources period"
-          value={span}
-          options={PERIODS}
-          onChange={setSpan}
-        />
-      }
+      action={period.stepper}
     >
+      <div className="mb-3">
+        <RangeTabs label="Income sources period" value={period.span} options={period.options} onChange={period.setSpan} />
+      </div>
       {shown.length === 0 ? (
         <EmptyChart height={120}>No income recorded {range.label}.</EmptyChart>
       ) : (
@@ -152,7 +144,7 @@ function IncomeSourcesCard() {
           <p className="mb-2 text-xs text-slate-500">
             <span className="text-base font-semibold tabular-nums text-slate-900">{formatHeadlineINR(total)}</span> earned {range.label}
           </p>
-          <ul key={span} className="grid grid-cols-1 gap-0.5">
+          <ul key={`${range.from}-${range.to}`} className="grid grid-cols-1 gap-0.5">
             {shown.map((s) => (
               <Row
                 key={s.key}

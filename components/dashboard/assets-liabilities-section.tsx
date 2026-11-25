@@ -7,7 +7,7 @@ import { formatCompactINR, formatExactINR, formatHeadlineINR } from "@/lib/chart
 import { addDays, daysBetween } from "@/lib/domain/dates";
 import type { DashboardModel } from "@/lib/finance/dashboard-model";
 import { applyAnchorGapsToSeries } from "@/lib/finance/statement-anchor";
-import { balanceSeries, DEFAULT_PERIOD, PERIODS, rangeStart, sampleDates, type RangeKey } from "@/lib/finance/series";
+import { balanceSeries, sampleDates } from "@/lib/finance/series";
 import { LineChart, type ChartSeries } from "../charts/line-chart";
 import { ChartCard, Headline, RangeTabs } from "../charts/primitives";
 import { TooltipCard, TooltipHint, TooltipRow, TooltipTitle } from "../charts/tooltip";
@@ -15,7 +15,7 @@ import { useFinance } from "../finance-provider";
 import { useStatementGaps } from "../statements/use-statement-checks";
 import { usePhone } from "../use-phone";
 import { axisLabel, dateTitle, GAIN, LOSS } from "./chart-helpers";
-import { useSessionState } from "@/lib/use-session-state";
+import { useCardPeriod } from "./period";
 
 const NET = "#64748b";
 
@@ -25,14 +25,14 @@ export function AssetsLiabilitiesSection({ model }: { model: DashboardModel }) {
   // Bank balances as the latest statements say, like the net worth line in the summary.
   const gaps = useStatementGaps();
   const router = useRouter();
-  const [range, setRange] = useSessionState<RangeKey>("assets:range", DEFAULT_PERIOD);
+  const period = useCardPeriod("assets", model.firstActivity);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const phone = usePhone();
 
   const { dates, points } = useMemo(() => {
-    const dates = sampleDates(rangeStart(range, today, model.firstActivity), today, 90);
+    const dates = sampleDates(period.from, period.to, 90);
     return { dates, points: applyAnchorGapsToSeries(balanceSeries(book, ledger, dates), gaps) };
-  }, [book, ledger, today, range, model.firstActivity, gaps]);
+  }, [book, ledger, period.from, period.to, gaps]);
 
   const xs = useMemo(() => dates.map((d) => daysBetween(dates[0], d)), [dates]);
   const series = useMemo<ChartSeries[]>(
@@ -49,7 +49,10 @@ export function AssetsLiabilitiesSection({ model }: { model: DashboardModel }) {
   const span = daysBetween(dates[0], dates[dates.length - 1]);
 
   return (
-    <ChartCard title="Assets & liabilities" action={<RangeTabs label="Assets and liabilities range" value={range} options={PERIODS} onChange={setRange} />}>
+    <ChartCard title="Assets & liabilities" action={period.stepper}>
+      <div className="mb-3">
+        <RangeTabs label="Assets and liabilities range" value={period.span} options={period.options} onChange={period.setSpan} />
+      </div>
       <Headline
         value={formatHeadlineINR(shown.netWorthMinor)}
         caption={`Own ${formatExactINR(shown.assetsMinor)} · owe ${formatExactINR(shown.liabilitiesMinor)}`}
@@ -59,7 +62,7 @@ export function AssetsLiabilitiesSection({ model }: { model: DashboardModel }) {
         series={series}
         height={phone ? 180 : 240}
         includeZero
-        animateKey={`${range}-${dates.length}`}
+        animateKey={`${period.from}-${period.to}-${dates.length}`}
         ariaLabel="Assets and liabilities over time"
         formatY={formatCompactINR}
         xLabel={(i) => axisLabel(dates[i], span)}

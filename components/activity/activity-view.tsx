@@ -161,6 +161,8 @@ function ActivityContent() {
   const [sort, setSort] = useSessionState<SortKey>(`${at}:sort`, "newest");
   // Tapping an entry narrows the list to everything with the same shop, company or name.
   const partyLabel = params.get("party");
+  // A subscription's own entries, by id (its bank text varies, so a name wouldn't find them all); shown as its party.
+  const onlyIds = useMemo(() => (params.get("entries") ? new Set(params.get("entries")!.split(",")) : null), [params]);
   const [party, setParty] = useSessionState<{ key: string; label: string } | null>(
     `${at}:party`,
     partyLabel ? { key: partyLabel.trim().toLowerCase(), label: partyLabel } : null,
@@ -193,7 +195,7 @@ function ActivityContent() {
           (!owedPeople || personIdsUsedBy(e).some((id) => owedPeople.has(id))) &&
           matchesShow(group, e, types, cardIds) &&
           (entryType === ALL || (e.type === entryType && !(entryType === "income" && isMoneyBack(e)))) &&
-          (!party || partyNameOf(e, describer.title(e)) === party.key) &&
+          (!party || (onlyIds ? onlyIds.has(e.id) : partyNameOf(e, describer.title(e)) === party.key)) &&
           (categoryId === ALL || categoryFamily.has(categoryOf(e) ?? "")) &&
           (!from || e.date >= from) &&
           (!to || e.date <= to) &&
@@ -206,7 +208,7 @@ function ActivityContent() {
         const byAmount = amountOf(b) - amountOf(a);
         return (sort === "highest" ? byAmount : -byAmount) || byDate;
       });
-  }, [book.events, cardIds, group, entryType, categoryId, categoryFamily, accountId, personId, chosenPerson, from, to, origin, query, describer, owedPeople, sort, party]);
+  }, [book.events, cardIds, group, entryType, categoryId, categoryFamily, accountId, personId, chosenPerson, from, to, origin, query, describer, owedPeople, sort, party, onlyIds]);
 
   const hasFilters =
     party !== null || group !== ALL || entryType !== ALL || categoryId !== ALL || accountId !== ALL || personId !== ALL || from !== "" || to !== "" || origin !== ALL || query !== "" || owed !== null;

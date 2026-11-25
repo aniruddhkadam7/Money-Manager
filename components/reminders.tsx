@@ -79,7 +79,7 @@ function useDetectedSubscriptions() {
 const hrefOf = (r: Reminder) =>
   r.kind === "debt" && r.personId
     ? activityHref({ person: r.personId })
-    : (r.kind === "card" || r.kind === "emi") && r.accountId ? (r.kind === "emi" ? "/money#loans" : activityHref({ account: r.accountId })) : r.kind === "custom" ? "/" : activityHref({ q: r.title });
+    : (r.kind === "card" || r.kind === "emi") && r.accountId ? (r.kind === "emi" ? "/money#loans" : activityHref({ account: r.accountId })) : r.kind === "custom" ? "/" : r.eventIds?.length ? activityHref({ party: r.title, entries: r.eventIds }) : activityHref({ q: r.title });
 
 const bodyOf = (r: Reminder) =>
   r.kind === "custom"

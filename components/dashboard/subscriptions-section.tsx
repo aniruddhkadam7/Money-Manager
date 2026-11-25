@@ -71,7 +71,7 @@ export function SubscriptionsSection({ model }: { model: DashboardModel }) {
               return (
                 <li key={c.key}>
                   <Link
-                    href={activityHref({ q: c.name, category: c.categoryId })}
+                    href={activityHref({ party: c.name, entries: c.eventIds })}
                     aria-label={`${c.name}: see every payment`}
                     className="-mx-2 flex items-center gap-3 rounded-xl px-2 py-2 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-ring"
                   >
