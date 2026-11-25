@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Loader2, Mic, X } from "lucide-react";
 import { record, speak, transcribe, voiceAvailable, voiceSupported, type Recording } from "@/lib/voice/client";
 import { startAgent, type AgentFunction, type AgentSession } from "@/lib/voice/agent";
+import { startDictation, type Dictation } from "@/lib/voice/listen";
 import { ADVISOR_PROMPT, VOICE_PROMPT } from "@/lib/advisor/prompt";
 import type { AdvisorSnapshot } from "@/lib/advisor/snapshot";
 import { cn } from "@/lib/utils";
@@ -73,12 +74,41 @@ export function DictateButton({
       });
   };
 
+  // Live dictation (words as you speak, from Deepgram's streaming speech to text); the recording below is the fallback.
+  const stream = useRef<Dictation | null>(null);
+  useEffect(() => () => stream.current?.cancel(), []);
+
   const toggle = async () => {
     if (state === "recording") {
-      rec.current?.stop();
+      if (stream.current) {
+        const s = stream.current;
+        stream.current = null;
+        setState("working");
+        const text = (await s.stop().catch(() => "")).trim();
+        if (text) onText(text);
+        else onError("Didn't catch anything. Try again a little closer to the mic.");
+        setState("idle");
+      } else rec.current?.stop();
       return;
     }
     if (state !== "idle") return;
+    if (onPartial) {
+      setState("working");
+      try {
+        stream.current = await startDictation((t) => onPartial(t));
+        setState("recording");
+        return;
+      } catch (e) {
+        stream.current = null;
+        const name = (e as { name?: string })?.name;
+        if (name === "NotAllowedError" || name === "SecurityError" || name === "NotFoundError") {
+          onError(micError(e));
+          setState("idle");
+          return;
+        }
+        // Couldn't stream (no token, no connection): record and write it out instead.
+      }
+    }
     try {
       live.current = { busy: false, last: Date.now(), pending: null, stopped: false };
       const r = await record({ onAudio: onPartial ? refresh : undefined });

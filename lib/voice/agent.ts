@@ -69,6 +69,13 @@ export function prefetchAgentGrant() {
   ahead = { at: Date.now(), grant };
 }
 
+/** A short-lived Deepgram token (the one fetched ahead, if still fresh), e.g. for live dictation. */
+export async function liveToken(): Promise<string> {
+  const t = (await grant()).token;
+  prefetchAgentGrant();
+  return t;
+}
+
 function grant(): Promise<Grant> {
   const ready = ahead && Date.now() - ahead.at < 45_000 ? ahead.grant : null;
   // Each token opens one conversation.
@@ -127,6 +134,8 @@ export async function startAgent(opts: {
 
   let closed = false;
   let speaking = false;
+  // After you cut in (or tap Stop), the rest of that answer still arriving is dropped, not played.
+  let muted = false;
   // Friday's voice: each piece scheduled right after the one before; all stopped at once to interrupt.
   let playAt = 0;
   const playing = new Set<AudioBufferSourceNode>();
@@ -174,11 +183,44 @@ export async function startAgent(opts: {
   proc.connect(sink);
   sink.connect(ctx.destination);
   let ready = false;
+  // Cutting in by voice: while Friday speaks, your microphone is held back (so Friday doesn't hear itself), but
+  // watched. When you're clearly louder than Friday's echo for a moment, Friday stops at once and what you've said
+  // (the last half second, kept aside) goes through, so Deepgram hears you from your first word.
+  const held: Int16Array<ArrayBuffer>[] = [];
+  let echo = 0; // how loud Friday's own voice comes back through the microphone (after echo cancelling)
+  let loud = 0; // frames in a row you've been loud
+  let speakingSince = 0;
+  const bargeIn = () => {
+    stopVoice();
+    speaking = false;
+    audioDone = false;
+    muted = true;
+    for (const f of held) ws.send(f);
+    held.length = 0;
+    loud = 0;
+    events.onPhase("listening");
+  };
   proc.onaudioprocess = (e) => {
     if (!ready || closed || ws.readyState !== WebSocket.OPEN) return;
     const input = e.inputBuffer.getChannelData(0);
-    const pcm = toPcm16(speaking ? new Float32Array(input.length) : input, ctx.sampleRate, IN_RATE);
-    ws.send(pcm);
+    if (!speaking) {
+      ws.send(toPcm16(input, ctx.sampleRate, IN_RATE));
+      return;
+    }
+    let sum = 0;
+    for (const v of input) sum += v * v;
+    const rms = Math.sqrt(sum / input.length);
+    held.push(toPcm16(input, ctx.sampleRate, IN_RATE));
+    while (held.length > 6) held.shift();
+    // The first moments of Friday's voice teach how loud its echo is; after that, a clear voice over it is you.
+    if (ctx.currentTime - speakingSince < 0.35) {
+      echo = Math.max(echo, rms);
+    } else {
+      echo = Math.max(echo * 0.98, Math.min(rms, echo * 1.5));
+      loud = rms > Math.max(0.03, echo * 2.5) ? loud + 1 : 0;
+      if (loud >= 2) return bargeIn();
+    }
+    ws.send(toPcm16(new Float32Array(input.length), ctx.sampleRate, IN_RATE));
   };
 
   // The level for the orb: yours while listening, Friday's while speaking.
@@ -222,8 +264,14 @@ export async function startAgent(opts: {
 
   ws.onmessage = (e) => {
     if (typeof e.data !== "string") {
+      if (muted) return;
       if (!speaking) {
         speaking = true;
+        speakingSince = ctx.currentTime;
+        echo = 0;
+        loud = 0;
+        held.length = 0;
+        audioDone = false;
         events.onPhase("speaking");
       }
       playPcm(e.data as ArrayBuffer);
@@ -248,12 +296,15 @@ export async function startAgent(opts: {
         stopVoice();
         speaking = false;
         audioDone = false;
+        muted = false;
         events.onPhase("listening");
         break;
       case "AgentThinking":
+        muted = false;
         events.onPhase("thinking");
         break;
       case "ConversationText":
+        if (m.role === "user") muted = false;
         if ((m.role === "user" || m.role === "assistant") && typeof m.content === "string" && m.content.trim()) {
           events.onText(m.role, m.content.trim());
           if (m.role === "user") events.onPhase("thinking");
@@ -261,6 +312,7 @@ export async function startAgent(opts: {
         break;
       case "AgentAudioDone":
         audioDone = true;
+        muted = false;
         break;
       case "FunctionCallRequest": {
         for (const f of (m.functions as { id: string; name: string; arguments: string; client_side?: boolean }[]) ?? []) {
@@ -306,10 +358,7 @@ export async function startAgent(opts: {
 
   return {
     interrupt: () => {
-      stopVoice();
-      speaking = false;
-      audioDone = false;
-      events.onPhase("listening");
+      if (speaking) bargeIn();
     },
     end,
   };
