@@ -91,7 +91,7 @@ export function PortfolioOverview({
   }, [ledger]);
 
   return (
-    <div className="grid gap-4 sm:gap-5" data-testid="portfolio-overview">
+    <div className="grid grid-cols-1 gap-4 sm:gap-5 [&>*]:min-w-0" data-testid="portfolio-overview">
       {/* What it's all worth. */}
       <section className="rounded-3xl border glass p-4 sm:p-5">
         <p className="text-xs uppercase tracking-wide text-muted-foreground">Portfolio value</p>

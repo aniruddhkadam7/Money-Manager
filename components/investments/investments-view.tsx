@@ -99,7 +99,7 @@ export function InvestmentsView() {
   const rejected = ledger.issues.filter((i) => book.events.some((e) => e.id === i.eventId && e.type === "trade"));
 
   return (
-    <div className="mx-auto grid w-full max-w-[1100px] gap-4 sm:gap-5">
+    <div className="mx-auto grid w-full max-w-[1100px] grid-cols-1 gap-4 sm:gap-5 [&>*]:min-w-0">
       <PageTitle>Investments</PageTitle>
 
       {/* Your Kotak Neo account: funds, today's positions and new trades, kept up to date by itself. */}
@@ -107,7 +107,7 @@ export function InvestmentsView() {
 
       {/* Solid, not frosted: the glass blur smeared the bright Buy / Sell colours into a band across the card. */}
       <Card className="bg-[var(--glass-solid)] [&::before]:[-webkit-backdrop-filter:none] [&::before]:[backdrop-filter:none]">
-        <CardContent className="grid gap-4 pt-5 max-sm:px-4">
+        <CardContent className="grid grid-cols-1 gap-4 pt-5 max-sm:px-4 [&>*]:min-w-0">
           <div>
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Today&apos;s P&amp;L</p>
             <p className={cn("text-3xl font-semibold tabular-nums", tone(booked + live))}>{signedPrice(booked + live)}</p>
@@ -131,7 +131,7 @@ export function InvestmentsView() {
         </div>
       )}
 
-      <div className="overflow-x-auto">
+      <div className="max-sm:[&>[role=tablist]]:flex max-sm:[&>[role=tablist]]:w-full max-sm:[&_[role=tab]]:flex-1 max-sm:[&_[role=tab]]:px-1.5 max-sm:[&_[role=tab]]:whitespace-nowrap">
         <RangeTabs label="Show" value={tab} options={TABS} onChange={setTab} />
       </div>
 
@@ -259,7 +259,7 @@ function Holdings({
   const pnl = current - invested;
 
   return (
-    <div className="grid gap-4">
+    <div className="grid grid-cols-1 gap-4 [&>*]:min-w-0">
       {positions.length === 0 ? (
         <Empty>
           No delivery holdings. Buy with <strong>Longterm CNC</strong> to keep shares; they show here with their value at today&apos;s price.
@@ -359,7 +359,7 @@ function Orders({ fills, rejected }: { fills: TradeFill[]; rejected: string[] })
   const accounts = new Map(book.accounts.map((a) => [a.id, a]));
 
   return (
-    <div className="grid gap-4">
+    <div className="grid grid-cols-1 gap-4 [&>*]:min-w-0">
       {[...days.entries()].map(([date, list]) => {
         const net = list.reduce((t, r) => t + (r.fill ? r.fill.grossMinor - r.event.chargesMinor : 0), 0);
         return (
@@ -419,13 +419,13 @@ function PnL({ journal, today }: { journal: ReturnType<typeof buildJournal>; tod
   const peak = Math.max(1, ...s.days.map((d) => Math.abs(d.netMinor)));
 
   return (
-    <div className="grid gap-4">
-      <div className="overflow-x-auto">
+    <div className="grid grid-cols-1 gap-4 [&>*]:min-w-0">
+      <div className="max-sm:[&>[role=tablist]]:flex max-sm:[&>[role=tablist]]:w-full max-sm:[&_[role=tab]]:flex-1 max-sm:[&_[role=tab]]:px-1.5 max-sm:[&_[role=tab]]:whitespace-nowrap">
         <RangeTabs label="Period" value={period} options={PERIODS} onChange={setPeriod} />
       </div>
 
       <Card>
-        <CardContent className="grid gap-4 pt-5 max-sm:px-4">
+        <CardContent className="grid grid-cols-1 gap-4 pt-5 max-sm:px-4 [&>*]:min-w-0">
           <div>
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Net realised P&amp;L</p>
             <p className={cn("text-3xl font-semibold tabular-nums", tone(s.netMinor))}>{signedPrice(s.netMinor)}</p>

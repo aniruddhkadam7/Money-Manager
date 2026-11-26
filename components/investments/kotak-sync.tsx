@@ -368,7 +368,7 @@ function KotakSyncDialog({ onClose }: { onClose: () => void }) {
             </Button>
           </form>
         ) : (
-          <div className="grid gap-4">
+          <div className="grid grid-cols-1 gap-4 [&>*]:min-w-0">
             {result.funds && (
               <div className="rounded-xl border p-3" data-testid="kotak-funds">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Funds in Kotak</p>
@@ -487,7 +487,7 @@ export function KotakPositionsList({ positions, total = true }: { positions: Kot
     <li key={`${p.symbol}-${p.market}-${p.product}`} className="flex items-center justify-between gap-3 py-2">
       <span className="min-w-0">
         <span className="block truncate text-sm font-medium">{p.symbol}</span>
-        <span className="block truncate text-xs text-muted-foreground">
+        <span className="block text-xs text-muted-foreground [overflow-wrap:anywhere]">
           {p.product} · {p.market}
           {p.buyQty > 0 && ` · bought ${p.buyQty} at ${formatPrice(p.buyAvgMinor)}`}
           {p.sellQty > 0 && ` · sold ${p.sellQty} at ${formatPrice(p.sellAvgMinor)}`}
@@ -502,7 +502,7 @@ export function KotakPositionsList({ positions, total = true }: { positions: Kot
     </li>
   );
   return (
-    <div className="grid gap-3" data-testid="kotak-positions">
+    <div className="grid grid-cols-1 gap-3 [&>*]:min-w-0" data-testid="kotak-positions">
       {open.length > 0 && (
         <div>
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Open positions</p>
