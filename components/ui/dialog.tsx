@@ -124,7 +124,8 @@ function DialogContent({
       />
       <DialogPrimitive.Content
         className={cn(
-          "fixed left-1/2 top-1/2 z-50 grid w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 gap-5 glass-pop rounded-2xl border p-6 shadow-xl outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
+          // grid-cols-1 + min-w-0 children: the sheet is the screen's width, never its content's (a long name wraps).
+          "fixed left-1/2 top-1/2 z-50 grid grid-cols-1 overflow-x-hidden [&>*]:min-w-0 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 gap-5 glass-pop rounded-2xl border p-6 shadow-xl outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
           // Phones: a full-width sheet rising from the bottom, within thumb reach, scrolling when tall.
           "max-sm:inset-x-0 max-sm:top-auto max-sm:bottom-0 max-sm:w-full max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:max-h-[92dvh] max-sm:overflow-y-auto max-sm:overscroll-contain max-sm:rounded-b-none max-sm:rounded-t-3xl max-sm:border-x-0 max-sm:border-b-0 max-sm:p-5 max-sm:pb-[calc(1.5rem+env(safe-area-inset-bottom))] max-sm:data-[state=open]:zoom-in-100 max-sm:data-[state=open]:slide-in-from-bottom max-sm:data-[state=closed]:zoom-out-100 max-sm:data-[state=closed]:slide-out-to-bottom",
           // sheet: the slide up and away on phones (globals.css). Solid, not frosted, there: a big blur sliding across the
@@ -151,7 +152,7 @@ function DialogContent({
 }
 
 function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
-  return <div className={cn("grid gap-1.5", className)} {...props} />;
+  return <div className={cn("grid min-w-0 grid-cols-1 gap-1.5 [&>*]:min-w-0", className)} {...props} />;
 }
 
 function DialogFooter({ className, ...props }: React.ComponentProps<"div">) {
@@ -166,7 +167,7 @@ function DialogTitle({
 }: React.ComponentProps<typeof DialogPrimitive.Title>) {
   return (
     <DialogPrimitive.Title
-      className={cn("text-lg font-semibold", className)}
+      className={cn("text-lg font-semibold [overflow-wrap:anywhere]", className)}
       {...props}
     />
   );
@@ -178,7 +179,7 @@ function DialogDescription({
 }: React.ComponentProps<typeof DialogPrimitive.Description>) {
   return (
     <DialogPrimitive.Description
-      className={cn("text-sm text-muted-foreground", className)}
+      className={cn("text-sm text-muted-foreground [overflow-wrap:anywhere]", className)}
       {...props}
     />
   );
