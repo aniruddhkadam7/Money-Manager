@@ -4,6 +4,8 @@ import { useMemo } from "react";
 import { cardStatementBills, cardUsage, DEFAULT_CARD_LIMIT_MINOR, type CardUsage } from "@/lib/finance/card-bill-status";
 import type { FinancialState } from "@/lib/finance/state";
 import type { Account } from "@/lib/finance/types";
+import { useKotakFunds } from "@/lib/brokers/kotak-store";
+import { useMarketMarks } from "../investments/market-value";
 import { anchorGaps, applyAnchorGaps, statementBalanceAt, statementClosing, type AnchorGap } from "@/lib/finance/statement-anchor";
 import { useFinance } from "../finance-provider";
 import { useStatements } from "./statements-provider";
@@ -18,6 +20,8 @@ export interface StatementCheck {
   /** Bank and last four digits as the statement prints them. */
   bankHint?: string;
   accountMask?: string;
+  /** Where the figure came from: a statement (default) or a Kotak Neo sync. */
+  source?: "kotak";
 }
 
 /** Under a rupee apart counts as matching: statements round, and a paisa off isn't worth a warning. */
@@ -30,8 +34,14 @@ export const statementMatches = (c: StatementCheck) => Math.abs(c.appMinor - c.c
 export function useStatementChecks(): Map<string, StatementCheck> {
   const { book, ledger } = useFinance();
   const { imports } = useStatements();
+  const kotak = useKotakFunds();
   return useMemo(() => {
     const out = new Map<string, StatementCheck>();
+    // A Kotak Neo sync counts like a statement for the account it's shown as: the latest day synced.
+    if (kotak && book.accounts.some((a) => a.id === kotak.accountId)) {
+      const last = Object.keys(kotak.byDate).sort().at(-1);
+      if (last) out.set(kotak.accountId, { date: last, closingMinor: kotak.byDate[last], appMinor: 0, source: "kotak" });
+    }
     for (const i of imports) {
       const closing = statementClosing(i, book.accounts.find((a) => a.id === i.accountId)?.type);
       if (i.status === "FAILED" || closing == null || !i.periodEnd) continue;
@@ -44,7 +54,7 @@ export function useStatementChecks(): Map<string, StatementCheck> {
       check.appMinor = statementBalanceAt(book, ledger, accountId, check.date);
     }
     return out;
-  }, [imports, book, ledger]);
+  }, [imports, book, ledger, kotak]);
 }
 
 /**
@@ -54,6 +64,9 @@ export function useStatementChecks(): Map<string, StatementCheck> {
 export function useStatementGaps(): AnchorGap[] {
   const { book, ledger } = useFinance();
   const { imports } = useStatements();
+  const kotak = useKotakFunds();
+  // Shares at their market value, on the same footing (see MarketValueProvider).
+  const marks = useMarketMarks();
   return useMemo(() => {
     // One per account and day (a statement imported twice counts once).
     const anchors = new Map<string, { accountId: string; date: string; closingMinor: number }>();
@@ -62,8 +75,11 @@ export function useStatementGaps(): AnchorGap[] {
       if (i.status === "FAILED" || closing == null || !i.periodEnd || !i.accountId) continue;
       anchors.set(`${i.accountId}|${i.periodEnd}`, { accountId: i.accountId, date: i.periodEnd, closingMinor: closing });
     }
-    return anchorGaps(book, ledger, [...anchors.values()], true);
-  }, [imports, book, ledger]);
+    if (kotak && book.accounts.some((a) => a.id === kotak.accountId)) {
+      for (const [date, closingMinor] of Object.entries(kotak.byDate)) anchors.set(`${kotak.accountId}|${date}`, { accountId: kotak.accountId, date, closingMinor });
+    }
+    return [...anchorGaps(book, ledger, [...anchors.values()], true), ...marks];
+  }, [imports, book, ledger, kotak, marks]);
 }
 
 /**

@@ -59,3 +59,40 @@ export function zerodhaCharges({ product, side, valueMinor, exchange = "NSE", dp
   const dp = !intraday && side === "sell" && !dpAlreadyCharged ? z.dpChargeMinor : 0;
   return { brokerage, stt, exchange: exch, sebi, gst, stamp, dp, total: brokerage + stt + exch + sebi + gst + stamp + dp };
 }
+
+/**
+ * A broker's own charges (brokerage and DP); the government's and exchange's (STT, exchange, SEBI, stamp, GST) are
+ * the same everywhere and come from the rates above.
+ */
+export interface BrokerRates {
+  /** Delivery brokerage, a share of the order (0.002 = 0.2%). */
+  deliveryRate: number;
+  /** Intraday brokerage: this share of the order, but at most `intradayCapMinor`. */
+  intradayRate: number;
+  intradayCapMinor: number;
+  /** DP charge on a delivery sell, per stock per day: this share of what's sold, at least `dpMinMinor` (GST on top). */
+  dpRate: number;
+  dpMinMinor: number;
+}
+
+/**
+ * Kotak Neo (Trade Free plan) as published in November 2026: delivery 0.2%, intraday ₹10 or 0.05% (lower), DP 0.04%
+ * of the sale with a ₹20 minimum. Sources differ, so they can be changed to match a contract note.
+ */
+export const KOTAK_NEO_RATES: BrokerRates = { deliveryRate: 0.002, intradayRate: 0.0005, intradayCapMinor: 1000, dpRate: 0.0004, dpMinMinor: 2000 };
+
+/** An order's charges with a broker's own rates (see BrokerRates), the rest as on any contract note. */
+export function brokerCharges({ product, side, valueMinor, exchange = "NSE", dpAlreadyCharged = false }: ChargeInput, r: BrokerRates): ChargeBreakdown {
+  const z = ZERODHA_EQUITY;
+  const intraday = product === "intraday";
+  const brokerage = intraday ? Math.min(paise(valueMinor * r.intradayRate), r.intradayCapMinor) : paise(valueMinor * r.deliveryRate);
+  const sttRate = intraday ? (side === "sell" ? z.intradaySellSttRate : 0) : z.deliverySttRate;
+  const stt = Math.round((valueMinor * sttRate) / 100) * 100;
+  const exch = paise(valueMinor * z.exchangeRate[exchange]);
+  const sebi = paise(valueMinor * z.sebiRate);
+  const gst = paise((brokerage + exch + sebi) * z.gstRate);
+  const stamp = side === "buy" ? paise(valueMinor * (intraday ? z.intradayStampRate : z.deliveryStampRate)) : 0;
+  const dpBase = !intraday && side === "sell" && !dpAlreadyCharged ? Math.max(paise(valueMinor * r.dpRate), r.dpMinMinor) : 0;
+  const dp = dpBase ? paise(dpBase * (1 + z.gstRate)) : 0;
+  return { brokerage, stt, exchange: exch, sebi, gst, stamp, dp, total: brokerage + stt + exch + sebi + gst + stamp + dp };
+}

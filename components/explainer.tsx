@@ -6,6 +6,10 @@ import { Info, ListTree } from "lucide-react";
 import { formatExactINR } from "@/lib/charts/format";
 import { cn } from "@/lib/utils";
 import { usePersonSheet } from "./money/person-sheet-provider";
+import { AccountLogo, useBankHints } from "./account-logo";
+import { useFinance } from "./finance-provider";
+import { PersonAvatar } from "./money/person-photo";
+import { PictureIcon, type PictureName } from "./picture-icon";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 
 export interface ExplainRow {
@@ -15,6 +19,10 @@ export interface ExplainRow {
   href?: string;
   /** A person's line: tapping opens their profile instead of a link. */
   personId?: string;
+  /** An account's line: its bank's logo (or its kind's picture) shows beside it. */
+  accountId?: string;
+  /** A picture by name, for a line about neither (Shares). */
+  picture?: PictureName;
 }
 
 export interface ExplainSection {
@@ -36,11 +44,35 @@ const signed = (minor: number) => (minor > 0 ? "+" : minor < 0 ? "−" : "") + f
 
 function Row({ row, showSign }: { row: ExplainRow; showSign: boolean }) {
   const { openPerson } = usePersonSheet();
+  const { book } = useFinance();
+  const bankHint = useBankHints();
+  const account = row.accountId ? book.accounts.find((a) => a.id === row.accountId) : undefined;
+  const lead = account ? (
+    <span className="flex w-16 shrink-0 justify-center">
+      <AccountLogo account={account} bankHint={bankHint(account.id)} />
+    </span>
+  ) : row.personId ? (
+    <span className="flex w-16 shrink-0 justify-center">
+      <PersonAvatar
+        person={{ id: row.personId, name: row.label }}
+        className="size-8"
+        logoClassName="!size-8 !rounded-full [&>img]:!size-5"
+        fallback={<span className="grid size-8 place-items-center rounded-full bg-indigo-500/15 text-xs font-semibold text-indigo-600 dark:text-indigo-300">{row.label.charAt(0).toUpperCase()}</span>}
+      />
+    </span>
+  ) : row.picture ? (
+    <span className="flex w-16 shrink-0 justify-center">
+      <PictureIcon name={row.picture} className="size-8" />
+    </span>
+  ) : null;
   const body = (
     <>
-      <span className="min-w-0">
-        <span className="block truncate text-sm font-medium text-slate-900">{row.label}</span>
-        {row.note && <span className="block text-xs text-slate-500">{row.note}</span>}
+      <span className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
+        {lead}
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-slate-900">{row.label}</span>
+          {row.note && <span className="block text-xs text-slate-500 [overflow-wrap:anywhere]">{row.note}</span>}
+        </span>
       </span>
       <span className={cn("shrink-0 text-sm font-semibold tabular-nums", row.amountMinor < 0 && "text-rose-700", showSign && row.amountMinor > 0 && "text-emerald-700")}>
         {showSign ? signed(row.amountMinor) : formatExactINR(row.amountMinor)}
@@ -88,7 +120,7 @@ export function ExplainSheet({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto" data-testid="explain-sheet">
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto overflow-x-hidden [&>*]:min-w-0" data-testid="explain-sheet">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}

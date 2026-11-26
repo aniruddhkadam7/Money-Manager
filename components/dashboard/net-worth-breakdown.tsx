@@ -12,6 +12,10 @@ interface Line {
   amountMinor: number;
   href: string;
   personId?: string;
+  /** The account it's about: its bank's logo (or its kind's picture) shows beside it. */
+  accountId?: string;
+  /** A picture by name when there's no account or person (Shares). */
+  picture?: "stocks";
 }
 
 /**
@@ -22,17 +26,32 @@ interface Line {
 export function buildBreakdown(state: FinancialState): { own: Line[]; owe: Line[] } {
   const own: Line[] = [];
   const owe: Line[] = [];
+  // Shares you trade (stocks, intraday or delivery) as one line, not one per stock: the Invest page has each.
+  const shares = state.accounts.filter((a) => a.account.type === "investment" && a.account.style && a.balanceMinor !== 0);
+  if (shares.length) {
+    const names = shares.map((a) => a.account.name);
+    own.push({
+      key: "shares",
+      label: "Shares",
+      note: `${names.length <= 3 ? names.join(", ") : `${names.length} stocks`} · at today's price`,
+      amountMinor: shares.reduce((t, a) => t + a.balanceMinor, 0),
+      href: "/investments",
+      picture: "stocks",
+    });
+  }
   for (const { account, balanceMinor } of state.accounts) {
     if (balanceMinor === 0) continue;
     const href = activityHref({ account: account.id });
     if (account.type === "bank" || account.type === "cash") {
-      own.push({ key: account.id, label: account.name, note: account.type === "bank" ? "Bank balance" : "Cash", amountMinor: balanceMinor, href });
+      own.push({ key: account.id, label: account.name, note: account.type === "bank" ? "Bank balance" : "Cash", amountMinor: balanceMinor, href, accountId: account.id });
+    } else if (account.type === "investment" && account.style) {
+      continue;
     } else if (account.type === "investment") {
-      own.push({ key: account.id, label: account.name, note: "Investment, current value", amountMinor: balanceMinor, href });
+      own.push({ key: account.id, label: account.name, note: "Investment, current value", amountMinor: balanceMinor, href, accountId: account.id });
     } else if (balanceMinor > 0) {
-      owe.push({ key: account.id, label: account.name, note: account.type === "loan" ? "Loan still owed" : "Card bill to pay", amountMinor: balanceMinor, href });
+      owe.push({ key: account.id, label: account.name, note: account.type === "loan" ? "Loan still owed" : "Card bill to pay", amountMinor: balanceMinor, href, accountId: account.id });
     } else if (account.type === "loan") {
-      own.push({ key: account.id, label: account.name, note: "Paid more than owed", amountMinor: -balanceMinor, href });
+      own.push({ key: account.id, label: account.name, note: "Paid more than owed", amountMinor: -balanceMinor, href, accountId: account.id });
     }
   }
   for (const p of state.people) {

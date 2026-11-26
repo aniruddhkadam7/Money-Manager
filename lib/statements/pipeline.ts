@@ -165,6 +165,7 @@ export function ruleContext(book: Book, store: Pick<ImportStoreData, "rules">): 
       cash: has("account-cash") ? "account-cash" : book.accounts.find((a) => a.type === "cash")?.id,
       creditCard: has("account-credit") ? "account-credit" : book.accounts.find((a) => a.type === "credit_card")?.id,
       loan: book.accounts.find((a) => a.type === "loan")?.id,
+      broker: book.accounts.find((a) => a.type === "bank" && /^kotak neo$/i.test(a.name.trim()))?.id,
     },
   };
 }

@@ -203,6 +203,8 @@ const BANK_CHARGE = /\b(sms (charges|chrg|alert)|chrg|charges?|annual fee|amc|mi
 const ATM = /\b(atm|cash wdl|cash withdrawal|nwd|cwdr|cash w\/d)\b/i;
 const CARD_PAYMENT = CARD_BILL_TEXT;
 const EMI = /\b(emi|loan (repay|instal)|loan a\/c|nach.*loan|home loan|car loan|personal loan|bajaj finance|bajaj finserv|hdb financial|tata capital|fullerton)\b/i;
+/** Your Kotak trading account: pay-ins and pay-outs ("KOTAK SECURITIES LTD", "KOTAK SECU", "KOTAK NEO"). */
+const BROKER_FUNDS = /\bkotak\s*(sec(u(rities)?)?|neo)\b/i;
 const INVEST = /\b(zerodha|groww|upstox|kuvera|coin by zerodha|paytm money|et money|angel (one|broking)|icici direct|hdfc securities|5paisa|smallcase|sip|mutual fund|mf purchase|nps|ppf|elss|bse star|nse clearing|ccil|indian clearing)\b/i;
 const SELL = /\b(redemption|redeem|sale proceeds|sell proceeds|mf redemption|sip redemption)\b/i;
 const RENT = /\b(rent|house rent|pg rent)\b/i;
@@ -258,7 +260,7 @@ export interface RuleContext {
   people: { name: string }[];
   relationships: Relationship[];
   /** Account ids the importer can point transfers at. */
-  accountIds: { cash?: string; creditCard?: string; loan?: string };
+  accountIds: { cash?: string; creditCard?: string; loan?: string; /** Your broker account ("Kotak Neo"), if any. */ broker?: string };
 }
 
 /** Below this, an unexplained payment to an individual is suggested as a purchase rather than a loan. */
@@ -293,6 +295,16 @@ export function classifyByRules(row: StatementRow, ctx: RuleContext): Classifica
   const learned = applyUserRule(row, ctx.userRules);
   if (learned) return learned;
   const mode = row.normalized.mode;
+
+  // Money added to or taken from your trading account (Kotak Securities / Kotak Neo): it moves between your own
+  // accounts. The shares bought with it are the investment, so counting this too would count it twice.
+  if (BROKER_FUNDS.test(text)) {
+    return make("rule", "TRANSFER", ctx.accountIds.broker ? 0.92 : 0.8, credit ? "Money taken out of your Kotak trading account." : "Money added to your Kotak trading account.", {
+      counterAccountId: ctx.accountIds.broker ?? null,
+      alternatives: ["INVESTMENT", "EXPENSE"],
+    });
+  }
+
 
   // Cash withdrawals are money moving from the bank into the wallet.
   if (!credit && ATM.test(text) && !/\batm (fee|charges)\b/i.test(text)) {

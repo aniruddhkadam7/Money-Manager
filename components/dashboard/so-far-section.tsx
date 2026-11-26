@@ -201,7 +201,7 @@ const PHONE_ROWS = 5;
 const REST_ID = "__rest";
 
 type Row = { categoryId: string; amountMinor: number; children?: Row[] };
-type Slice = { id: string; label: string; amount: number; color: string };
+export type Slice = { id: string; label: string; amount: number; color: string };
 
 const pctText = (part: number, total: number) => {
   const p = total > 0 ? (part / total) * 100 : 0;
@@ -385,7 +385,7 @@ function Breakdown({
 }
 
 /** Donut with a 2px card-coloured gap between slices; the pointed-at slice pulls out a little. Total in the hole. */
-function Donut({ slices, total, centerMinor, active, onHover }: { slices: Slice[]; total: number; /** The total printed in the hole. */ centerMinor: number; active: string | null; onHover: (id: string | null) => void }) {
+export function Donut({ slices, total, centerMinor, active, onHover }: { slices: Slice[]; total: number; /** The total printed in the hole. */ centerMinor: number; active: string | null; onHover: (id: string | null) => void }) {
   const size = 176;
   const outer = 76;
   const inner = 48;

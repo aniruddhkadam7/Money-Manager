@@ -21,11 +21,31 @@ export interface BalanceAnchor {
   closingMinor: number;
 }
 
-/** What the app's entries are missing for an account: the statement's closing balance less what they say it should be. */
+/**
+ * What the app's entries are missing for an account: the statement's closing balance less what they say it should be.
+ * `kind: "investment"` is a different thing on the same footing: shares valued at their market price (from `date`
+ * on) rather than what they cost: it adds to investments, not to cash, and never reaches back before its date.
+ */
 export interface AnchorGap {
   accountId: string;
   date: string;
   gapMinor: number;
+  kind?: "investment";
+}
+
+const isMark = (g: AnchorGap) => g.kind === "investment";
+
+/** An investment's market-value adjustment at the end of `date`: its latest mark up to that day (none before). */
+export function markAt(gaps: AnchorGap[], accountId: string, date: string): number {
+  let best: AnchorGap | null = null;
+  for (const g of gaps) if (isMark(g) && g.accountId === accountId && g.date <= date && (!best || g.date > best.date)) best = g;
+  return best?.gapMinor ?? 0;
+}
+
+function totalMarkAt(gaps: AnchorGap[], date: string): number {
+  let total = 0;
+  for (const id of new Set(gaps.filter(isMark).map((g) => g.accountId))) total += markAt(gaps, id, date);
+  return total;
 }
 
 /**
@@ -71,7 +91,7 @@ export function gapAt(gaps: AnchorGap[], accountId: string, date: string): numbe
   let before: AnchorGap | null = null;
   let after: AnchorGap | null = null;
   for (const g of gaps) {
-    if (g.accountId !== accountId) continue;
+    if (g.accountId !== accountId || isMark(g)) continue;
     if (g.date <= date) {
       if (!before || g.date > before.date) before = g;
     } else if (!after || g.date < after.date) after = g;
@@ -82,7 +102,7 @@ export function gapAt(gaps: AnchorGap[], accountId: string, date: string): numbe
 /** The gaps' total for every account with a statement, at the end of `date`. */
 function totalGapAt(gaps: AnchorGap[], date: string): number {
   let total = 0;
-  for (const id of new Set(gaps.map((g) => g.accountId))) total += gapAt(gaps, id, date);
+  for (const id of new Set(gaps.filter((g) => !isMark(g)).map((g) => g.accountId))) total += gapAt(gaps, id, date);
   return total;
 }
 
@@ -92,8 +112,31 @@ function totalGapAt(gaps: AnchorGap[], date: string): number {
  * worth) move with it so every page shows the same figures.
  */
 export function applyAnchorGaps(state: FinancialState, gaps: AnchorGap[]): FinancialState {
+  return applyMarks(applyCashGaps(state, gaps), gaps);
+}
+
+/** Shares at their market value (see AnchorGap): investments, assets and net worth move; cash doesn't. */
+function applyMarks(state: FinancialState, gaps: AnchorGap[]): FinancialState {
+  const markOf = new Map<string, number>();
+  for (const id of new Set(gaps.filter(isMark).map((g) => g.accountId))) {
+    const m = markAt(gaps, id, state.asOf);
+    if (m !== 0) markOf.set(id, m);
+  }
+  if (markOf.size === 0) return state;
+  const total = [...markOf.values()].reduce((t, m) => t + m, 0);
+  const holdings = state.investments.holdings.map((h) => (markOf.has(h.account.id) ? { ...h, valueMinor: h.valueMinor + markOf.get(h.account.id)!, gainMinor: h.gainMinor + markOf.get(h.account.id)! } : h));
+  return {
+    ...state,
+    accounts: state.accounts.map((a) => (markOf.has(a.account.id) ? { ...a, balanceMinor: a.balanceMinor + markOf.get(a.account.id)! } : a)),
+    assets: { ...state.assets, investmentsMinor: state.assets.investmentsMinor + total, totalMinor: state.assets.totalMinor + total },
+    netWorthMinor: state.netWorthMinor + total,
+    investments: { ...state.investments, valueMinor: state.investments.valueMinor + total, gainMinor: state.investments.gainMinor + total, holdings },
+  };
+}
+
+function applyCashGaps(state: FinancialState, gaps: AnchorGap[]): FinancialState {
   const gapOf = new Map<string, number>();
-  for (const id of new Set(gaps.map((g) => g.accountId))) {
+  for (const id of new Set(gaps.filter((g) => !isMark(g)).map((g) => g.accountId))) {
     const gap = gapAt(gaps, id, state.asOf);
     if (gap !== 0) gapOf.set(id, gap);
   }
@@ -113,6 +156,9 @@ export function applyAnchorGapsToSeries(points: BalancePoint[], gaps: AnchorGap[
   if (gaps.length === 0) return points;
   return points.map((p) => {
     const add = totalGapAt(gaps, p.date);
-    return add === 0 ? p : { ...p, netWorthMinor: p.netWorthMinor + add, assetsMinor: p.assetsMinor + add };
+    const mark = totalMarkAt(gaps, p.date);
+    return add === 0 && mark === 0
+      ? p
+      : { ...p, netWorthMinor: p.netWorthMinor + add + mark, assetsMinor: p.assetsMinor + add + mark, investmentsMinor: p.investmentsMinor + mark };
   });
 }

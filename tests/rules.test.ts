@@ -222,3 +222,25 @@ describe("money from a company", () => {
     expect(classifyByRules(row("NEFT/FLIPKART INTERNET PVT LTD/REFUND", "credit", 999), ctx())?.category).toBe("Refund");
   });
 });
+
+describe("money to and from your Kotak trading account", () => {
+  const withBroker = ctx({ accountIds: { cash: "account-cash", creditCard: "account-credit", broker: "kotak-neo" } });
+
+  it("is a transfer into Kotak Neo, not an investment (the shares bought are the investment)", () => {
+    for (const desc of ["UPI/KOTAK SECURITIES LTD/payin", "NEFT-KOTAK SECU-20000", "IMPS KOTAK NEO FUNDS"]) {
+      const c = classifyByRules(row(desc, "debit", 20000), withBroker)!;
+      expect(c.eventType).toBe("TRANSFER");
+      expect(c.counterAccountId).toBe("kotak-neo");
+    }
+  });
+
+  it("money coming back from it is a transfer too", () => {
+    const c = classifyByRules(row("NEFT CR KOTAK SECURITIES LTD PAYOUT", "credit", 5000), withBroker)!;
+    expect(c.eventType).toBe("TRANSFER");
+    expect(c.counterAccountId).toBe("kotak-neo");
+  });
+
+  it("other platforms are still investments", () => {
+    expect(classifyByRules(row("UPI/ZERODHA BROKING/ref", "debit", 5000), withBroker)!.eventType).toBe("INVESTMENT");
+  });
+});

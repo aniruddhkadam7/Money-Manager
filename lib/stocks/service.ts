@@ -1,4 +1,4 @@
-import { fetchLastPrice, searchYahoo, type LtpResponse, type SearchHit } from "./yahoo";
+import { fetchLastPrice, fetchSector, searchYahoo, type LtpResponse, type SearchHit, type SectorInfo } from "./yahoo";
 
 /**
  * The server side of Investments' share lookups: a stateless go-between for Yahoo, which a browser can't
@@ -37,6 +37,24 @@ export async function getLtp(symbols: string[]): Promise<LtpResponse> {
   };
   await Promise.all(Array.from({ length: Math.min(6, symbols.length) }, worker));
   return body;
+}
+
+/** Each share's sector and industry: they hardly change, so kept a week. */
+export async function getSectors(symbols: string[]): Promise<Record<string, SectorInfo>> {
+  const out: Record<string, SectorInfo> = {};
+  let next = 0;
+  const worker = async () => {
+    while (next < symbols.length) {
+      const s = symbols[next++];
+      try {
+        out[s] = await cached(`sector:${s}`, 7 * 24 * 3600_000, () => fetchSector(s));
+      } catch {
+        // Left out: shown as "Other".
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, symbols.length) }, worker));
+  return out;
 }
 
 /** NSE and BSE shares (and anything else Yahoo lists) matching the words; kept a day. */

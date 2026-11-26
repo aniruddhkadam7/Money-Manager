@@ -30,6 +30,9 @@ export default function RootLayout({
   return (
     <html lang="en" className={brand.variable} suppressHydrationWarning>
       <head>
+        {/* The app has its own dark mode: asks the Dark Reader extension to leave it alone (it rewrites icons before
+            React loads, which React then reports as a mismatch). */}
+        <meta name="darkreader-lock" />
         {/* Sets the dark class before first paint, so a dark page never flashes white. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>

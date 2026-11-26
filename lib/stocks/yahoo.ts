@@ -50,6 +50,8 @@ const SearchJson = z.object({
         longname: z.string().nullish(),
         exchDisp: z.string().nullish(),
         quoteType: z.string().nullish(),
+        sector: z.string().nullish(),
+        industry: z.string().nullish(),
       }),
     )
     .nullish(),
@@ -83,6 +85,21 @@ async function getJson(url: string): Promise<unknown> {
 
 export async function fetchLastPrice(symbol: string) {
   return parseLastPrice(await getJson(`${BASE}/v8/finance/chart/${encodeURIComponent(symbol)}?range=1d&interval=5m`));
+}
+
+/** A company's sector and industry as Yahoo lists them ("Technology", "Information Technology Services"). */
+export interface SectorInfo {
+  sector: string | null;
+  industry: string | null;
+}
+
+export function parseSector(json: unknown, symbol: string): SectorInfo {
+  const q = SearchJson.parse(json).quotes?.find((x) => x.symbol?.toUpperCase() === symbol.toUpperCase());
+  return { sector: q?.sector?.trim() || null, industry: q?.industry?.trim() || null };
+}
+
+export async function fetchSector(symbol: string): Promise<SectorInfo> {
+  return parseSector(await getJson(`${BASE}/v1/finance/search?q=${encodeURIComponent(symbol)}&quotesCount=5&newsCount=0&listsCount=0`), symbol);
 }
 
 export async function searchYahoo(q: string): Promise<SearchHit[]> {

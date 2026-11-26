@@ -288,6 +288,8 @@ export interface TradeEvent extends EventBase {
   time?: string;
   /** Where it was traded; decides the exchange charge. NSE when missing. */
   exchange?: "NSE" | "BSE";
+  /** The broker's own reference when it came from a broker sync ("kotak:<order>:<fill>"), so it's never added twice. */
+  brokerRef?: string;
 }
 
 export type TradeSide = "buy" | "sell";

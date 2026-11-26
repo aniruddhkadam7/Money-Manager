@@ -16,10 +16,14 @@ import { useFinance } from "../finance-provider";
 import { usePhone } from "../use-phone";
 import { axisLabel, dateTitle, GAIN, LOSS } from "./chart-helpers";
 import { useCardPeriod } from "./period";
+import { useBalances } from "../statements/use-statement-checks";
+import { applyAnchorGapsToSeries } from "@/lib/finance/statement-anchor";
 
 /** Are my investments growing? Value over time against what I put in. */
-export function InvestmentSection({ model }: { model: DashboardModel }) {
-  const { book, ledger, state, today } = useFinance();
+export function InvestmentSection({ model }: { model: Pick<DashboardModel, "firstActivity"> }) {
+  const { book, ledger, today } = useFinance();
+  // Shares at their market value (and bank balances as the statements say), as everywhere else.
+  const { state, gaps } = useBalances();
   const router = useRouter();
   const { openAdd } = useEventDialog();
   const period = useCardPeriod("investments", model.firstActivity);
@@ -28,8 +32,8 @@ export function InvestmentSection({ model }: { model: DashboardModel }) {
 
   const { dates, points } = useMemo(() => {
     const dates = sampleDates(period.from, period.to, 90);
-    return { dates, points: balanceSeries(book, ledger, dates) };
-  }, [book, ledger, period.from, period.to]);
+    return { dates, points: applyAnchorGapsToSeries(balanceSeries(book, ledger, dates), gaps) };
+  }, [book, ledger, period.from, period.to, gaps]);
 
   const xs = useMemo(() => dates.map((d) => daysBetween(dates[0], d)), [dates]);
   // An earlier month shows where things stood at its end; this month, where they stand now.

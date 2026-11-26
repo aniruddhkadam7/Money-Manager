@@ -43,5 +43,10 @@ export function useLtp(symbols: string[], everyMs = 15_000) {
     const p = data?.prices[yahooSymbol(symbol)];
     return p ? Math.round(p.price * 100) : null;
   };
-  return { ltp, at: data?.fetchedAt ?? null, error: state.key === key && state.error };
+  /** A symbol's previous close in paise (for today's move), or null when it isn't known. */
+  const prev = (symbol: string): number | null => {
+    const p = data?.prices[yahooSymbol(symbol)];
+    return p?.prevClose ? Math.round(p.prevClose * 100) : null;
+  };
+  return { ltp, prev, at: data?.fetchedAt ?? null, error: state.key === key && state.error };
 }

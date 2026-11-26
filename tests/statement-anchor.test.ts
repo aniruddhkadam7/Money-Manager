@@ -111,3 +111,47 @@ describe("a statement's closing balance", () => {
     expect(statementClosing(record({}), "credit_card")).toBeUndefined();
   });
 });
+
+describe("shares at their market value", () => {
+  // ICICI holds ₹50,000; a "Fund" holding was bought for ₹10,000 that is worth ₹12,500 at today's price.
+  const t2 = "2026-10-01T00:00:00Z";
+  const mb: Book = {
+    accounts: [
+      { id: "ICICI", name: "ICICI", type: "bank", openingBalanceMinor: 5000000, openedOn: "2026-01-01", createdAt: t2 },
+      { id: "Fund", name: "Fund", type: "investment", openingBalanceMinor: 0, openedOn: "2026-01-01", createdAt: t2 },
+    ],
+    people: [],
+    events: [{ id: "i1", date: "2026-10-05", createdAt: t2, updatedAt: t2, type: "invest", fromAccountId: "ICICI", holdingId: "Fund", amountMinor: 1000000 } as unknown as FinancialEvent],
+  };
+  const ml = buildLedger(mb);
+  const marks = [{ accountId: "Fund", date: "2026-10-20", gapMinor: 250000, kind: "investment" as const }];
+
+  it("adds the gain to investments, what you own and net worth, never to cash", () => {
+    const before = deriveState(mb, ml, "2026-10-20");
+    const s = applyAnchorGaps(before, marks);
+    expect(s.cashMinor).toBe(before.cashMinor);
+    expect(s.investments.valueMinor).toBe(1250000);
+    expect(s.investments.gainMinor).toBe(before.investments.gainMinor + 250000);
+    expect(s.assets.investmentsMinor).toBe(1250000);
+    expect(s.assets.totalMinor).toBe(before.assets.totalMinor + 250000);
+    expect(s.netWorthMinor).toBe(before.netWorthMinor + 250000);
+    expect(s.accounts.find((a) => a.account.id === "Fund")?.balanceMinor).toBe(1250000);
+    expect(s.investments.holdings.find((h) => h.account.id === "Fund")?.valueMinor).toBe(1250000);
+  });
+
+  it("counts from the price's day on, never before it", () => {
+    const early = deriveState(mb, ml, "2026-10-10");
+    expect(applyAnchorGaps(early, marks)).toBe(early);
+    const [p10, p20] = applyAnchorGapsToSeries(balanceSeries(mb, ml, ["2026-10-10", "2026-10-20"]), marks);
+    expect(p10.investmentsMinor).toBe(1000000);
+    expect(p20.investmentsMinor).toBe(1250000);
+    expect(p20.netWorthMinor - p10.netWorthMinor).toBe(250000);
+  });
+
+  it("works alongside a bank statement's balance (each moves its own part)", () => {
+    const both = [...marks, { accountId: "ICICI", date: "2026-10-20", gapMinor: 100000 }];
+    const s = applyAnchorGaps(deriveState(mb, ml, "2026-10-20"), both);
+    expect(s.cashMinor).toBe(5000000 - 1000000 + 100000);
+    expect(s.investments.valueMinor).toBe(1250000);
+  });
+});

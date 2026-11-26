@@ -548,12 +548,12 @@ function AccountRow({
         )}
         {statement && !off && (
           <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-emerald-700" data-testid="statement-balance">
-            <CheckCircle2 className="size-3.5 shrink-0" /> Matches bank on {formatDisplayDate(statement.date)}
+            <CheckCircle2 className="size-3.5 shrink-0" /> {statement.source === "kotak" ? "As per Kotak Neo sync" : "Matches bank on"} {formatDisplayDate(statement.date)}
           </p>
         )}
         {statement && off && (
           <p className="mt-0.5 truncate text-xs text-amber-700" data-testid="statement-gap" title="The balance follows the bank statement; your entries up to that day add up to a different amount.">
-            As per statement {formatDisplayDate(statement.date)} · {formatRupees(statement.closingMinor - statement.appMinor)} not in your entries
+            {statement.source === "kotak" ? "As per Kotak Neo sync" : "As per statement"} {formatDisplayDate(statement.date)} · {formatRupees(statement.closingMinor - statement.appMinor)} not in your entries
           </p>
         )}
       </div>

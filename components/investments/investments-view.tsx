@@ -16,12 +16,15 @@ import { useUrlTab } from "../use-url-tab";
 import { AccountDialog } from "../money/account-dialog";
 import { PageTitle } from "../page-title";
 import { PictureIcon } from "../picture-icon";
-import { SIDE_TONE, signedPrice, type TradePreset } from "./trade-form";
+import { SIDE_TONE, signedPrice } from "./trade-form";
 import { useLtp } from "./use-ltp";
+import { KotakCard } from "./kotak-sync";
+import { PortfolioOverview } from "./portfolio-overview";
 import { useSessionState } from "@/lib/use-session-state";
 
-type Tab = "positions" | "holdings" | "orders" | "pnl";
+type Tab = "overview" | "positions" | "holdings" | "orders" | "pnl";
 const TABS: { value: Tab; label: string }[] = [
+  { value: "overview", label: "Overview" },
   { value: "positions", label: "Positions" },
   { value: "holdings", label: "Holdings" },
   { value: "orders", label: "Orders" },
@@ -74,16 +77,14 @@ function SideTag({ side }: { side: TradeEvent["side"] }) {
  */
 export function InvestmentsView() {
   const { status, book, ledger, state, today } = useFinance();
-  const { openAdd } = useEventDialog();
   const [tab, setTab] = useUrlTab(TABS);
   const journal = useMemo(() => buildJournal(book, ledger), [book, ledger]);
   const todays = useMemo(() => dayPositions(journal, today), [journal, today]);
   const open = journal.positions.filter((p) => p.quantity !== 0);
-  const { ltp, at } = useLtp(open.map((p) => p.symbol));
+  const { ltp, prev, at } = useLtp(open.map((p) => p.symbol));
 
   if (status === "loading") return <div className="h-64 animate-pulse rounded-2xl bg-muted" aria-busy />;
 
-  const order = (preset: TradePreset) => openAdd("trade", { trade: preset });
   /** Profit still on open shares at the last price (null when the price isn't known). */
   const unrealized = (p: Position) => {
     const last = ltp(p.symbol);
@@ -101,9 +102,12 @@ export function InvestmentsView() {
     <div className="mx-auto grid w-full max-w-[1100px] gap-4 sm:gap-5">
       <PageTitle>Investments</PageTitle>
 
+      {/* Your Kotak Neo account: funds, today's positions and new trades, kept up to date by itself. */}
+      <KotakCard />
+
       {/* Solid, not frosted: the glass blur smeared the bright Buy / Sell colours into a band across the card. */}
       <Card className="bg-[var(--glass-solid)] [&::before]:[-webkit-backdrop-filter:none] [&::before]:[backdrop-filter:none]">
-        <CardContent className="grid gap-4 pt-5 max-sm:px-4 sm:grid-cols-[1fr_auto] sm:items-center">
+        <CardContent className="grid gap-4 pt-5 max-sm:px-4">
           <div>
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Today&apos;s P&amp;L</p>
             <p className={cn("text-3xl font-semibold tabular-nums", tone(booked + live))}>{signedPrice(booked + live)}</p>
@@ -111,14 +115,6 @@ export function InvestmentsView() {
               Booked {signedPrice(booked)} after {formatPrice(todayStats.chargesMinor)} charges
               {anyOpen && ` · open ${signedPrice(live)}`} · {todayStats.orders} {todayStats.orders === 1 ? "order" : "orders"}
             </p>
-          </div>
-          <div className="grid grid-cols-2 gap-2 sm:w-64">
-            <Button className={cn("h-12 rounded-xl text-base font-semibold", SIDE_TONE.buy.solid)} onClick={() => order({ side: "buy" })}>
-              Buy
-            </Button>
-            <Button className={cn("h-12 rounded-xl text-base font-semibold", SIDE_TONE.sell.solid)} onClick={() => order({ side: "sell" })}>
-              Sell
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -139,8 +135,9 @@ export function InvestmentsView() {
         <RangeTabs label="Show" value={tab} options={TABS} onChange={setTab} />
       </div>
 
-      {tab === "positions" && <Positions rows={rows} total={booked + live} todays={todays} today={today} unrealized={unrealized} ltp={ltp} at={at} order={order} />}
-      {tab === "holdings" && <Holdings positions={open.filter((p) => p.product === "delivery")} unrealized={unrealized} ltp={ltp} order={order} others={state.investments.holdings.filter((h) => !h.account.style)} />}
+      {tab === "overview" && <PortfolioOverview journal={journal} open={open} ltp={ltp} prev={prev} onOpenHoldings={() => setTab("holdings")} />}
+      {tab === "positions" && <Positions rows={rows} total={booked + live} todays={todays} today={today} unrealized={unrealized} ltp={ltp} at={at} />}
+      {tab === "holdings" && <Holdings positions={open.filter((p) => p.product === "delivery")} unrealized={unrealized} ltp={ltp} others={state.investments.holdings.filter((h) => !h.account.style)} />}
       {tab === "orders" && <Orders fills={journal.fills} rejected={rejected.map((r) => r.eventId)} />}
       {tab === "pnl" && <PnL journal={journal} today={today} />}
     </div>
@@ -170,7 +167,6 @@ function Positions({
   unrealized,
   ltp,
   at,
-  order,
 }: {
   rows: Position[];
   total: number;
@@ -179,14 +175,13 @@ function Positions({
   unrealized: (p: Position) => number | null;
   ltp: (s: string) => number | null;
   at: number | null;
-  order: (p: TradePreset) => void;
 }) {
   const stale = rows.filter((p) => p.product === "intraday" && p.quantity !== 0 && p.lastDate < today);
 
   if (rows.length === 0) {
     return (
       <Empty>
-        No positions today. Record an order with <strong>Buy</strong> or <strong>Sell</strong> as you trade; intraday (MIS) ones show here with live
+        No positions today. Your trades come in from Kotak Neo (Sync, above); intraday (MIS) ones show here with live
         P&amp;L.
       </Empty>
     );
@@ -234,20 +229,6 @@ function Positions({
               </div>
               <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
                 <span className="tabular-nums">{last !== null ? `LTP ${formatPrice(last)}` : flat ? "Closed" : "LTP —"}</span>
-                <span className="flex gap-4">
-                  <button type="button" className={cn("font-semibold", p.quantity < 0 ? SIDE_TONE.sell.text : SIDE_TONE.buy.text)} onClick={() => order({ holdingId: p.holding.id, side: p.quantity < 0 ? "sell" : "buy" })}>
-                    Add
-                  </button>
-                  {!flat && (
-                    <button
-                      type="button"
-                      className={cn("font-semibold", p.quantity > 0 ? SIDE_TONE.sell.text : SIDE_TONE.buy.text)}
-                      onClick={() => order({ holdingId: p.holding.id, side: p.quantity > 0 ? "sell" : "buy", quantity: Math.abs(p.quantity) })}
-                    >
-                      Exit
-                    </button>
-                  )}
-                </span>
               </div>
             </li>
           );
@@ -263,13 +244,11 @@ function Holdings({
   positions,
   unrealized,
   ltp,
-  order,
   others,
 }: {
   positions: Position[];
   unrealized: (p: Position) => number | null;
   ltp: (s: string) => number | null;
-  order: (p: TradePreset) => void;
   others: ReturnType<typeof useFinance>["state"]["investments"]["holdings"];
 }) {
   const { openAdd } = useEventDialog();
@@ -317,14 +296,6 @@ function Holdings({
                     <span>
                       Invested {formatPrice(p.openCostMinor)}
                       {last !== null && ` · LTP ${formatPrice(last)}`}
-                    </span>
-                    <span className="flex gap-4">
-                      <button type="button" className={cn("font-semibold", SIDE_TONE.buy.text)} onClick={() => order({ holdingId: p.holding.id, side: "buy" })}>
-                        Buy
-                      </button>
-                      <button type="button" className={cn("font-semibold", SIDE_TONE.sell.text)} onClick={() => order({ holdingId: p.holding.id, side: "sell", quantity: p.quantity })}>
-                        Sell
-                      </button>
                     </span>
                   </div>
                 </li>

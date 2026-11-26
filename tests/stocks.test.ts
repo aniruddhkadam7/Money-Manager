@@ -26,3 +26,17 @@ describe("parseLastPrice", () => {
     expect(() => parseLastPrice({ chart: { result: null, error: { code: "Not Found" } } })).toThrow();
   });
 });
+
+describe("a share's sector, from Yahoo's search", () => {
+  it("reads the sector and industry of that exact symbol", async () => {
+    const { parseSector } = await import("@/lib/stocks/yahoo");
+    const json = {
+      quotes: [
+        { symbol: "ITC.BO", quoteType: "EQUITY", sector: "Wrong one" },
+        { symbol: "ITC.NS", quoteType: "EQUITY", sector: "Consumer Defensive", industry: "Tobacco" },
+      ],
+    };
+    expect(parseSector(json, "ITC.NS")).toEqual({ sector: "Consumer Defensive", industry: "Tobacco" });
+    expect(parseSector({ quotes: [] }, "ITC.NS")).toEqual({ sector: null, industry: null });
+  });
+});
