@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
+import { PictureIcon } from "../picture-icon";
 import { useUrlTab } from "../use-url-tab";
 import { Calculator, CheckCircle2, HandCoins, Pencil, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -107,6 +108,76 @@ function Tile({ icon, title, hint, active, onClick }: { icon: ReactNode; title: 
 const ACTION = "max-sm:h-8 max-sm:border-0 max-sm:bg-transparent max-sm:px-2 max-sm:text-emerald-700 max-sm:shadow-none";
 
 /** A section's title with its total beside it, and its add button on the right. */
+/**
+ * Investments on the Money page: your shares as one line (at today's price, with the gain on them), other
+ * investments (funds, FDs…) each on their own, and bank, cash and investments together.
+ */
+function InvestmentsCard({ className }: { className?: string }) {
+  const { state } = useBalances();
+  const holdings = state.investments.holdings.filter((h) => h.valueMinor !== 0);
+  const shares = holdings.filter((h) => h.account.style);
+  const others = holdings.filter((h) => !h.account.style);
+  if (holdings.length === 0) return null;
+  const sharesValue = shares.reduce((t, h) => t + h.valueMinor, 0);
+  const sharesGain = shares.reduce((t, h) => t + h.gainMinor, 0);
+  const sharesCost = sharesValue - sharesGain;
+  const total = holdings.reduce((t, h) => t + h.valueMinor, 0);
+  const gainTone = (g: number) => (g > 0 ? "text-emerald-600 dark:text-emerald-400" : g < 0 ? "text-rose-600 dark:text-rose-400" : "text-muted-foreground");
+  const pctOf = (g: number, base: number) => (base ? ` (${g < 0 ? "−" : "+"}${((Math.abs(g) / base) * 100).toFixed(2)}%)` : "");
+  return (
+    <Card id="investments" className={cn("scroll-mt-24", className)} data-testid="money-investments">
+      <SectionHead
+        title="Investments"
+        total={formatRupees(total)}
+        action={
+          <Link href="/investments" className="ml-auto text-sm font-medium text-emerald-700 hover:underline dark:text-emerald-400">
+            Open Invest
+          </Link>
+        }
+      />
+      <ul className="divide-y py-2">
+        {shares.length > 0 && (
+          <li>
+            <Link href="/investments" className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40 sm:px-5">
+              <PictureIcon name="stocks" tile />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-medium">Shares</span>
+                <span className="block truncate text-sm text-muted-foreground">
+                  {shares.length <= 3 ? shares.map((h) => h.account.name).join(", ") : `${shares.length} stocks`} · at today&apos;s price
+                </span>
+                {sharesGain !== 0 && (
+                  <span className={cn("block truncate text-xs tabular-nums", gainTone(sharesGain))}>
+                    {sharesGain > 0 ? "+" : "−"}
+                    {formatRupees(Math.abs(sharesGain))}
+                    {pctOf(sharesGain, sharesCost)} on {formatRupees(sharesCost)} invested
+                  </span>
+                )}
+              </span>
+              <span className="shrink-0 text-right font-semibold tabular-nums">{formatRupees(sharesValue)}</span>
+            </Link>
+          </li>
+        )}
+        {others.map((h) => (
+          <li key={h.account.id}>
+            <Link href={`/activity?account=${h.account.id}`} className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40 sm:px-5">
+              <PictureIcon name="invest" tile />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-medium">{h.account.name}</span>
+                <span className="block truncate text-sm text-muted-foreground">Investment · current value</span>
+              </span>
+              <span className="shrink-0 text-right font-semibold tabular-nums">{formatRupees(h.valueMinor)}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+      <div className="flex items-baseline justify-between gap-3 border-t px-4 py-3 text-sm sm:px-5">
+        <span className="text-muted-foreground">Bank, cash &amp; investments</span>
+        <span className="font-semibold tabular-nums">{formatRupees(state.cashMinor + total)}</span>
+      </div>
+    </Card>
+  );
+}
+
 function SectionHead({ title, total, action }: { title: string; total?: string; action?: ReactNode }) {
   return (
     // The title and total stay on one line; on a very narrow screen the buttons move under them, on the right.
@@ -426,6 +497,8 @@ export function MoneyView() {
             )}
           </Card>
           )}
+          {/* Under Bank & cash: what's in shares and other investments (at today's prices). */}
+          {section.id === "accounts" && <InvestmentsCard className={hide("accounts")} />}
           </Fragment>
         );
       })}

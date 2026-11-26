@@ -18,6 +18,7 @@ import { useFinance } from "../finance-provider";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../ui/dialog";
 import { SIDE_TONE } from "./trade-form";
 import { useLtp } from "./use-ltp";
+import { refreshTradingDay } from "@/lib/stocks/trading-day";
 
 /** A trade from Kotak, and whether it's already in your entries (by Kotak's reference, or the same order typed in). */
 interface Row extends KotakTrade {
@@ -163,10 +164,15 @@ export function KotakAutoRefresh() {
       running = false;
       setRefreshing(false);
     };
-    void run();
-    const timer = setInterval(() => void run(), REFRESH_MS);
+    // Only while the market is trading (market hours, not a weekend or exchange holiday): every 5 minutes, and on
+    // coming back to the app. When it's closed nothing syncs by itself; ↻ still syncs on request.
+    const whenTrading = async (due: boolean) => {
+      if (due && (await refreshTradingDay())) void run();
+    };
+    void whenTrading(true);
+    const timer = setInterval(() => void whenTrading(Date.now() - last >= REFRESH_MS), 60_000);
     const onShow = () => {
-      if (document.visibilityState === "visible" && Date.now() - last > 60_000) void run();
+      if (document.visibilityState === "visible") void whenTrading(Date.now() - last > 60_000);
     };
     document.addEventListener("visibilitychange", onShow);
     const onAsk = () => void run(true);

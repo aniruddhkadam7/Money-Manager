@@ -266,106 +266,122 @@ function Weightage({ rows, value, onOpenHoldings }: { rows: Row[]; value: number
   );
 }
 
-/** Invested against current value for each stock: two bars, and whether it's up or down (and by how much). */
+/**
+ * Invested against current value, one compact line per stock (best first): up or down, what went in and what it's
+ * worth, the gain. Selling costs are there when you ask: tap a stock for its own, or "If I sell everything".
+ */
 function UpDown({ rows }: { rows: Row[] }) {
   const rates = useKotakRates();
   const [editing, setEditing] = useState(false);
-  const sales = rows.map((r) => saleOf(r, rates));
-  const all = sales.reduce((t, s) => ({ charges: t.charges + s.charges, receive: t.receive + s.receive, net: t.net + s.net }), { charges: 0, receive: 0, net: 0 });
-  const peak = Math.max(1, ...rows.map((r) => Math.max(r.value, r.p.openCostMinor)));
+  const [open, setOpen] = useState<string | null>(null);
+  const [sellAll, setSellAll] = useState(false);
   const byMove = [...rows].sort((a, b) => b.pnl / (b.p.openCostMinor || 1) - a.pnl / (a.p.openCostMinor || 1));
   const up = rows.filter((r) => r.pnl > 0).length;
   const down = rows.filter((r) => r.pnl < 0).length;
+  const sales = rows.map((r) => saleOf(r, rates));
+  const all = sales.reduce((t, s) => ({ charges: t.charges + s.charges, receive: t.receive + s.receive, net: t.net + s.net }), { charges: 0, receive: 0, net: 0 });
+  const worth = rows.reduce((t, r) => t + r.value, 0);
+
   return (
     <section className="rounded-3xl border glass p-4 sm:p-5" data-testid="up-down">
-      <div className="mb-1 flex items-center justify-between gap-2">
+      <div className="mb-2 flex items-center justify-between gap-2">
         <h2 className="text-base font-semibold">Invested vs now</h2>
         <span className="flex items-center gap-3 text-sm tabular-nums">
           <span className="flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400">
-            <ArrowUpRight className="size-4" /> {up} up
+            <ArrowUpRight className="size-4" /> {up}
           </span>
           <span className="flex items-center gap-0.5 text-rose-600 dark:text-rose-400">
-            <ArrowDownRight className="size-4" /> {down} down
+            <ArrowDownRight className="size-4" /> {down}
           </span>
         </span>
       </div>
-      <p className="mb-3 flex items-center gap-4 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1.5">
-          <span className="h-2 w-3 rounded-sm bg-slate-400/60" /> Invested
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="h-2 w-3 rounded-sm bg-emerald-500" /> Now (up)
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="h-2 w-3 rounded-sm bg-rose-500" /> Now (down)
-        </span>
-      </p>
-      <ul className="grid gap-3">
+
+      <ul className="divide-y">
         {byMove.map((r) => {
           const isUp = r.pnl >= 0;
+          const sale = saleOf(r, rates);
+          const shown = open === r.p.holding.id;
           return (
             <li key={r.p.holding.id}>
-              <div className="mb-1 flex items-baseline justify-between gap-3 text-sm">
-                <span className="flex items-center gap-1 font-medium">
-                  {isUp ? <ArrowUpRight className="size-4 text-emerald-600" /> : <ArrowDownRight className="size-4 text-rose-600" />}
-                  {r.p.symbol}
+              <button
+                type="button"
+                onClick={() => setOpen(shown ? null : r.p.holding.id)}
+                aria-expanded={shown}
+                className="flex w-full items-center gap-2.5 py-2.5 text-left"
+              >
+                <span className={cn("grid size-7 shrink-0 place-items-center rounded-full", isUp ? "bg-emerald-500/15 text-emerald-600" : "bg-rose-500/15 text-rose-600")}>
+                  {isUp ? <ArrowUpRight className="size-4" /> : <ArrowDownRight className="size-4" />}
                 </span>
-                <span className={cn("tabular-nums font-semibold", tone(r.pnl))}>
-                  {signed(r.pnl)} <span className="text-xs font-medium">{pct(r.pnl, r.p.openCostMinor)}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold">{r.p.symbol}</span>
+                  <span className="block truncate text-xs tabular-nums text-muted-foreground">
+                    {formatPrice(r.p.openCostMinor)} → {formatPrice(r.value)}
+                  </span>
                 </span>
-              </div>
-              <div className="grid gap-1">
-                <div className="h-2 rounded-full bg-muted">
-                  <div className="h-2 rounded-full bg-slate-400/60" style={{ width: `${(r.p.openCostMinor / peak) * 100}%` }} title={`Invested ${formatPrice(r.p.openCostMinor)}`} />
+                <span className="shrink-0 text-right tabular-nums">
+                  <span className={cn("block text-sm font-semibold", tone(r.pnl))}>{signed(r.pnl)}</span>
+                  <span className={cn("block text-xs", tone(r.pnl))}>{pct(r.pnl, r.p.openCostMinor)}</span>
+                </span>
+              </button>
+              {shown && (
+                <div className="mb-2.5 grid grid-cols-3 gap-2 rounded-xl bg-muted/60 p-2.5 text-xs tabular-nums">
+                  <span>
+                    <span className="block text-muted-foreground">Charges</span>
+                    <span className="font-semibold">{formatPrice(sale.charges)}</span>
+                  </span>
+                  <span>
+                    <span className="block text-muted-foreground">You&apos;d get</span>
+                    <span className="font-semibold">{formatPrice(sale.receive)}</span>
+                  </span>
+                  <span className="text-right">
+                    <span className="block text-muted-foreground">After charges</span>
+                    <span className={cn("font-semibold", tone(sale.net))}>{signed(sale.net)}</span>
+                  </span>
                 </div>
-                <div className="h-2 rounded-full bg-muted">
-                  <div className={cn("h-2 rounded-full", isUp ? "bg-emerald-500" : "bg-rose-500")} style={{ width: `${(Math.max(0, r.value) / peak) * 100}%` }} title={`Now ${formatPrice(r.value)}`} />
-                </div>
-              </div>
-              <p className="mt-0.5 text-[11px] tabular-nums text-muted-foreground">
-                {formatPrice(r.p.openCostMinor)} → {formatPrice(r.value)}
-              </p>
-              {(() => {
-                const sale = saleOf(r, rates);
-                return (
-                  <p className="mt-0.5 text-[11px] tabular-nums text-muted-foreground">
-                    Sell now: {formatPrice(sale.charges)} charges · you&apos;d get {formatPrice(sale.receive)} ·{" "}
-                    <span className={cn("font-medium", tone(sale.net))}>{signed(sale.net)} after charges</span>
-                  </p>
-                );
-              })()}
+              )}
             </li>
           );
         })}
       </ul>
 
-      {/* Selling everything now. */}
-      <div className="mt-4 rounded-xl bg-muted/60 p-3 text-sm" data-testid="sell-all">
-        <p className="mb-1 font-semibold">If you sold everything now</p>
-        <div className="flex justify-between gap-3 tabular-nums text-muted-foreground">
-          <span>Worth</span>
-          <span>{formatPrice(rows.reduce((t, r) => t + r.value, 0))}</span>
+      {/* Selling everything: only when asked. */}
+      <button
+        type="button"
+        onClick={() => setSellAll((v) => !v)}
+        aria-expanded={sellAll}
+        className="mt-1 flex w-full items-center justify-between rounded-xl border px-3 py-2 text-sm font-medium hover:bg-muted/50"
+      >
+        <span>If I sell everything</span>
+        <span className="text-xs text-muted-foreground">{sellAll ? "Hide" : "Charges & what you'd get"}</span>
+      </button>
+      {sellAll && (
+        <div className="mt-2 rounded-xl bg-muted/60 p-3 text-sm" data-testid="sell-all">
+          <div className="grid grid-cols-3 gap-2 tabular-nums">
+            <span>
+              <span className="block text-xs text-muted-foreground">Worth</span>
+              <span className="font-semibold">{formatPrice(worth)}</span>
+            </span>
+            <span>
+              <span className="block text-xs text-muted-foreground">Charges</span>
+              <span className="font-semibold">{formatPrice(all.charges)}</span>
+            </span>
+            <span className="text-right">
+              <span className="block text-xs text-muted-foreground">You&apos;d get</span>
+              <span className="font-semibold">{formatPrice(all.receive)}</span>
+            </span>
+          </div>
+          <div className="mt-2 flex justify-between border-t pt-2 tabular-nums">
+            <span className="text-muted-foreground">Profit after charges</span>
+            <span className={cn("font-semibold", tone(all.net))}>{signed(all.net)}</span>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Kotak Neo: delivery {(rates.deliveryRate * 100).toFixed(2)}% · DP {(rates.dpRate * 100).toFixed(2)}% (min {formatPrice(rates.dpMinMinor)}) + GST, STT, exchange.{" "}
+            <button type="button" onClick={() => setEditing(true)} className="font-medium text-foreground underline-offset-2 hover:underline">
+              Change
+            </button>
+          </p>
         </div>
-        <div className="flex justify-between gap-3 tabular-nums text-muted-foreground">
-          <span>− Charges (brokerage, STT, DP, GST…)</span>
-          <span>{formatPrice(all.charges)}</span>
-        </div>
-        <div className="mt-1 flex justify-between gap-3 border-t pt-1 font-semibold tabular-nums">
-          <span>You&apos;d get</span>
-          <span>{formatPrice(all.receive)}</span>
-        </div>
-        <div className="flex justify-between gap-3 tabular-nums">
-          <span className="text-muted-foreground">Profit after charges</span>
-          <span className={cn("font-semibold", tone(all.net))}>{signed(all.net)}</span>
-        </div>
-        <p className="mt-2 text-xs text-muted-foreground">
-          Kotak Neo rates: delivery {(rates.deliveryRate * 100).toFixed(2)}% · DP {(rates.dpRate * 100).toFixed(2)}% (min {formatPrice(rates.dpMinMinor)}) + GST, plus
-          STT and exchange charges.{" "}
-          <button type="button" onClick={() => setEditing(true)} className="font-medium text-foreground underline-offset-2 hover:underline">
-            Change
-          </button>
-        </p>
-      </div>
+      )}
       {editing && <RatesDialog rates={rates} onClose={() => setEditing(false)} />}
     </section>
   );

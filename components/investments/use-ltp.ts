@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { LtpResponse } from "@/lib/stocks/yahoo";
+import { refreshTradingDay } from "@/lib/stocks/trading-day";
 
 /** Yahoo's symbol for an Indian share: RELIANCE on NSE is RELIANCE.NS, on BSE RELIANCE.BO. */
 export const yahooSymbol = (symbol: string, exchange: "NSE" | "BSE" = "NSE") => `${symbol.toUpperCase()}.${exchange === "BSE" ? "BO" : "NS"}`;
@@ -17,8 +18,13 @@ export function useLtp(symbols: string[], everyMs = 15_000) {
   useEffect(() => {
     if (!key) return;
     let alive = true;
-    const load = () => {
+    let lastLoad = 0;
+    // Once on opening (the last prices, to show values), then at `everyMs` only while the market is trading: not
+    // after hours, at weekends or on exchange holidays, when prices don't move.
+    const load = async (force = false) => {
       if (document.visibilityState !== "visible") return;
+      if (!force && !(await refreshTradingDay())) return;
+      lastLoad = Date.now();
       fetch(`/api/stocks/ltp?symbols=${encodeURIComponent(key)}`)
         .then(async (res) => {
           if (!res.ok) throw new Error(`Status ${res.status}`);
@@ -27,13 +33,14 @@ export function useLtp(symbols: string[], everyMs = 15_000) {
         })
         .catch(() => alive && setState((s) => (s.key === key ? { ...s, error: true } : { key, data: null, error: true })));
     };
-    load();
-    const timer = setInterval(load, everyMs);
-    document.addEventListener("visibilitychange", load);
+    void load(true);
+    const timer = setInterval(() => void load(), everyMs);
+    const onShow = () => void load();
+    document.addEventListener("visibilitychange", onShow);
     return () => {
       alive = false;
       clearInterval(timer);
-      document.removeEventListener("visibilitychange", load);
+      document.removeEventListener("visibilitychange", onShow);
     };
   }, [key, everyMs]);
 
