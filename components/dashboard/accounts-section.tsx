@@ -1,5 +1,6 @@
 "use client";
 
+import { isBrokerAccount } from "@/lib/brokers/broker-account";
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import { formatCompactINR, formatExactINR } from "@/lib/charts/format";
@@ -79,7 +80,9 @@ export function AccountsSection({ book, state }: { book: Book; state: FinancialS
                     : "Available"
                 : noStartingCash
                   ? "Set starting cash"
-                  : "Available"}
+                  : isBrokerAccount(account)
+                    ? "Trading · available"
+                    : "Available"}
             {!copy && (!check || card) && (
               <span className="relative z-10 flex">
                 <AccountBalanceHow account={account} />

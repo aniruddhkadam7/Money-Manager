@@ -5,6 +5,7 @@ import { cardStatementBills, cardUsage, DEFAULT_CARD_LIMIT_MINOR, type CardUsage
 import type { FinancialState } from "@/lib/finance/state";
 import type { Account } from "@/lib/finance/types";
 import { useKotakFunds } from "@/lib/brokers/kotak-store";
+import { isBrokerAccount } from "@/lib/brokers/broker-account";
 import { useMarketMarks } from "../investments/market-value";
 import { anchorGaps, applyAnchorGaps, statementBalanceAt, statementClosing, type AnchorGap } from "@/lib/finance/statement-anchor";
 import { useFinance } from "../finance-provider";
@@ -43,8 +44,10 @@ export function useStatementChecks(): Map<string, StatementCheck> {
       if (last) out.set(kotak.accountId, { date: last, closingMinor: kotak.byDate[last], appMinor: 0, source: "kotak" });
     }
     for (const i of imports) {
-      const closing = statementClosing(i, book.accounts.find((a) => a.id === i.accountId)?.type);
-      if (i.status === "FAILED" || closing == null || !i.periodEnd) continue;
+      const account = book.accounts.find((a) => a.id === i.accountId);
+      const closing = statementClosing(i, account?.type);
+      // The trading account's balance is the broker's, never a bank statement's.
+      if (i.status === "FAILED" || closing == null || !i.periodEnd || (account && isBrokerAccount(account))) continue;
       const prev = out.get(i.accountId);
       if (!prev || i.periodEnd > prev.date) {
         out.set(i.accountId, { date: i.periodEnd, closingMinor: closing, appMinor: 0, bankHint: i.bankHint, accountMask: i.accountMask });
@@ -62,7 +65,7 @@ export function useStatementChecks(): Map<string, StatementCheck> {
  * Every statement counts, not only the latest, so an earlier day goes by the statement nearest it (see gapAt).
  */
 export function useStatementGaps(): AnchorGap[] {
-  const { book, ledger } = useFinance();
+  const { book, ledger, today } = useFinance();
   const { imports } = useStatements();
   const kotak = useKotakFunds();
   // Shares at their market value, on the same footing (see MarketValueProvider).
@@ -72,14 +75,19 @@ export function useStatementGaps(): AnchorGap[] {
     const anchors = new Map<string, { accountId: string; date: string; closingMinor: number }>();
     for (const i of imports) {
       const closing = statementClosing(i, book.accounts.find((a) => a.id === i.accountId)?.type);
-      if (i.status === "FAILED" || closing == null || !i.periodEnd || !i.accountId) continue;
+      const account = book.accounts.find((a) => a.id === i.accountId);
+      if (i.status === "FAILED" || closing == null || !i.periodEnd || !i.accountId || (account && isBrokerAccount(account))) continue;
       anchors.set(`${i.accountId}|${i.periodEnd}`, { accountId: i.accountId, date: i.periodEnd, closingMinor: closing });
     }
     if (kotak && book.accounts.some((a) => a.id === kotak.accountId)) {
       for (const [date, closingMinor] of Object.entries(kotak.byDate)) anchors.set(`${kotak.accountId}|${date}`, { accountId: kotak.accountId, date, closingMinor });
+      // The trading account holds what Kotak last said, until the next sync says otherwise: nothing recorded since
+      // is added on top (money moves there only through Kotak, so its figure is the whole truth).
+      const last = Object.keys(kotak.byDate).sort().at(-1);
+      if (last && last < today) anchors.set(`${kotak.accountId}|${today}`, { accountId: kotak.accountId, date: today, closingMinor: kotak.byDate[last] });
     }
     return [...anchorGaps(book, ledger, [...anchors.values()], true), ...marks];
-  }, [imports, book, ledger, kotak, marks]);
+  }, [imports, book, ledger, kotak, marks, today]);
 }
 
 /**

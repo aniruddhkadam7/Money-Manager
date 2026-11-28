@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { PictureIcon } from "../picture-icon";
+import { isBrokerAccount } from "@/lib/brokers/broker-account";
 import { useUrlTab } from "../use-url-tab";
 import { Calculator, CheckCircle2, HandCoins, Pencil, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -412,7 +413,9 @@ export function MoneyView() {
                           : `${formatRupees(usage.usedMinor)} used of ${formatRupees(usage.limitMinor)}`
                         : account.type === "loan" && account.loanTerms
                           ? `Loan · EMI ${formatRupees(emiOf(account.loanTerms))} · ${account.loanTerms.annualRateBps / 100}%`
-                          : ACCOUNT_TYPE_INFO[account.type].label
+                          : isBrokerAccount(account)
+                            ? "Trading account · stocks"
+                            : ACCOUNT_TYPE_INFO[account.type].label
                     }
                     value={formatRupees(usage ? usage.availableMinor : shown({ account, balanceMinor }))}
                     startingCash={account.type === "cash" && balanceMinor < 0 ? -balanceMinor : undefined}

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_CATEGORIES, DEFAULT_INCOME_CATEGORIES } from "@/lib/domain/categories";
 import { defaultAccounts } from "@/lib/finance/migrate";
 import type { Book } from "@/lib/finance/types";
-import { AUTO_ACCOUNT, detectAccount, processStatement } from "@/lib/statements/pipeline";
+import { AUTO_ACCOUNT, detectAccount, planAccount, processStatement } from "@/lib/statements/pipeline";
 import { emptyImportStore, StatementError } from "@/lib/statements/types";
 import { fixture, nodePdfjs } from "./pdf-helpers";
 
@@ -111,5 +111,72 @@ describe("putting right a bank read wrongly before", () => {
     const same = correctBank(store, b, "imp-1", "HDFC Bank");
     expect(same.rename).toBeUndefined();
     expect(same.store.accountByMask).toBe(store.accountByMask);
+  });
+});
+
+describe("a statement from an account you haven't added yet", () => {
+  const withKotak = (): Book => {
+    const b = book();
+    return { ...b, accounts: [...b.accounts, { id: "acc-kotak", name: "Kotak Mahindra Bank", type: "bank", openingBalanceMinor: 0, openedOn: "2026-01-01", createdAt: "x" }, { id: "acc-neo", name: "Kotak Neo", type: "bank", openingBalanceMinor: 0, openedOn: "2026-01-01", createdAt: "x" }] };
+  };
+  // Your Kotak Mahindra Bank statements are for account ••1234; the plain account holds an ICICI statement's number.
+  const memory = { accountByMask: { "Kotak Mahindra Bank:1234": "acc-kotak", "ICICI Bank:7788": "account-netbanking" } };
+
+  it("is a new account when the bank has one already, for another number (Kotak 811 beside Kotak Mahindra Bank)", () => {
+    expect(planAccount(withKotak(), memory, { bankHint: "Kotak Mahindra Bank", accountMask: "5555", rows: bankRows }, false, "Kotak 811")).toEqual({
+      create: { name: "Kotak 811 ••5555", type: "bank" },
+    });
+  });
+
+  it("is never the broker's trading account (Kotak Neo), whatever its name says", () => {
+    const plan = planAccount(withKotak(), memory, { bankHint: "Kotak Mahindra Bank", accountMask: "5555", rows: bankRows }, false);
+    expect(plan).not.toEqual({ id: "acc-neo" });
+  });
+
+  it("goes to that account next time, by its number", () => {
+    const later = { accountByMask: { ...memory.accountByMask, "Kotak Mahindra Bank:5555": "acc-811" } };
+    const b = withKotak();
+    b.accounts.push({ id: "acc-811", name: "Kotak 811 ••5555", type: "bank", openingBalanceMinor: 0, openedOn: "2026-01-01", createdAt: "x" });
+    expect(planAccount(b, later, { bankHint: "Kotak Mahindra Bank", accountMask: "5555", rows: bankRows }, false)).toEqual({ id: "acc-811" });
+    expect(planAccount(b, later, { bankHint: "Kotak Mahindra Bank", accountMask: "1234", rows: bankRows }, false)).toEqual({ id: "acc-kotak" });
+  });
+
+  it("is the bank's account you already have, for its first statement", () => {
+    expect(planAccount(withKotak(), { accountByMask: {} }, { bankHint: "Kotak Mahindra Bank", accountMask: "5555", rows: bankRows }, false)).toEqual({ id: "acc-kotak" });
+  });
+
+  it("is a new account for a bank you haven't added, once the plain account holds another number", () => {
+    expect(planAccount(withKotak(), memory, { bankHint: "Axis Bank", accountMask: "3520", rows: bankRows }, false)).toEqual({ create: { name: "Axis Bank ••3520", type: "bank" } });
+  });
+
+  it("still asks when the statement doesn't even say its bank", () => {
+    expect(() => planAccount(withKotak(), memory, { accountMask: "9999", rows: bankRows }, false)).not.toThrow();
+  });
+});
+
+describe("undoing a statement filed in the wrong account", () => {
+  it("forgets its account number, so uploading it again finds the right account", async () => {
+    const { forgetImport, discardImport } = await import("@/lib/statements/pipeline");
+    const store = {
+      ...emptyImportStore(),
+      imports: [{ id: "imp1", accountId: "acc-kotak", accountMask: "5555", bankHint: "Kotak Mahindra Bank", status: "IMPORTED" }],
+      accountByMask: { "Kotak Mahindra Bank:5555": "acc-kotak", "Kotak Mahindra Bank:1234": "acc-kotak" },
+    } as never;
+    expect(forgetImport(store, "imp1").accountByMask).toEqual({ "Kotak Mahindra Bank:1234": "acc-kotak" });
+    const waiting = { ...(store as object), imports: [{ id: "imp1", accountId: "acc-kotak", accountMask: "5555", bankHint: "Kotak Mahindra Bank", status: "NEEDS_REVIEW" }] } as never;
+    expect(discardImport(waiting, "imp1").accountByMask).toEqual({ "Kotak Mahindra Bank:1234": "acc-kotak" });
+  });
+
+  it("keeps it while another statement of that account still uses the number", async () => {
+    const { forgetImport } = await import("@/lib/statements/pipeline");
+    const store = {
+      ...emptyImportStore(),
+      imports: [
+        { id: "imp1", accountId: "acc-kotak", accountMask: "1234", bankHint: "Kotak Mahindra Bank", status: "IMPORTED" },
+        { id: "imp2", accountId: "acc-kotak", accountMask: "1234", bankHint: "Kotak Mahindra Bank", status: "IMPORTED" },
+      ],
+      accountByMask: { "Kotak Mahindra Bank:1234": "acc-kotak" },
+    } as never;
+    expect(forgetImport(store, "imp1").accountByMask).toEqual({ "Kotak Mahindra Bank:1234": "acc-kotak" });
   });
 });

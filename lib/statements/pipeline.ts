@@ -80,6 +80,8 @@ export interface ProcessInput {
   onProgress?: (p: Progress) => void;
   useAi?: boolean;
   signal?: AbortSignal;
+  /** Makes a new account for a statement from a bank or account you haven't added yet; returns it (null if not). */
+  createAccount?: (input: { name: string; type: "bank" | "credit_card" }) => Book["accounts"][number] | null;
 }
 
 export interface ProcessResult {
@@ -385,45 +387,85 @@ export const AUTO_ACCOUNT = "auto";
  * after a different bank (or any bank, when the statement doesn't say which) is never a fallback:
  * better to ask than to file a Kotak statement under "HDFC Bank".
  */
+/** A broker's trading account (Kotak Neo): its balance comes from the broker, never from a bank statement. */
+const isBrokerAccount = (a: Book["accounts"][number]) => /^kotak\s*neo$/i.test(a.name.trim());
+
+/** Where a statement goes: an account you have, or a new one to make (a bank or card you haven't added yet). */
+export type AccountPlan = { id: string } | { create: { name: string; type: "bank" | "credit_card" } };
+
+/**
+ * Which account a statement belongs to, from the statement itself:
+ * 1. the account its number went to before (whatever its bank was read as then), or one named with that number;
+ * 2. an account of the same bank that isn't already another account number's (your first statement for it);
+ * 3. a plain account (no bank in its name) not yet any account number's;
+ * 4. otherwise, a statement whose bank is known is a new account (a second account at the same bank, like Kotak
+ *    811 beside Kotak Mahindra Bank, or a bank you hadn't added): it's made for it, named by bank and number.
+ * Only when even the bank is unknown does it ask.
+ */
+export function planAccount(
+  book: Book,
+  store: Pick<ImportStoreData, "accountByMask">,
+  parsed: { bankHint?: string; accountMask?: string; rows: { balanceMinor?: number }[] },
+  cardStatement: boolean,
+  nameHint?: string,
+): AccountPlan {
+  const isCard = cardStatement && !looksLikeBankStatement(parsed.rows, false);
+  const candidates = book.accounts.filter((a) => STATEMENT_ACCOUNT_TYPES.includes(a.type) && (a.type === "credit_card") === isCard && !isBrokerAccount(a));
+  const mask = parsed.accountMask;
+  const remembered = mask ? store.accountByMask[`${parsed.bankHint ?? ""}:${mask}`] : undefined;
+  // The same account number filed under another bank name (one read wrongly before) is still the same account.
+  const sameNumber = mask ? Object.entries(store.accountByMask).filter(([key]) => key.endsWith(`:${mask}`)).map(([, id]) => id) : [];
+  // An account already holding another account number's statements is that account, not this one.
+  const otherNumber = (a: Book["accounts"][number]) => !!mask && Object.entries(store.accountByMask).some(([key, id]) => id === a.id && !key.endsWith(`:${mask}`));
+  const statementBank = bankBrandFor(parsed.bankHint)?.slug;
+  const bankOf = (a: Book["accounts"][number]) => bankBrandFor(a.name)?.slug;
+  const sameBank = (a: Book["accounts"][number]) => !!statementBank && bankOf(a) === statementBank;
+  const notAnotherBank = (a: Book["accounts"][number]) => !bankOf(a) || !statementBank || sameBank(a);
+  const free = candidates.filter((a) => !otherNumber(a));
+  const unnamed = free.filter((a) => !bankOf(a) || sameBank(a));
+  const pick =
+    candidates.find((a) => a.id === remembered) ??
+    candidates.find((a) => sameNumber.includes(a.id)) ??
+    (mask ? candidates.find((a) => a.name.includes(mask) && notAnotherBank(a)) : undefined) ??
+    free.find(sameBank) ??
+    (statementBank && mask
+      ? // A known bank and number with no account of its own: unnamed accounts are only for your first statements.
+        ((fresh) => fresh.find((a) => a.id === "account-netbanking") ?? fresh.find((a) => a.type === "bank") ?? fresh[0])(
+          // Only before any statement has an account: once you've imported some, a new number is a new account.
+          Object.keys(store.accountByMask).length === 0 ? unnamed.filter((a) => !bankOf(a)) : [],
+        )
+      : isCard
+        ? unnamed[0]
+        : (unnamed.find((a) => a.id === "account-netbanking") ?? unnamed.find((a) => a.type === "bank") ?? unnamed[0]));
+  if (pick) return { id: pick.id };
+  if (statementBank && parsed.bankHint) {
+    const bank = nameHint ?? parsed.bankHint;
+    return { create: { name: mask ? `${bank}${isCard ? " card" : ""} ••${mask.slice(-4)}` : `${bank}${isCard ? " card" : ""}`, type: isCard ? "credit_card" : "bank" } };
+  }
+  if (candidates.length > 0) {
+    throw new StatementError(
+      "unsupported_format",
+      `${parsed.bankHint ? `This statement is from ${parsed.bankHint}` : "The statement doesn't say which bank it's from"}, and none of your ${isCard ? "cards" : "accounts"} match. Choose the account it belongs to, then try again.`,
+    );
+  }
+  throw new StatementError(
+    "unsupported_format",
+    isCard
+      ? "This is a credit card statement, but there's no credit card account yet. Restore the standard accounts on the Money page, then try again."
+      : "There's no bank account to put this statement in. Restore the standard accounts on the Money page, then try again.",
+  );
+}
+
+/** The account a statement belongs to, for callers that can't make one (see planAccount). */
 export function detectAccount(
   book: Book,
   store: Pick<ImportStoreData, "accountByMask">,
   parsed: { bankHint?: string; accountMask?: string; rows: { balanceMinor?: number }[] },
   cardStatement: boolean,
 ): string {
-  const isCard = cardStatement && !looksLikeBankStatement(parsed.rows, false);
-  const candidates = book.accounts.filter((a) => STATEMENT_ACCOUNT_TYPES.includes(a.type) && (a.type === "credit_card") === isCard);
-  const remembered = parsed.accountMask ? store.accountByMask[`${parsed.bankHint ?? ""}:${parsed.accountMask}`] : undefined;
-  // The same account number filed under another bank name (one read wrongly before) is still the same account.
-  const sameNumber = parsed.accountMask
-    ? Object.entries(store.accountByMask).filter(([key]) => key.endsWith(`:${parsed.accountMask}`)).map(([, id]) => id)
-    : [];
-  const statementBank = bankBrandFor(parsed.bankHint)?.slug;
-  const bankOf = (a: Book["accounts"][number]) => bankBrandFor(a.name)?.slug;
-  const sameBank = (a: Book["accounts"][number]) => !!statementBank && bankOf(a) === statementBank;
-  const notAnotherBank = (a: Book["accounts"][number]) => !bankOf(a) || !statementBank || sameBank(a);
-  const unnamed = candidates.filter((a) => !bankOf(a) || sameBank(a));
-  const pick =
-    candidates.find((a) => a.id === remembered) ??
-    candidates.find((a) => sameNumber.includes(a.id)) ??
-    (parsed.accountMask ? candidates.find((a) => a.name.includes(parsed.accountMask!) && notAnotherBank(a)) : undefined) ??
-    candidates.find(sameBank) ??
-    (isCard ? unnamed[0] : unnamed.find((a) => a.id === "account-netbanking") ?? unnamed.find((a) => a.type === "bank") ?? unnamed[0]);
-  if (!pick) {
-    if (candidates.length > 0) {
-      throw new StatementError(
-        "unsupported_format",
-        `${parsed.bankHint ? `This statement is from ${parsed.bankHint}` : "The statement doesn't say which bank it's from"}, and none of your ${isCard ? "cards" : "accounts"} match. Choose the account it belongs to, then try again.`,
-      );
-    }
-    throw new StatementError(
-      "unsupported_format",
-      isCard
-        ? "This is a credit card statement, but there's no credit card account yet. Restore the standard accounts on the Money page, then try again."
-        : "There's no bank account to put this statement in. Restore the standard accounts on the Money page, then try again.",
-    );
-  }
-  return pick.id;
+  const plan = planAccount(book, store, parsed, cardStatement);
+  if ("id" in plan) return plan.id;
+  throw new StatementError("unsupported_format", `This statement is from ${parsed.bankHint}, and none of your ${plan.create.type === "credit_card" ? "cards" : "accounts"} match. Choose the account it belongs to, then try again.`);
 }
 
 function sanityCheckAccount(book: Book, accountId: string) {
@@ -480,7 +522,8 @@ async function readPages(
 }
 
 export async function processStatement(input: ProcessInput, env: PipelineEnv): Promise<ProcessResult> {
-  const { data, filename, book, categories } = input;
+  const { data, filename, categories } = input;
+  let book = input.book;
   const auto = input.accountId === AUTO_ACCOUNT;
   const settings = input.store.settings;
   const report = (stage: Stage, fraction: number, label?: string) => input.onProgress?.({ stage, fraction, label: label ?? STAGE_LABEL[stage] });
@@ -523,8 +566,20 @@ export async function processStatement(input: ProcessInput, env: PipelineEnv): P
   // A card statement is known by its card's last four digits, not an account number printed elsewhere on it.
   if (cardStatement) parsed.accountMask = readCardNumber(pageText) ?? parsed.accountMask;
 
-  // Left to the app, the statement itself says which account it is (see detectAccount).
-  const accountId = auto ? detectAccount(book, input.store, parsed, cardStatement) : input.accountId;
+  // Left to the app, the statement itself says which account it is (see planAccount): one you have, or a new one
+  // for a bank or account you haven't added yet ("Kotak 811" names itself so, beside Kotak Mahindra Bank).
+  let accountId = input.accountId;
+  if (auto) {
+    const nameHint = /\bkotak\b/i.test(parsed.bankHint ?? "") && /\b811\b/.test(pageText) ? "Kotak 811" : undefined;
+    const plan = planAccount(book, input.store, parsed, cardStatement, nameHint);
+    if ("id" in plan) accountId = plan.id;
+    else {
+      const made = input.createAccount?.(plan.create);
+      if (!made) throw new StatementError("unsupported_format", `This statement is from ${parsed.bankHint}, and none of your accounts match. Choose the account it belongs to, then try again.`);
+      book = { ...book, accounts: [...book.accounts, made] };
+      accountId = made.id;
+    }
+  }
   const cardBill = cardStatement || book.accounts.find((a) => a.id === accountId)?.type === "credit_card" ? readCardBill(pageText) : undefined;
 
   // A bank statement prints the account's balance after every line; a card statement doesn't. Recording a
@@ -930,15 +985,27 @@ export function correctBank(
 }
 
 /** Removes an import and its lines from the import history, imported or not (see undo in the provider). */
+/** The import's account-number link, dropped when no other statement of that account uses it (so a statement
+ * filed in the wrong account, then undone or discarded, finds its own account when uploaded again). */
+function dropMaskMemory(store: ImportStoreData, gone: ImportRecord | undefined): ImportStoreData["accountByMask"] {
+  if (!gone?.accountMask) return store.accountByMask;
+  const key = `${gone.bankHint ?? ""}:${gone.accountMask}`;
+  const stillUsed = store.imports.some((r) => r.id !== gone.id && r.accountId === gone.accountId && r.accountMask === gone.accountMask && r.status !== "FAILED");
+  if (stillUsed || store.accountByMask[key] !== gone.accountId) return store.accountByMask;
+  const { [key]: _dropped, ...rest } = store.accountByMask;
+  return rest;
+}
+
 export function forgetImport(store: ImportStoreData, importId: string): ImportStoreData {
-  return { ...store, imports: store.imports.filter((i) => i.id !== importId), rows: store.rows.filter((r) => r.importId !== importId) };
+  const gone = store.imports.find((i) => i.id === importId);
+  return { ...store, imports: store.imports.filter((i) => i.id !== importId), rows: store.rows.filter((r) => r.importId !== importId), accountByMask: dropMaskMemory(store, gone) };
 }
 
 /** Throws away an import that hasn't been committed (its lines, and so the file can be uploaded again). */
 export function discardImport(store: ImportStoreData, importId: string): ImportStoreData {
   const target = store.imports.find((i) => i.id === importId);
   if (!target || target.status === "IMPORTED") return store;
-  return { ...store, imports: store.imports.filter((i) => i.id !== importId), rows: store.rows.filter((r) => r.importId !== importId) };
+  return { ...store, imports: store.imports.filter((i) => i.id !== importId), rows: store.rows.filter((r) => r.importId !== importId), accountByMask: dropMaskMemory(store, target) };
 }
 
 export type { Category };

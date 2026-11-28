@@ -257,7 +257,22 @@ export function StatementsProvider({ children, repository = repo }: { children: 
         }
         try {
           const result = await processStatement(
-            { data, filename: file.name, accountId, password, book: finance.getBook(), store: storeRef.current, categories: planCtx(), onProgress, useAi },
+            {
+              data,
+              filename: file.name,
+              accountId,
+              password,
+              book: finance.getBook(),
+              store: storeRef.current,
+              categories: planCtx(),
+              onProgress,
+              useAi,
+              // A statement from a bank or account you haven't added yet gets its own account, made here.
+              createAccount: ({ name, type }) => {
+                const r = finance.addAccount({ name, type, openingBalanceMinor: 0, openedOn: "2000-01-01" });
+                return r.ok ? r.value : null;
+              },
+            },
             { pdfjs: await loadPdfjs(), ocr: browserOcr, ocrImage: browserOcrImage, now: nowISO, newId },
           );
           if (!(await persist(result.store))) return { ok: false, code: "unknown", message: "The statement was read, but this browser couldn't store it." };

@@ -1,4 +1,4 @@
-import { fetchLastPrice, fetchSector, searchYahoo, type LtpResponse, type SearchHit, type SectorInfo } from "./yahoo";
+import { fetchDailyCloses, fetchLastPrice, fetchSector, searchYahoo, type LtpResponse, type SearchHit, type SectorInfo } from "./yahoo";
 
 /**
  * The server side of Investments' share lookups: a stateless go-between for Yahoo, which a browser can't
@@ -50,6 +50,24 @@ export async function getSectors(symbols: string[]): Promise<Record<string, Sect
         out[s] = await cached(`sector:${s}`, 7 * 24 * 3600_000, () => fetchSector(s));
       } catch {
         // Left out: shown as "Other".
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, symbols.length) }, worker));
+  return out;
+}
+
+/** Each share's daily closes since a date; kept a few hours (only today's can still change). */
+export async function getDailyCloses(symbols: string[], fromDate: string): Promise<Record<string, Record<string, number>>> {
+  const out: Record<string, Record<string, number>> = {};
+  let next = 0;
+  const worker = async () => {
+    while (next < symbols.length) {
+      const s = symbols[next++];
+      try {
+        out[s] = await cached(`daily:${s}:${fromDate}`, 4 * 3600_000, () => fetchDailyCloses(s, fromDate));
+      } catch {
+        // Left out: those days fall back to what was paid.
       }
     }
   };

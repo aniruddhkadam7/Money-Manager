@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { LtpResponse } from "@/lib/stocks/yahoo";
+import { authFetch } from "@/lib/cloud/client";
 import { refreshTradingDay } from "@/lib/stocks/trading-day";
 
 /** Yahoo's symbol for an Indian share: RELIANCE on NSE is RELIANCE.NS, on BSE RELIANCE.BO. */
@@ -25,7 +26,8 @@ export function useLtp(symbols: string[], everyMs = 15_000) {
       if (document.visibilityState !== "visible") return;
       if (!force && !(await refreshTradingDay())) return;
       lastLoad = Date.now();
-      fetch(`/api/stocks/ltp?symbols=${encodeURIComponent(key)}`)
+      // As you (signed in), so prices come from your Kotak Neo account.
+      authFetch(`/api/stocks/ltp?symbols=${encodeURIComponent(key)}`)
         .then(async (res) => {
           if (!res.ok) throw new Error(`Status ${res.status}`);
           const data = (await res.json()) as LtpResponse;

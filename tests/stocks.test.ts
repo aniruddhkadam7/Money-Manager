@@ -40,3 +40,12 @@ describe("a share's sector, from Yahoo's search", () => {
     expect(parseSector({ quotes: [] }, "ITC.NS")).toEqual({ sector: null, industry: null });
   });
 });
+
+describe("daily closing prices", () => {
+  it("are read by India date, skipping days without a close", async () => {
+    const { parseDailyCloses } = await import("@/lib/stocks/yahoo");
+    const t = (iso: string) => Date.parse(iso) / 1000;
+    const json = { chart: { result: [{ timestamp: [t("2026-11-25T03:45:00Z"), t("2026-11-26T03:45:00Z"), t("2026-11-27T03:45:00Z")], indicators: { quote: [{ close: [206, null, 205.25] }] } }] } };
+    expect(parseDailyCloses(json)).toEqual({ "2026-11-25": 206, "2026-11-27": 205.25 });
+  });
+});

@@ -258,6 +258,22 @@ export function ImportDetail({ importId, onBack }: { importId: string; onBack: (
   const [rowSort, setRowSort] = useSessionState<RowSort>(`import:${importId}:sort`, "statement");
   const [filters, setFilters] = useSessionState<PartyFilters>(`import:${importId}:filters`, DEFAULT_FILTERS);
 
+  // Every hook runs before the early return below (an undone or discarded import has no record any more).
+  // Gap must be computed against the balance as of the statement's end date, not today's balance.
+  // Using today's balance would include post-statement transactions and produce a wrong gap.
+  const periodEnd = record?.periodEnd;
+  const recordAccountId = record?.accountId;
+  const accountNow = recordAccountId ? finance.state.accounts.find((a) => a.account.id === recordAccountId) : undefined;
+  const accountAtClose = useMemo(() => {
+    if (!recordAccountId) return undefined;
+    if (!periodEnd) return accountNow;
+    const then = deriveState(finance.book, finance.ledger, periodEnd).accounts.find((a) => a.account.id === recordAccountId);
+    // Entries marked as not in a statement aren't expected in the bank's closing balance.
+    return then && (then.account.type === "bank" || then.account.type === "cash")
+      ? { ...then, balanceMinor: statementBalanceAt(finance.book, finance.ledger, recordAccountId, periodEnd) }
+      : then;
+  }, [finance.book, finance.ledger, periodEnd, recordAccountId, accountNow]);
+
   if (!record) {
     return (
       <Card className="p-6">
@@ -311,18 +327,7 @@ export function ImportDetail({ importId, onBack }: { importId: string; onBack: (
   const toCreate = rows.filter((r) => r.status === "auto" || r.status === "auto_flagged").length;
   const toLink = rows.filter((r) => r.status === "matched_existing" && !r.decision?.note && !imported).length;
 
-  const accountNow = finance.state.accounts.find((a) => a.account.id === record.accountId);
   const closing = statementClosing(record, account?.type);
-  // Gap must be computed against the balance as of the statement's end date, not today's balance.
-  // Using today's balance would include post-statement transactions and produce a wrong gap.
-  const accountAtClose = useMemo(() => {
-    if (!record.periodEnd) return accountNow;
-    const then = deriveState(finance.book, finance.ledger, record.periodEnd).accounts.find((a) => a.account.id === record.accountId);
-    // Entries marked as not in a statement aren't expected in the bank's closing balance.
-    return then && (then.account.type === "bank" || then.account.type === "cash")
-      ? { ...then, balanceMinor: statementBalanceAt(finance.book, finance.ledger, record.accountId, record.periodEnd) }
-      : then;
-  }, [finance.book, finance.ledger, record.periodEnd, record.accountId, accountNow]);
   const gap = imported && accountAtClose && closing !== undefined ? closing - accountAtClose.balanceMinor : undefined;
 
   const pick = (key: TileKey, label: string) => ({ active: tile?.key === key, onClick: () => setTile(tile?.key === key ? null : { key, label }) });

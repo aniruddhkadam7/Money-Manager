@@ -87,6 +87,39 @@ export async function fetchLastPrice(symbol: string) {
   return parseLastPrice(await getJson(`${BASE}/v8/finance/chart/${encodeURIComponent(symbol)}?range=1d&interval=5m`));
 }
 
+const DailyJson = z.object({
+  chart: z.object({
+    result: z
+      .array(
+        z.object({
+          timestamp: z.array(Num).nullish(),
+          indicators: z.object({ quote: z.array(z.object({ close: z.array(Num.nullable()).nullish() })).nullish() }),
+        }),
+      )
+      .nullish(),
+  }),
+});
+
+/** Each trading day's closing price (rupees), by India date (YYYY-MM-DD). */
+export function parseDailyCloses(json: unknown): Record<string, number> {
+  const r = DailyJson.parse(json).chart.result?.[0];
+  const out: Record<string, number> = {};
+  const closes = r?.indicators.quote?.[0]?.close ?? [];
+  (r?.timestamp ?? []).forEach((t, i) => {
+    const c = closes[i];
+    if (c == null) return;
+    out[new Date(t * 1000 + 5.5 * 3600_000).toISOString().slice(0, 10)] = c;
+  });
+  return out;
+}
+
+/** Daily closes from `fromDate` (YYYY-MM-DD) to today. */
+export async function fetchDailyCloses(symbol: string, fromDate: string): Promise<Record<string, number>> {
+  const p1 = Math.floor(Date.parse(`${fromDate}T00:00:00+05:30`) / 1000);
+  const p2 = Math.floor(Date.now() / 1000);
+  return parseDailyCloses(await getJson(`${BASE}/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${p1}&period2=${p2}&interval=1d`));
+}
+
 /** A company's sector and industry as Yahoo lists them ("Technology", "Information Technology Services"). */
 export interface SectorInfo {
   sector: string | null;

@@ -31,8 +31,20 @@ export function InvestmentSection({ model }: { model: Pick<DashboardModel, "firs
   const phone = usePhone();
 
   const { dates, points } = useMemo(() => {
-    const dates = sampleDates(period.from, period.to, 90);
-    return { dates, points: applyAnchorGapsToSeries(balanceSeries(book, ledger, dates), gaps) };
+    // Days through the period, closer together near its end (today's live value is the last point).
+    const all = sampleDates(period.from, period.to, 90);
+    const series = applyAnchorGapsToSeries(balanceSeries(book, ledger, all), gaps);
+    // Start from the first day anything was invested: weeks of ₹0 before it only squash the line flat.
+    const first = series.findIndex((p) => p.investmentsMinor !== 0 || p.investedMinor !== 0);
+    const from = first <= 0 ? 0 : Math.max(0, Math.min(first, series.length - 2));
+    let dates = all.slice(from);
+    let points = series.slice(from);
+    // A short span (bought days ago): finer steps, so the moves since are visible.
+    if (dates.length < 12 && dates.length >= 2) {
+      dates = sampleDates(dates[0], period.to, 60);
+      points = applyAnchorGapsToSeries(balanceSeries(book, ledger, dates), gaps);
+    }
+    return { dates, points };
   }, [book, ledger, period.from, period.to, gaps]);
 
   const xs = useMemo(() => dates.map((d) => daysBetween(dates[0], d)), [dates]);
@@ -81,7 +93,8 @@ export function InvestmentSection({ model }: { model: Pick<DashboardModel, "firs
           xs={xs}
           series={series}
           height={phone ? 160 : 220}
-          includeZero
+          // Scaled to the values, not from ₹0: a ₹300 move on ₹20,000 should be visible.
+          includeZero={false}
           animateKey={`${period.from}-${period.to}-${dates.length}-${value}`}
           ariaLabel="Investment value over time"
           formatY={formatCompactINR}
