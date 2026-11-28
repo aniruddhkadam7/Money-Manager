@@ -609,8 +609,8 @@ function AccountRow({
   return (
     <li className="px-4 py-2.5 sm:px-5 sm:py-3">
       <div className="flex items-center gap-3">
-      {/* The logo and name open the account's entries (phones have no room for the Entries link). */}
-      <Link href={`/activity?account=${account.id}`} className="flex min-w-0 flex-1 items-center gap-3 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      {/* The logo and name open the account's own page (its balance, months, statements and entries). */}
+      <Link href={`/account?id=${account.id}`} className="flex min-w-0 flex-1 items-center gap-3 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <span className={cn("flex shrink-0", wide && "w-16")}>
         <AccountLogo account={account} bankHint={bankHint} tile />
       </span>

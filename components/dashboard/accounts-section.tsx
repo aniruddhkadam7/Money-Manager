@@ -56,9 +56,9 @@ export function AccountsSection({ book, state }: { book: Book; state: FinancialS
         data-ticker-copy={copy || undefined}
         aria-hidden={copy || undefined}
       >
-        {/* The link's ::after covers the whole tile, so a tap anywhere on it opens the account (the ⓘ sits above it). */}
+        {/* The link's ::after covers the whole tile, so a tap anywhere on it opens the account's page (the ⓘ sits above it). */}
         <Link
-          href={activityHref({ account: account.id })}
+          href={`/account?id=${account.id}`}
           tabIndex={copy ? -1 : undefined}
           className="flex items-center gap-2 after:absolute after:inset-0 after:rounded-xl after:content-[''] group-hover:[&>span:last-child]:underline max-sm:[&>span:first-child]:h-7 max-sm:[&>span:first-child]:max-w-11"
         >
